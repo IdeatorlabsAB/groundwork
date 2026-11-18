@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - `add_product_areas` and `add_products`: agents can add product areas and products to `config.yml`. Add-only: existing ones are skipped.
+- `add_requirements` matches a product name regardless of case and stores the spelling from `config.yml`.
 
 ## 0.2.0
 
