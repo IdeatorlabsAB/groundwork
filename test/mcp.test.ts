@@ -293,6 +293,40 @@ describe("product areas and products", () => {
     expect((await call(c, "add_requirements", requirement("Nope"))).error).toMatch(/add_products/);
   });
 
+  it("keeps comments and unknown keys in a hand-written config.yml", async () => {
+    const file = join(root, "groundwork/config.yml");
+    writeFileSync(
+      file,
+      "# Our settings\nname: Acme\nteam: growth\nproductAreas:\n  - { id: onboarding, label: Onboarding } # first area\nproducts: [Acme app]\npeople:\n  - { id: sam, name: Sam, role: owner }\n",
+    );
+    const c = await connect();
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Billing" }] })).error).toBeUndefined();
+    expect((await call(c, "add_products", { products: ["Acme API"] })).error).toBeUndefined();
+    const text = readFileSync(file, "utf8");
+    expect(text).toContain("# Our settings");
+    expect(text).toContain("# first area");
+    expect(text).toContain("team: growth");
+    expect(readConfig(root).productAreas.map((a) => a.id)).toEqual(["onboarding", "billing"]);
+    expect(readConfig(root).products).toEqual(["Acme app", "Acme API"]);
+  });
+
+  it("leaves config.yml untouched when nothing is added", async () => {
+    const file = join(root, "groundwork/config.yml");
+    const before = readFileSync(file, "utf8") + "# hand note\n";
+    writeFileSync(file, before);
+    const c = await connect();
+    await call(c, "add_product_areas", { areas: [{ label: "Onboarding" }] });
+    await call(c, "add_products", { products: ["acme app"] });
+    expect(readFileSync(file, "utf8")).toBe(before);
+  });
+
+  it("matches a requirement's product regardless of case", async () => {
+    const c = await connect();
+    const { data, error } = await call(c, "add_requirements", requirement("acme app"));
+    expect(error).toBeUndefined();
+    expect(load(root).items.requirements.find((r) => r.id === data.created[0].id)?.product).toBe("Acme app");
+  });
+
   it("no item files written", async () => {
     const c = await connect();
     await chain(c);

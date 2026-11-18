@@ -86,6 +86,23 @@ export function writeConfig(root: string, config: Config) {
   writeFileSync(configPath(root), CONFIG_HEADER + YAML.stringify(config, { lineWidth: 0 }));
 }
 
+/**
+ * Append product areas and products to an existing config.yml, editing the YAML in place so the user's comments,
+ * unknown keys and formatting are kept.
+ */
+export function appendToConfig(root: string, add: { productAreas?: { id: string; label: string }[]; products?: string[] }) {
+  const file = configPath(root);
+  const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+  for (const key of ["productAreas", "products"] as const) {
+    const values = add[key];
+    if (!values?.length) continue;
+    if (!YAML.isSeq(doc.get(key))) doc.set(key, doc.createNode([]));
+    const seq = doc.get(key) as YAML.YAMLSeq;
+    for (const v of values) seq.add(doc.createNode(v));
+  }
+  writeFileSync(file, doc.toString({ lineWidth: 0 }));
+}
+
 function gitEmail(root: string): string | undefined {
   try {
     return execFileSync("git", ["config", "user.email"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined;

@@ -8,7 +8,7 @@ import { kindOf } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
-import { isInitialized, readConfig, resolveActor, writeConfig, type Config } from "../store/config";
+import { appendToConfig, isInitialized, readConfig, resolveActor, writeConfig, type Config } from "../store/config";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
 
@@ -204,16 +204,27 @@ export function buildServer({ root }: ServerOptions): McpServer {
     return undefined;
   };
 
-  /** Change groundwork/config.yml only; no item files are touched. */
+  /**
+   * Add product areas or products to groundwork/config.yml; no item files are touched. An existing file is edited in
+   * place (comments and unknown keys kept) and left alone when nothing is new.
+   */
   const writeConfigOnly =
-    <A>(fn: (s: Session, args: A) => { config: Config; result: unknown }) =>
+    <A>(fn: (s: Session, args: A) => { add: { productAreas?: Config["productAreas"]; products?: string[] }; result: unknown }) =>
     async (args: A): Promise<Result> => {
       try {
         const s = open();
         const refused = refusal(s);
         if (refused) return fail(refused);
-        const { config, result } = fn(s, args);
-        writeConfig(root, config);
+        const { add, result } = fn(s, args);
+        if (!isInitialized(root)) {
+          writeConfig(root, {
+            ...s.config,
+            productAreas: [...s.config.productAreas, ...(add.productAreas ?? [])],
+            products: [...s.config.products, ...(add.products ?? [])],
+          });
+        } else if (add.productAreas?.length || add.products?.length) {
+          appendToConfig(root, add);
+        }
         return ok({ ...(result as object), file: "groundwork/config.yml" });
       } catch (e) {
         if (e instanceof UserError || e instanceof WorkspaceError) return fail(e.message);
@@ -433,10 +444,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, r.stakeholderIds);
-        if (r.product && s.config.products.length && !s.config.products.includes(r.product)) {
+        const product = r.product && s.config.products.find((p) => p.toLowerCase() === r.product!.toLowerCase());
+        if (r.product && s.config.products.length && !product) {
           throw new UserError(`Unknown product "${r.product}". Products in groundwork/config.yml: ${s.config.products.join(", ")}. Add it with add_products, or leave it out.`);
         }
-        const base = { ...r, productArea: s.area(r.productArea), aiGenerated: true };
+        const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
         if (r.findingIds.length) {
           derived.push(base);
         } else {
@@ -477,7 +489,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     writeConfigOnly((s, { areas }: { areas: { label: string; id?: string }[] }) => {
       const { list, added, alreadyThere } = mergeAreas(s.config.productAreas, areas);
-      return { config: { ...s.config, productAreas: list }, result: { added, alreadyThere, productAreas: list } };
+      return { add: { productAreas: added }, result: { added, alreadyThere, productAreas: list } };
     }),
   );
 
@@ -491,7 +503,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     writeConfigOnly((s, { products }: { products: string[] }) => {
       const { list, added, alreadyThere } = mergeProducts(s.config.products, products);
-      return { config: { ...s.config, products: list }, result: { added, alreadyThere, products: list } };
+      return { add: { products: added }, result: { added, alreadyThere, products: list } };
     }),
   );
 
