@@ -49,6 +49,7 @@ npx -p groundwork-mcp groundwork init        # create groundwork/config.yml
 npx -p groundwork-mcp groundwork validate    # check every item and link; exits 1 on errors
 npx -p groundwork-mcp groundwork trace REQ-0002
 npx -p groundwork-mcp groundwork list hypothesis
+npx -p groundwork-mcp groundwork import --to <web app>   # see "Groundwork for teams"
 ```
 
 `trace` shows the chain behind an item (from [examples/acme](examples/acme)):
@@ -114,7 +115,17 @@ Insights hold what customers said, and these files usually end up in git. Ground
 
 ## Groundwork for teams
 
-The Groundwork web app adds dashboards, reports, a visual evidence graph, approvals with an audit trail and Linear sync for people who don't live in a terminal. You can import a `groundwork/` folder into it. The web app is a separate, paid product; this project is and stays open source.
+The Groundwork web app adds dashboards, reports, a visual evidence graph, approvals with an audit trail and Linear sync for people who don't live in a terminal. It's a separate, paid product; this project is and stays open source.
+
+To move a project into it, create an agent token in the web app (**Settings → Connect an agent**), then:
+
+```sh
+export GROUNDWORK_TOKEN=gw_…
+npx -p groundwork-mcp groundwork import --to https://your-groundwork-app --dry-run   # see what would happen
+npx -p groundwork-mcp groundwork import --to https://your-groundwork-app
+```
+
+Every item keeps its links, and its original id (`INS-0001`) is stored with it. Running the import again skips items already there (`--overwrite` replaces them). Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server.
 
 ## Contributing
 

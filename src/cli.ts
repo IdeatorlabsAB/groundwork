@@ -8,6 +8,7 @@ import { COLLECTIONS, load, type Loaded } from "./store/files";
 import { validate } from "./store/validate";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
+import { ImportError, runImport } from "./store/import";
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
@@ -19,6 +20,8 @@ Usage:
   groundwork validate [--json]         Check every item and link. Exits 1 on errors (use it in CI)
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
+  groundwork import --to <web app url> Move this project into the Groundwork web app
+                    [--dry-run] [--overwrite]   (token from $GROUNDWORK_TOKEN)
   groundwork mcp                       Run the MCP server over stdio (same as groundwork-mcp)
 
 Connect your agent (Claude Code):
@@ -122,10 +125,46 @@ function cmdList(kind?: string) {
   return 0;
 }
 
+async function cmdImport(to: string | undefined, token: string | undefined, dryRun: boolean, overwrite: boolean) {
+  if (!to || !token) {
+    console.error("Usage: GROUNDWORK_TOKEN=gw_… groundwork import --to https://<your Groundwork web app> [--dry-run] [--overwrite]");
+    console.error("Create the token in the web app: Settings → Connect an agent.");
+    return 1;
+  }
+  const root = findRoot();
+  const already = readConfig(root).migrated;
+  if (already && !dryRun) console.log(dim(`This folder was imported before (${already}). Items already there are ${overwrite ? "replaced" : "skipped"}.`));
+  try {
+    const r = await runImport({ root, to, token, dryRun, overwrite });
+    console.log(`${dryRun ? bold("Dry run, nothing saved. ") : ""}${r.workspace}: ${r.created} new, ${r.updated} replaced, ${r.skipped} already there.`);
+    if (r.addedAreas.length) console.log(`Product areas added: ${r.addedAreas.join(", ")}`);
+    if (r.addedProducts.length) console.log(`Products added: ${r.addedProducts.join(", ")}`);
+    for (const w of r.warnings) console.log(`${yellow("warning")} ${w}`);
+    if (!dryRun) {
+      console.log(green(`Imported. Open ${r.url}`));
+      console.log(`\n${DIR}/config.yml now says migrated, so local tools only read these files. Point your agent at the web app:`);
+      console.log(`  claude mcp remove groundwork`);
+      console.log(`  claude mcp add --transport http groundwork ${new URL(r.url).origin}/api/mcp --header "Authorization: Bearer $GROUNDWORK_TOKEN"`);
+    }
+    return 0;
+  } catch (e) {
+    if (!(e instanceof ImportError)) throw e;
+    console.error(red(e.message));
+    for (const p of e.problems.slice(0, 20)) console.error(`  ${p.file}: ${p.message}`);
+    return 1;
+  }
+}
+
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { name: { type: "string" }, json: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
+    options: {
+      name: { type: "string" },
+      json: { type: "boolean" },
+      to: { type: "string" },
+      token: { type: "string" },
+      "dry-run": { type: "boolean" },
+      overwrite: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
   });
   const [cmd, arg] = positionals;
   if (values.version) return console.log(VERSION), 0;
@@ -140,6 +179,8 @@ async function main(): Promise<number> {
       return cmdTrace(arg.toUpperCase());
     case "list":
       return cmdList(arg);
+    case "import":
+      return cmdImport(values.to, values.token ?? process.env.GROUNDWORK_TOKEN, Boolean(values["dry-run"]), Boolean(values.overwrite));
     case "mcp":
       await runMcp();
       return -1; // keep running
