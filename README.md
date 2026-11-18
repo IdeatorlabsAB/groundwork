@@ -82,7 +82,7 @@ jobs:
 
 ## Setup
 
-`groundwork/config.yml` holds your product areas, products and people (for approvals). The first write creates it if it's missing. Fill it in so agents can tag items by area and send requirements for sign-off:
+`groundwork/config.yml` holds your product areas, products and people (for approvals). The first write creates it if it's missing. Fill it in so agents can tag items by area and send requirements for sign-off. Agents can also add product areas and products themselves, with `add_product_areas` and `add_products`; people are always added by hand:
 
 ```yaml
 name: Acme
@@ -108,6 +108,7 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 | | `add_requirements` | `send_back_requirement` |
 | | `update_item`, `link_items` | `obsolete_requirement` |
 | | `delete_item` | |
+| | `add_product_areas`, `add_products` | |
 
 ## Privacy
 

@@ -100,6 +100,8 @@ people:
 migrated: https://…    # set by the web app importer; local writes stop
 ```
 
+`add_product_areas` and `add_products` append to `productAreas` and `products`. They skip entries already there (matched by label or name, ignoring case) and never rename, reorder or remove anything. Area ids are made from the label unless given. Rename or remove by editing the file.
+
 The person acting is `$GROUNDWORK_USER` (a person id). Otherwise it's the person whose `email` matches git's, or the only person listed. If none of those apply, it's `me`.
 
 ## Versioning
