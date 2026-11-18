@@ -9,7 +9,8 @@ Groundwork keeps the product's evidence and decisions as linked Markdown files i
 **insight → hypothesis → experiment → finding → requirement**. Every requirement can be traced back to the evidence behind it.
 
 It's connected as the `groundwork` MCP server. If its tools are missing, tell the user to install it:
-`claude mcp add groundwork -- npx -y groundwork-mcp` (or the `groundwork` plugin).
+`claude mcp add groundwork -- npx -y groundwork-mcp` (or the `groundwork` plugin) in Claude Code, or
+`codex mcp add groundwork -- npx -y groundwork-mcp` in Codex.
 
 ## When to reach for it
 

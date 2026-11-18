@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Setup instructions for Codex in the README, the skill and the CLI's messages (`--help`, `init`, `import`).
+
 ## 0.3.0
 
 - `add_product_areas` and `add_products`: agents can add product areas and products to `config.yml`. Add-only: existing ones are skipped.

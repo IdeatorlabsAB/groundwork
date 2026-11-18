@@ -24,8 +24,9 @@ Usage:
                     [--dry-run] [--overwrite]   (token from $GROUNDWORK_TOKEN)
   groundwork mcp                       Run the MCP server over stdio (same as groundwork-mcp)
 
-Connect your agent (Claude Code):
-  claude mcp add groundwork -- npx -y groundwork-mcp
+Connect your agent:
+  claude mcp add groundwork -- npx -y groundwork-mcp   (Claude Code)
+  codex mcp add groundwork -- npx -y groundwork-mcp    (Codex)
 `;
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -62,7 +63,9 @@ function cmdInit(name?: string) {
   const config = readConfig(root);
   writeConfig(root, name ? { ...config, name } : config);
   console.log(`Created ${DIR}/config.yml. Add your product areas, products and people there.`);
-  console.log(`\nConnect your agent:\n  claude mcp add groundwork -- npx -y groundwork-mcp`);
+  console.log(`\nConnect your agent:`);
+  console.log(`  claude mcp add groundwork -- npx -y groundwork-mcp   (Claude Code)`);
+  console.log(`  codex mcp add groundwork -- npx -y groundwork-mcp    (Codex)`);
   return 0;
 }
 
@@ -143,8 +146,14 @@ async function cmdImport(to: string | undefined, token: string | undefined, dryR
     if (!dryRun) {
       console.log(green(`Imported. Open ${r.url}`));
       console.log(`\n${DIR}/config.yml now says migrated, so local tools only read these files. Point your agent at the web app:`);
+      const mcpUrl = `${new URL(r.url).origin}/api/mcp`;
+      console.log(`\nClaude Code:`);
       console.log(`  claude mcp remove groundwork`);
-      console.log(`  claude mcp add --transport http groundwork ${new URL(r.url).origin}/api/mcp --header "Authorization: Bearer $GROUNDWORK_TOKEN"`);
+      console.log(`  claude mcp add --transport http groundwork ${mcpUrl} --header "Authorization: Bearer $GROUNDWORK_TOKEN"`);
+      console.log(`\nCodex: run \`codex mcp remove groundwork\`, then add to ~/.codex/config.toml:`);
+      console.log(`  [mcp_servers.groundwork]`);
+      console.log(`  url = "${mcpUrl}"`);
+      console.log(`  bearer_token_env_var = "GROUNDWORK_TOKEN"`);
     }
     return 0;
   } catch (e) {

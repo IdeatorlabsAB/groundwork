@@ -17,6 +17,8 @@ insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ re
 
 ## Quickstart (2 minutes)
 
+### Claude Code
+
 In your project folder:
 
 ```sh
@@ -30,7 +32,32 @@ Or install the plugin, which adds the MCP server and a skill that teaches Claude
 /plugin install groundwork@groundwork
 ```
 
-Then talk to Claude as you normally would:
+### Codex
+
+```sh
+codex mcp add groundwork -- npx -y groundwork-mcp
+```
+
+Or add it to `~/.codex/config.toml` by hand:
+
+```toml
+[mcp_servers.groundwork]
+command = "npx"
+args = ["-y", "groundwork-mcp"]
+```
+
+To teach Codex when to use it, copy the skill into your repo:
+
+```sh
+mkdir -p .agents/skills/groundwork
+curl -fsSL https://raw.githubusercontent.com/IdeatorlabsAB/groundwork/main/skills/groundwork/SKILL.md -o .agents/skills/groundwork/SKILL.md
+```
+
+Start `codex` in your project folder, so Groundwork finds the project.
+
+### Then
+
+Talk to your agent as you normally would:
 
 > Here are my notes from three customer interviews. Log the pains as insights.
 >
@@ -126,7 +153,13 @@ npx -p groundwork-mcp groundwork import --to https://your-groundwork-app --dry-r
 npx -p groundwork-mcp groundwork import --to https://your-groundwork-app
 ```
 
-Every item keeps its links, and its original id (`INS-0001`) is stored with it. Running the import again skips items already there (`--overwrite` replaces them). Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server.
+Every item keeps its links, and its original id (`INS-0001`) is stored with it. Running the import again skips items already there (`--overwrite` replaces them). Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server. For Codex, run `codex mcp remove groundwork` and add this to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.groundwork]
+url = "https://your-groundwork-app/api/mcp"
+bearer_token_env_var = "GROUNDWORK_TOKEN"
+```
 
 ## Contributing
 
