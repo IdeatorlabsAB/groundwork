@@ -2,7 +2,7 @@ name: Release
 # Publishes to npm when a version tag is pushed: bump "version" in package.json and .claude-plugin/plugin.json,
 # commit, then `git tag v0.1.1 && git push --tags`.
 # Uses npm trusted publishing (OIDC): no npm token is stored anywhere. Set up once on npmjs.com under
-# groundwork-mcp → Settings → Trusted Publisher → GitHub Actions (ganjilive / groundwork / release.yml).
+# groundwork-mcp → Settings → Trusted Publisher → GitHub Actions (IdeatorlabsAB / groundwork / release.yml).
 on:
   push:
     tags: ["v*"]

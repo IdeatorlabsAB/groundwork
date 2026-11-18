@@ -26,7 +26,7 @@ claude mcp add groundwork -- npx -y groundwork-mcp
 Or install the plugin, which adds the MCP server and a skill that teaches Claude when to use it:
 
 ```
-/plugin marketplace add ganjilive/groundwork
+/plugin marketplace add IdeatorlabsAB/groundwork
 /plugin install groundwork@groundwork
 ```
 

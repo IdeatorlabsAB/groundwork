@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "owner": { "name": "The Groundwork Authors", "url": "https://github.com/ganjilive/groundwork" },
+  "owner": { "name": "The Groundwork Authors", "url": "https://github.com/IdeatorlabsAB/groundwork" },
   "plugins": [
     {
       "name": "groundwork",

@@ -4,10 +4,10 @@
   "description": "Keep customer insights, hypotheses, experiments, findings and requirements as linked Markdown files in your repo, with traceability from every requirement back to the evidence behind it.",
   "author": {
     "name": "The Groundwork Authors",
-    "url": "https://github.com/ganjilive/groundwork"
+    "url": "https://github.com/IdeatorlabsAB/groundwork"
   },
-  "homepage": "https://github.com/ganjilive/groundwork",
-  "repository": "https://github.com/ganjilive/groundwork",
+  "homepage": "https://github.com/IdeatorlabsAB/groundwork",
+  "repository": "https://github.com/IdeatorlabsAB/groundwork",
   "license": "Apache-2.0",
   "keywords": [
     "product-management",

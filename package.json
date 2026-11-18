@@ -35,10 +35,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ganjilive/groundwork.git"
+    "url": "git+https://github.com/IdeatorlabsAB/groundwork.git"
   },
-  "homepage": "https://github.com/ganjilive/groundwork#readme",
-  "bugs": "https://github.com/ganjilive/groundwork/issues",
+  "homepage": "https://github.com/IdeatorlabsAB/groundwork#readme",
+  "bugs": "https://github.com/IdeatorlabsAB/groundwork/issues",
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
