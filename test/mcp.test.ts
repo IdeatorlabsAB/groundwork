@@ -104,6 +104,8 @@ describe("local MCP server", () => {
         "add_findings",
         "add_hypotheses",
         "add_insights",
+        "add_product_areas", // local only for now: the hosted server should get these too
+        "add_products",
         "add_requirements",
         "approve_requirement",
         "delete_item",
@@ -211,6 +213,93 @@ describe("local MCP server", () => {
     expect((await call(c, "get_workspace")).data.initialized).toBe(false);
     await call(c, "add_insights", { insights: [{ title: "X", quote: "q", source: "survey", persona: "p" }] });
     expect(readdirSync(join(root, "groundwork")).sort()).toEqual(["config.yml", "insights"]);
+  });
+});
+
+describe("product areas and products", () => {
+  const insight = (productArea: string) => ({ insights: [{ title: "X", quote: "q", source: "survey", persona: "p", productArea }] });
+  const requirement = (product: string) => ({
+    requirements: [{ title: "Audit log", story: "Keep an audit log.", acceptanceCriteria: ["Logs kept"], origin: "regulation", product }],
+  });
+
+  it("adds areas and an item can use them", async () => {
+    const c = await connect();
+    const { data } = await call(c, "add_product_areas", { areas: [{ label: "Billing" }] });
+    expect(data.added).toEqual([{ id: "billing", label: "Billing" }]);
+    expect(data.productAreas).toHaveLength(2);
+    expect((await call(c, "add_insights", insight("Billing"))).error).toBeUndefined();
+    expect(readConfig(root).productAreas.map((a) => a.id)).toContain("billing");
+  });
+
+  it("skips areas already there", async () => {
+    const c = await connect();
+    const { data } = await call(c, "add_product_areas", { areas: [{ label: "onboarding" }] });
+    expect(data.added).toEqual([]);
+    expect(data.alreadyThere[0].id).toBe("onboarding");
+  });
+
+  it("reports a slug collision as an error", async () => {
+    const c = await connect();
+    await call(c, "add_product_areas", { areas: [{ label: "On boarding", id: "on-boarding" }] });
+    expect((await call(c, "add_product_areas", { areas: [{ label: "On-boarding" }] })).error).toMatch(/already uses/);
+  });
+
+  it("adds products", async () => {
+    const c = await connect();
+    const { data } = await call(c, "add_products", { products: ["Acme API", "acme app"] });
+    expect(data.added).toEqual(["Acme API"]);
+    expect(data.alreadyThere).toEqual(["Acme app"]);
+    expect((await call(c, "add_requirements", requirement("Acme API"))).error).toBeUndefined();
+  });
+
+  it("keeps other config fields", async () => {
+    const c = await connect();
+    await call(c, "add_product_areas", { areas: [{ label: "Billing" }] });
+    await call(c, "add_products", { products: ["Acme API"] });
+    const config = readConfig(root);
+    expect(config.productAreas).toHaveLength(2);
+    expect(config.products).toEqual(["Acme app", "Acme API"]);
+    expect(config.name).toBe("Acme");
+    expect(config.people).toHaveLength(2);
+    expect(config.schemaVersion).toBe(1);
+  });
+
+  it("creates config.yml when missing", async () => {
+    rmSync(join(root, "groundwork/config.yml"));
+    const c = await connect();
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Billing" }] })).error).toBeUndefined();
+    expect(readConfig(root).productAreas).toEqual([{ id: "billing", label: "Billing" }]);
+  });
+
+  it("refused when migrated", async () => {
+    writeConfig(root, { ...readConfig(root), migrated: "https://groundwork.example/app" });
+    const c = await connect();
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Billing" }] })).error).toMatch(/imported into the Groundwork web app/);
+    expect((await call(c, "add_products", { products: ["Acme API"] })).error).toMatch(/imported into the Groundwork web app/);
+    expect(readConfig(root).productAreas).toHaveLength(1);
+  });
+
+  it("refused for a viewer", async () => {
+    const config = readConfig(root);
+    writeConfig(root, { ...config, people: [...config.people, { id: "vic", name: "Vic", role: "viewer" }] });
+    process.env.GROUNDWORK_USER = "vic";
+    const c = await connect();
+    expect((await call(c, "add_products", { products: ["Acme API"] })).error).toMatch(/viewer/);
+  });
+
+  it("unknown area or product points at the tool", async () => {
+    const c = await connect();
+    expect((await call(c, "add_insights", insight("Nope"))).error).toMatch(/add_product_areas/);
+    expect((await call(c, "add_requirements", requirement("Nope"))).error).toMatch(/add_products/);
+  });
+
+  it("no item files written", async () => {
+    const c = await connect();
+    await chain(c);
+    const count = () => Object.values(load(root).items).flat().length;
+    const before = count();
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Billing" }] })).error).toBeUndefined();
+    expect(count()).toBe(before);
   });
 });
 

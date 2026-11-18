@@ -6,6 +6,7 @@ import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
 import { kindOf } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
+import { mergeAreas, mergeProducts, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
 import { isInitialized, readConfig, resolveActor, writeConfig, type Config } from "../store/config";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
@@ -26,7 +27,7 @@ insight -> hypothesis -> experiment -> finding -> requirement.
 - Requirement: "stakeholder" (a need, in the stakeholder's words) or "solution" (what the product must do). Justified by findingIds, or, when decided elsewhere, by an origin (tender, regulation, contract, customer-need).
 
 How to work:
-1. Call get_workspace first: it gives product areas, products and people (for approvers).
+1. Call get_workspace first: it gives product areas, products and people (for approvers). If an area or product you need is missing, add it with add_product_areas or add_products, after checking for an existing match.
 2. Before creating anything, search_items for duplicates and for evidence to link. Prefer linking to existing items over creating near-duplicates.
 3. Always link evidence: hypotheses to insights, experiments to a hypothesis, findings to experiments/hypotheses/insights, requirements to findings.
 4. Ask the user before deleting items or approving requirements, unless they already told you to.
@@ -124,7 +125,7 @@ class Session {
     const a = this.config.productAreas.find((x) => x.id === value || x.label.toLowerCase() === value.trim().toLowerCase());
     if (!a) {
       const known = this.config.productAreas.map((x) => x.label).join(", ") || "none defined";
-      throw new UserError(`Unknown product area "${value}". Areas in groundwork/config.yml: ${known}. Add it there first, or leave it out.`);
+      throw new UserError(`Unknown product area "${value}". Areas in groundwork/config.yml: ${known}. Add it with add_product_areas, or leave it out.`);
     }
     return a.id;
   }
@@ -194,6 +195,32 @@ export function buildServer({ root }: ServerOptions): McpServer {
       }
     };
 
+  /** Why this session may not write, if it may not. */
+  const refusal = (s: Session): string | undefined => {
+    if (s.config.migrated) {
+      return `This folder was imported into the Groundwork web app (${s.config.migrated}), which is now where changes go. Connect its MCP server instead (Groundwork → Settings → Connect an agent). These files are kept as a read-only record.`;
+    }
+    if (!s.canEdit()) return `${s.actor.person?.name ?? s.actor.id} is a viewer in groundwork/config.yml, so this agent can't change anything.`;
+    return undefined;
+  };
+
+  /** Change groundwork/config.yml only; no item files are touched. */
+  const writeConfigOnly =
+    <A>(fn: (s: Session, args: A) => { config: Config; result: unknown }) =>
+    async (args: A): Promise<Result> => {
+      try {
+        const s = open();
+        const refused = refusal(s);
+        if (refused) return fail(refused);
+        const { config, result } = fn(s, args);
+        writeConfig(root, config);
+        return ok({ ...(result as object), file: "groundwork/config.yml" });
+      } catch (e) {
+        if (e instanceof UserError || e instanceof WorkspaceError) return fail(e.message);
+        return fail(`Groundwork couldn't save that: ${(e as Error).message}`);
+      }
+    };
+
   /**
    * Run a change against the files as they are now: `fn` returns the new state and what to tell the agent. New
    * items get readable ids, and only the files that changed are written.
@@ -203,12 +230,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
     async (args: A): Promise<Result> => {
       try {
         const s = open();
-        if (s.config.migrated) {
-          return fail(
-            `This folder was imported into the Groundwork web app (${s.config.migrated}), which is now where changes go. Connect its MCP server instead (Groundwork → Settings → Connect an agent). These files are kept as a read-only record.`,
-          );
-        }
-        if (!s.canEdit()) return fail(`${s.actor.person?.name ?? s.actor.id} is a viewer in groundwork/config.yml, so this agent can't change anything.`);
+        const refused = refusal(s);
+        if (refused) return fail(refused);
         if (!isInitialized(root)) writeConfig(root, s.config);
         const { state, result } = fn(s, s.loaded.items, s.ctx(), args);
         const { items, renamed } = assignIds(s.loaded.items, state);
@@ -411,7 +434,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, r.stakeholderIds);
         if (r.product && s.config.products.length && !s.config.products.includes(r.product)) {
-          throw new UserError(`Unknown product "${r.product}". Products in groundwork/config.yml: ${s.config.products.join(", ")}.`);
+          throw new UserError(`Unknown product "${r.product}". Products in groundwork/config.yml: ${s.config.products.join(", ")}. Add it with add_products, or leave it out.`);
         }
         const base = { ...r, productArea: s.area(r.productArea), aiGenerated: true };
         if (r.findingIds.length) {
@@ -431,6 +454,44 @@ export function buildServer({ root }: ServerOptions): McpServer {
         created.push(...many);
       }
       return { state: next, result: { created: created.map((x) => s.summary("requirement", x)) } };
+    }),
+  );
+
+  server.registerTool(
+    "add_product_areas",
+    {
+      title: "Add product areas",
+      description:
+        "Add product areas to groundwork/config.yml so items can be tagged with them. Give labels; ids are made from them unless you pass one. Areas already there are skipped. Check get_workspace first and reuse an existing area rather than adding a near-duplicate. Can't rename or remove areas: those are edits to config.yml.",
+      inputSchema: {
+        areas: z
+          .array(
+            z.object({
+              label: z.string().trim().min(1).max(100),
+              id: z.string().trim().max(40).optional().describe("Optional: lowercase letters, digits and dashes. Made from the label if left out."),
+            }),
+          )
+          .min(1)
+          .max(20),
+      },
+    },
+    writeConfigOnly((s, { areas }: { areas: { label: string; id?: string }[] }) => {
+      const { list, added, alreadyThere } = mergeAreas(s.config.productAreas, areas);
+      return { config: { ...s.config, productAreas: list }, result: { added, alreadyThere, productAreas: list } };
+    }),
+  );
+
+  server.registerTool(
+    "add_products",
+    {
+      title: "Add products",
+      description:
+        "Add products to groundwork/config.yml so requirements can name them. Products already there are skipped. Check get_workspace first and reuse an existing name rather than adding a near-duplicate.",
+      inputSchema: { products: z.array(z.string().trim().min(1).max(100)).min(1).max(20) },
+    },
+    writeConfigOnly((s, { products }: { products: string[] }) => {
+      const { list, added, alreadyThere } = mergeProducts(s.config.products, products);
+      return { config: { ...s.config, products: list }, result: { added, alreadyThere, products: list } };
     }),
   );
 
