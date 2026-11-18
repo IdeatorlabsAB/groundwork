@@ -24,7 +24,7 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 
 ## Rules
 
-- Call `get_workspace` once per session for product areas, products and people. If it reports file problems, mention them.
+- Call `get_workspace` once per session for product areas, products and people. If it reports file problems, mention them. If an area or product you need is missing, check for a close match first, then add it with `add_product_areas` or `add_products`.
 - Search before you create. Link to existing items rather than adding near-duplicates.
 - Always link evidence: hypothesis → insights, experiment → hypothesis, finding → experiments, hypotheses or insights, requirement → findings.
 - Write through the tools, not by editing the files: the tools keep ids unique and links valid. The Markdown body under an item's frontmatter is the user's notes; read it, never overwrite it.
