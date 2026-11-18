@@ -19,5 +19,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: node dist/cli.js validate
+      - run: node ../../dist/cli.js validate
         working-directory: examples/acme
