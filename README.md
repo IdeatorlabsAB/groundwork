@@ -1,0 +1,125 @@
+# Groundwork
+
+**Your product evidence, in your repo, written by your own agent.**
+
+Groundwork lets Claude Code (or any MCP agent) keep customer insights, hypotheses, experiments, findings and requirements as linked Markdown files in a `groundwork/` folder. Every requirement traces back to the findings, experiments and customer quotes behind it.
+
+```
+insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ requirement
+"I gave up    "Guided import   pilot, 10      "activation    "Guided CSV
+ after 20      will lift        accounts:      61% vs 38%"    import"
+ minutes"      activation"      validated"
+```
+
+- **No account, no API keys, no server.** Your agent does the thinking. Groundwork checks the data, keeps links valid and computes experiment verdicts.
+- **Plain files.** Read them, diff them, review them in pull requests, and keep them as long as you like.
+- **Traceability.** Ask "why are we building this?" and get the full evidence chain, or check it in CI with `groundwork validate`.
+
+## Quickstart (2 minutes)
+
+In your project folder:
+
+```sh
+claude mcp add groundwork -- npx -y groundwork-mcp
+```
+
+Or install the plugin, which adds the MCP server and a skill that teaches Claude when to use it:
+
+```
+/plugin marketplace add ganjilive/groundwork
+/plugin install groundwork@groundwork
+```
+
+Then talk to Claude as you normally would:
+
+> Here are my notes from three customer interviews. Log the pains as insights.
+>
+> Draft a hypothesis from the onboarding insights, with a success metric.
+>
+> The pilot finished: activation went from 38% to 61%, support tickets stayed at 11 a week. Record it and write up the finding.
+>
+> Why are we building the guided import?
+
+Groundwork writes files like `groundwork/insights/INS-0001-setup-takes-too-long.md`. Commit them like any other file.
+
+## The CLI
+
+```sh
+npx -p groundwork-mcp groundwork init        # create groundwork/config.yml
+npx -p groundwork-mcp groundwork validate    # check every item and link; exits 1 on errors
+npx -p groundwork-mcp groundwork trace REQ-0002
+npx -p groundwork-mcp groundwork list hypothesis
+```
+
+`trace` shows the chain behind an item (from [examples/acme](examples/acme)):
+
+```
+REQ-0002 Guided CSV import (solution, approved)
+├─ finding FND-0001 Guided import lifts activation
+│  ├─ experiment EXP-0001 Guided import pilot (completed, validated)
+│  │  └─ hypothesis HYP-0001 Guided import (validated)
+│  │     ├─ insight INS-0001 Setup takes too long
+│  │     └─ insight INS-0002 Import errors are unclear
+│  ├─ hypothesis HYP-0001 Guided import (validated) (shown above)
+│  └─ insight INS-0001 Setup takes too long (shown above)
+└─ requirement REQ-0001 Get set up without help (stakeholder, draft)
+   └─ finding FND-0001 Guided import lifts activation (shown above)
+```
+
+Run `validate` in CI to block pull requests with broken links:
+
+```yaml
+# .github/workflows/groundwork.yml
+on: pull_request
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx -y -p groundwork-mcp groundwork validate
+```
+
+## Setup
+
+`groundwork/config.yml` holds your product areas, products and people (for approvals). The first write creates it if it's missing. Fill it in so agents can tag items by area and send requirements for sign-off:
+
+```yaml
+name: Acme
+productAreas:
+  - { id: onboarding, label: Onboarding }
+products: [Acme app]
+people:
+  - { id: sam, name: Sam, role: owner, email: sam@acme.example }
+```
+
+Groundwork finds the project by looking for `groundwork/config.yml` in the current folder and the folders above it. Set `GROUNDWORK_DIR` to point somewhere else, and `GROUNDWORK_USER` to choose who you're acting as.
+
+The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examples/acme](examples/acme) for a sample project.
+
+## Tools
+
+| Read | Write | Lifecycle |
+|---|---|---|
+| `get_workspace` | `add_insights` | `start_experiment` |
+| `search_items` | `add_hypotheses` | `record_experiment_results` |
+| `get_item` | `add_experiment` | `submit_requirement_for_approval` |
+| | `add_findings` | `approve_requirement` |
+| | `add_requirements` | `send_back_requirement` |
+| | `update_item`, `link_items` | `obsolete_requirement` |
+| | `delete_item` | |
+
+## Privacy
+
+Insights hold what customers said, and these files usually end up in git. Groundwork tells agents to record a role ("Finance manager") and an optional reference ("P07"), never names or contact details. Check quotes before you commit them, and keep the repo private if they're sensitive.
+
+## Groundwork for teams
+
+The Groundwork web app adds dashboards, reports, a visual evidence graph, approvals with an audit trail and Linear sync for people who don't live in a terminal. You can import a `groundwork/` folder into it. The web app is a separate, paid product; this project is and stays open source.
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence
+
+[Apache-2.0](LICENSE)

@@ -1,0 +1,60 @@
+{
+  "name": "groundwork-mcp",
+  "version": "0.1.0",
+  "description": "Keep product evidence (insights, hypotheses, experiments, findings, requirements) as linked Markdown files in your repo, written by your own coding agent over MCP.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "groundwork-mcp": "dist/mcp.js",
+    "groundwork": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "SPEC.md",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "product-management",
+    "product-discovery",
+    "requirements",
+    "traceability",
+    "hypotheses",
+    "experiments"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ganjilive/groundwork.git"
+  },
+  "homepage": "https://github.com/ganjilive/groundwork#readme",
+  "bugs": "https://github.com/ganjilive/groundwork/issues",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "groundwork": {
+      "command": "npx",
+      "args": ["-y", "groundwork-mcp@0"]
+    }
+  }
+}

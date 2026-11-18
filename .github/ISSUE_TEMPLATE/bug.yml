@@ -1,0 +1,11 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    attributes: { label: What happened?, description: What you did, what you expected and what happened instead. }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Files or tool output, description: "The relevant groundwork/ files or the tool call and its result. Remove anything sensitive.", render: markdown }
+  - type: input
+    attributes: { label: Versions, description: "groundwork-mcp, Node.js and your agent (e.g. Claude Code 2.1)" }

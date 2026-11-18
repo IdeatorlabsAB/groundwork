@@ -1,0 +1,9 @@
+name: Idea
+description: Suggest a feature or a change
+labels: [idea]
+body:
+  - type: textarea
+    attributes: { label: What are you trying to do?, description: The job or problem, not only the solution. }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: What would help? }
