@@ -20,14 +20,23 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 | Proposing a feature or bet | Look for supporting insights (`search_items`), then offer to draft a hypothesis linked to them (`add_hypotheses`) |
 | Planning a test, pilot or A/B test | `add_experiment` for that hypothesis, with a primary metric, baseline and target |
 | Sharing results | `record_experiment_results`, then offer a finding (`add_findings`) linked to the experiment and hypothesis |
-| Writing a PRD, spec or tickets | Search findings and requirements first; add requirements linked to findings, or with an origin (tender, regulation, contract, customer need) if decided elsewhere |
+| Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below). Search existing requirements and findings first, and link findings when there are any |
 | Asking "what do we know about X?" or "why are we building Y?" | `search_items` and `get_item`, and answer with the item ids and files |
+
+## Requirements in two layers
+
+1. **Stakeholder requirements** (`kind: "stakeholder"`): who needs what and why, as a user story.
+   > As a medical secretary I want a view of the calendars of all practitioners in the clinic with their unbooked slots highlighted so that I can find them and book appointments easily.
+2. **Solution requirements** (`kind: "solution"`): the qualities and behaviour the solution must have to meet those needs, as "shall" statements. Each one lists the stakeholder requirements it fulfils in `stakeholderIds`. This is required.
+   > The appointment view used by medical secretaries shall show the calendars of the selected practitioners with the free slots highlighted. It shall be possible to click a free slot to start the booking flow. It shall be possible to add or remove practitioners in the view.
+
+Add the stakeholder requirements first, then the solution requirements in a second `add_requirements` call that references their ids. One stakeholder requirement is usually fulfilled by several solution requirements. If a tool returns `warnings` about wording, rewrite the story with `update_item`. Before you start building, check that every stakeholder requirement is fulfilled: `get_item` shows `fulfilledBy`, and `groundwork validate` lists the gaps.
 
 ## Rules
 
 - Call `get_workspace` once per session for product areas, products and people. If it reports file problems, mention them. If an area or product you need is missing, check for a close match first, then add it with `add_product_areas` or `add_products`.
 - Search before you create. Link to existing items rather than adding near-duplicates.
-- Always link evidence: hypothesis → insights, experiment → hypothesis, finding → experiments, hypotheses or insights, requirement → findings.
+- Always link evidence: hypothesis → insights, experiment → hypothesis, finding → experiments, hypotheses or insights, solution requirement → the stakeholder requirements it fulfils, and requirement → findings when there are any.
 - Write through the tools, not by editing the files: the tools keep ids unique and links valid. The Markdown body under an item's frontmatter is the user's notes; read it, never overwrite it.
 - Quotes are evidence: keep them verbatim. Use a role ("Finance manager") and an optional ref like P07, never full names, emails or other personal details. These files usually end up in git.
 - Show the user what you're about to log, as a short list, and log it once they agree. Logging something they've explicitly asked for needs no extra check.

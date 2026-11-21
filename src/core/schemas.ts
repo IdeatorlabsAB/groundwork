@@ -109,21 +109,25 @@ export function makeSchemas(id: z.ZodString) {
   });
 
   const requirementInput = z.object({
-    kind: REQUIREMENT_KIND.default("solution").describe(
-      "stakeholder = what a group of stakeholders needs, in their terms. solution = what the product must do to meet stakeholder needs.",
+    kind: REQUIREMENT_KIND.describe(
+      "stakeholder = who needs what and why, as a user story. solution = the qualities and behaviour the solution must have to meet stakeholder requirements, as \"shall\" statements.",
     ),
     title: short(),
-    story: long(2000).min(1).describe("Stakeholder: the need statement. Solution: the user story (As a … I want … so that …)."),
-    stakeholder: z.string().trim().max(100).optional().describe('Stakeholder requirements: who has the need, e.g. "Finance managers".'),
+    story: long(2000)
+      .min(1)
+      .describe(
+        'Stakeholder: a user story, "As a <role> I want <need> so that <reason>". Solution: one or more "shall" statements, e.g. "The booking view shall show the calendars of the selected practitioners."',
+      ),
+    stakeholder: z.string().trim().max(100).optional().describe('Stakeholder requirements: who has the need (the role in the story), e.g. "Medical secretaries".'),
     product: z.string().trim().max(100).optional().describe("Solution requirements: the product that delivers it (one from get_workspace)."),
-    stakeholderIds: ids("the stakeholder requirements this solution requirement helps meet").optional(),
+    stakeholderIds: ids("Solution requirements: required, at least one. The stakeholder requirements this one fulfils").optional(),
     acceptanceCriteria: z.array(short(500)).min(1).max(20),
     priority: PRIORITY.default("should"),
     findingIds: ids("the findings that justify it").default([]),
     insightIds: ids("customer evidence linked directly").optional(),
     hypothesisIds: ids("hypotheses it was committed from").optional(),
     origin: REQUIREMENT_ORIGIN.optional().describe(
-      "Only for requirements decided outside the evidence loop (tender, regulation, contract, customer-need). Required when findingIds is empty.",
+      "Where a requirement decided outside the evidence loop comes from (tender, regulation, contract, customer-need). Optional.",
     ),
     originNote: z.string().trim().max(300).optional().describe('Where the decision comes from, e.g. "Region North tender 2026, section 4.2".'),
     productArea: area,

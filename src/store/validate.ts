@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Collections } from "../core/collections";
-import { kindOf } from "../core/requirements";
-import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, localSchemas, type Kind } from "../core/schemas";
+import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
+import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, REQUIREMENT_KIND, localSchemas, type Kind } from "../core/schemas";
 import type { Requirement } from "../core/types";
 import type { Config } from "./config";
 import { COLLECTIONS, type Loaded } from "./files";
@@ -21,7 +21,9 @@ const STORED: Record<Kind, z.ZodType> = {
   hypothesis: hypothesisInput.extend({ status: HYPOTHESIS_STATUS, knowWhen: z.string().optional() }).loose(),
   experiment: experimentInput.extend({ status: EXPERIMENT_STATUS }).loose(),
   finding: findingInput.loose(),
-  requirement: requirementInput.extend({ status: REQUIREMENT_STATUS, acceptanceCriteria: z.array(z.string()).default([]) }).loose(),
+  requirement: requirementInput
+    .extend({ kind: REQUIREMENT_KIND.optional(), status: REQUIREMENT_STATUS, acceptanceCriteria: z.array(z.string()).default([]) })
+    .loose(),
 };
 
 /** Every problem in a project: unreadable files, invalid fields, broken or wrong-kind links, unknown areas. */
@@ -81,8 +83,14 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
             const t = s.requirements.find((x) => x.id === id);
             if (t && kindOf(t) !== "stakeholder") err(`stakeholderIds: ${id} is a solution requirement, not a stakeholder requirement`);
           }
-          if (r.stakeholderIds?.length && kindOf(r) === "stakeholder") err("stakeholderIds is only for solution requirements");
-          if (!r.findingIds?.length && !r.origin) err("needs findingIds, or an origin (tender, regulation, contract, customer-need) if it was decided elsewhere");
+          if (isActive(r)) {
+            const problem = layerProblem(r);
+            if (problem) err(problem);
+            if (kindOf(r) === "stakeholder" && !fulfilledBy(r.id, s.requirements).length) {
+              warn("not yet fulfilled by any solution requirement");
+            }
+            wordingWarnings(r).forEach(warn);
+          }
           if (r.product && config.products.length && !config.products.includes(r.product)) warn(`product "${r.product}" isn't in config.yml products`);
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
           break;

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Requirements in two layers. Stakeholder requirements are user stories ("As a … I want … so that …"). Solution requirements are "shall" statements, and each must fulfil at least one stakeholder requirement through `stakeholderIds`. The tools refuse a solution requirement without one, and won't delete the only stakeholder requirement a solution requirement fulfils.
+- `add_requirements` and `update_item` return `warnings` when a story doesn't fit its layer. `get_item` on a stakeholder requirement lists the solution requirements that fulfil it (`fulfilledBy`).
+- `validate` reports an active solution requirement without stakeholder links as an error. It warns about stakeholder requirements that nothing fulfils yet, and about wording.
+- Requirements no longer need `findingIds` or an `origin`, so they can be written before building.
+- **Breaking:** `add_requirements` requires `kind`. Existing solution requirements without `stakeholderIds` now fail `groundwork validate`. Link them to a stakeholder requirement with `link_items`.
+- The acme example now has a stakeholder requirement behind every solution requirement.
 - Setup instructions for Codex in the README, the skill and the CLI's messages (`--help`, `init`, `import`).
 
 ## 0.3.0

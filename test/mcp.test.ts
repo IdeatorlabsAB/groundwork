@@ -88,10 +88,33 @@ async function chain(c: Client) {
     findings: [{ title: "Guided import lifts activation", summary: "61% vs 38%.", experimentIds: [e], hypothesisIds: [h], insightIds: [i1], confidence: "high" }],
   });
   const f = fnd.data.created[0].id;
-  const req = await call(c, "add_requirements", {
-    requirements: [{ title: "Guided CSV import", story: "As an ops lead I want a guided import so that I'm set up in minutes.", acceptanceCriteria: ["Shows each step"], findingIds: [f], product: "Acme app" }],
+  const need = await call(c, "add_requirements", {
+    requirements: [
+      {
+        kind: "stakeholder",
+        title: "Get set up without help",
+        story: "As a new ops lead I want to import our data on my first day so that my team can start straight away.",
+        stakeholder: "Ops leads",
+        acceptanceCriteria: ["A new account imports its first data set unaided"],
+        findingIds: [f],
+      },
+    ],
   });
-  return { i1, i2, h, e, f, r: req.data.created[0].id, verdict: res.data.verdict };
+  const sr = need.data.created[0].id;
+  const req = await call(c, "add_requirements", {
+    requirements: [
+      {
+        kind: "solution",
+        title: "Guided CSV import",
+        story: "The CSV import shall guide the user through mapping columns and fixing errors.",
+        acceptanceCriteria: ["Shows each step"],
+        findingIds: [f],
+        stakeholderIds: [sr],
+        product: "Acme app",
+      },
+    ],
+  });
+  return { i1, i2, h, e, f, sr, r: req.data.created[0].id, verdict: res.data.verdict };
 }
 
 describe("local MCP server", () => {
@@ -127,7 +150,7 @@ describe("local MCP server", () => {
   it("builds a whole evidence chain as readable, linked files", async () => {
     const c = await connect();
     const ids = await chain(c);
-    expect(ids).toMatchObject({ i1: "INS-0001", i2: "INS-0002", h: "HYP-0001", e: "EXP-0001", f: "FND-0001", r: "REQ-0001", verdict: "validated" });
+    expect(ids).toMatchObject({ i1: "INS-0001", i2: "INS-0002", h: "HYP-0001", e: "EXP-0001", f: "FND-0001", sr: "REQ-0001", r: "REQ-0002", verdict: "validated" });
     expect(files("insights")).toEqual(["INS-0001-setup-takes-too-long.md", "INS-0002-import-errors-are-unclear.md"]);
 
     const hyp = readFileSync(join(root, "groundwork/hypotheses/HYP-0001-guided-import.md"), "utf8");
@@ -138,7 +161,13 @@ describe("local MCP server", () => {
 
     const loaded = load(root);
     expect(loaded.items.hypotheses[0].productArea).toBe("onboarding"); // inherited from its insights
-    expect(loaded.items.requirements[0]).toMatchObject({ status: "draft", findingIds: ["FND-0001"], productArea: "onboarding" });
+    expect(loaded.items.requirements.find((r) => r.id === "REQ-0002")).toMatchObject({
+      kind: "solution",
+      status: "draft",
+      findingIds: ["FND-0001"],
+      stakeholderIds: ["REQ-0001"],
+      productArea: "onboarding",
+    });
     expect(validate(loaded, readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
   });
 
@@ -195,7 +224,7 @@ describe("local MCP server", () => {
     process.env.GROUNDWORK_USER = "alex";
     const { data } = await call(c, "approve_requirement", { id: r });
     expect(data.approved.status).toBe("approved");
-    expect(load(root).items.requirements[0]).toMatchObject({ approvedBy: "alex" });
+    expect(load(root).items.requirements.find((x) => x.id === r)).toMatchObject({ approvedBy: "alex" });
   });
 
   it("refuses writes once the folder was imported into the web app", async () => {
@@ -218,9 +247,19 @@ describe("local MCP server", () => {
 
 describe("product areas and products", () => {
   const insight = (productArea: string) => ({ insights: [{ title: "X", quote: "q", source: "survey", persona: "p", productArea }] });
-  const requirement = (product: string) => ({
-    requirements: [{ title: "Audit log", story: "Keep an audit log.", acceptanceCriteria: ["Logs kept"], origin: "regulation", product }],
-  });
+  /** A solution requirement for `product`, after adding the stakeholder requirement it fulfils. */
+  const requirement = async (c: Client, product: string) => {
+    const need = await call(c, "add_requirements", {
+      requirements: [
+        { kind: "stakeholder", title: "Prove who imported what", story: "As a compliance officer I want to see every import so that we pass audits.", acceptanceCriteria: ["Imports can be traced"], origin: "regulation" },
+      ],
+    });
+    return {
+      requirements: [
+        { kind: "solution", title: "Audit log", story: "The system shall log every import.", acceptanceCriteria: ["Logs kept"], stakeholderIds: [need.data.created[0].id], product },
+      ],
+    };
+  };
 
   it("adds areas and an item can use them", async () => {
     const c = await connect();
@@ -249,7 +288,7 @@ describe("product areas and products", () => {
     const { data } = await call(c, "add_products", { products: ["Acme API", "acme app"] });
     expect(data.added).toEqual(["Acme API"]);
     expect(data.alreadyThere).toEqual(["Acme app"]);
-    expect((await call(c, "add_requirements", requirement("Acme API"))).error).toBeUndefined();
+    expect((await call(c, "add_requirements", await requirement(c, "Acme API"))).error).toBeUndefined();
   });
 
   it("keeps other config fields", async () => {
@@ -290,7 +329,7 @@ describe("product areas and products", () => {
   it("unknown area or product points at the tool", async () => {
     const c = await connect();
     expect((await call(c, "add_insights", insight("Nope"))).error).toMatch(/add_product_areas/);
-    expect((await call(c, "add_requirements", requirement("Nope"))).error).toMatch(/add_products/);
+    expect((await call(c, "add_requirements", await requirement(c, "Nope"))).error).toMatch(/add_products/);
   });
 
   it("keeps comments and unknown keys in a hand-written config.yml", async () => {
@@ -322,7 +361,7 @@ describe("product areas and products", () => {
 
   it("matches a requirement's product regardless of case", async () => {
     const c = await connect();
-    const { data, error } = await call(c, "add_requirements", requirement("acme app"));
+    const { data, error } = await call(c, "add_requirements", await requirement(c, "acme app"));
     expect(error).toBeUndefined();
     expect(load(root).items.requirements.find((r) => r.id === data.created[0].id)?.product).toBe("Acme app");
   });
@@ -355,5 +394,112 @@ describe("validate", () => {
         expect.stringMatching(/HYP-0001-guided-import\.md: insightIds: INS-0042 doesn't exist/),
       ]),
     );
+  });
+});
+
+describe("two-layer requirements", () => {
+  const secretary = {
+    kind: "stakeholder",
+    title: "See every practitioner's free slots",
+    story:
+      "As a medical secretary I want a view of the calendars of all practitioners in the clinic with their unbooked slots highlighted so that I can find them and book appointments easily.",
+    stakeholder: "Medical secretaries",
+    acceptanceCriteria: ["Free slots of all practitioners are visible at once"],
+  };
+  const bookingView = (stakeholderIds?: string[]) => ({
+    kind: "solution",
+    title: "Appointment view with free slots",
+    story:
+      "The appointment view used by medical secretaries shall show the calendars of the selected practitioners with free slots highlighted. It shall be possible to click a free slot to start booking. It shall be possible to add or remove practitioners in the view.",
+    acceptanceCriteria: ["Free slots are highlighted", "Clicking a free slot starts the booking flow"],
+    ...(stakeholderIds ? { stakeholderIds } : {}),
+  });
+  const addStakeholder = async (c: Client) => (await call(c, "add_requirements", { requirements: [secretary] })).data;
+
+  it("adds a stakeholder story and a solution that fulfils it, without findings or an origin", async () => {
+    const c = await connect();
+    const need = await addStakeholder(c);
+    expect(need.warnings).toBeUndefined();
+    const sr = need.created[0].id;
+    const { data, error } = await call(c, "add_requirements", { requirements: [bookingView([sr])] });
+    expect(error).toBeUndefined();
+    expect(data.warnings).toBeUndefined();
+    const item = (await call(c, "get_item", { id: sr })).data;
+    expect(item.fulfilledBy.map((x: { id: string }) => x.id)).toEqual([data.created[0].id]);
+    expect(item.warnings).toBeUndefined();
+    expect(validate(load(root), readConfig(root))).toEqual([]);
+  });
+
+  it("refuses a solution requirement that fulfils no stakeholder requirement", async () => {
+    const c = await connect();
+    expect((await call(c, "add_requirements", { requirements: [bookingView()] })).error).toMatch(/must fulfil at least one stakeholder requirement/);
+    expect((await call(c, "add_requirements", { requirements: [bookingView([])] })).error).toMatch(/must fulfil at least one stakeholder requirement/);
+  });
+
+  it("requires the kind", async () => {
+    const c = await connect();
+    const { kind: _kind, ...noKind } = secretary;
+    void _kind;
+    expect((await call(c, "add_requirements", { requirements: [noKind] })).error).toMatch(/kind/);
+  });
+
+  it("refuses stakeholder links on a stakeholder requirement, or links to a solution requirement", async () => {
+    const c = await connect();
+    const sr = (await addStakeholder(c)).created[0].id;
+    expect((await call(c, "add_requirements", { requirements: [{ ...secretary, stakeholderIds: [sr] }] })).error).toMatch(/only for solution requirements/);
+    const sol = (await call(c, "add_requirements", { requirements: [bookingView([sr])] })).data.created[0].id;
+    expect((await call(c, "add_requirements", { requirements: [bookingView([sol])] })).error).toMatch(/is a solution requirement, not a stakeholder requirement/);
+  });
+
+  it("warns, but saves, when the wording doesn't fit the layer", async () => {
+    const c = await connect();
+    const need = await call(c, "add_requirements", { requirements: [{ ...secretary, story: "Secretaries need to see free slots." }] });
+    expect(need.error).toBeUndefined();
+    expect(need.data.warnings[0]).toMatch(/As a <role> I want <need> so that <reason>/);
+    const sol = await call(c, "add_requirements", { requirements: [{ ...bookingView([need.data.created[0].id]), story: "Show free slots in the calendar." }] });
+    expect(sol.error).toBeUndefined();
+    expect(sol.data.warnings[0]).toMatch(/"shall" statements/);
+    const problems = validate(load(root), readConfig(root));
+    expect(problems.filter((p) => p.level === "error")).toEqual([]);
+    expect(problems.filter((p) => p.level === "warning")).toHaveLength(2);
+  });
+
+  it("keeps the link when updating", async () => {
+    const c = await connect();
+    const sr = (await addStakeholder(c)).created[0].id;
+    const sol = (await call(c, "add_requirements", { requirements: [bookingView([sr])] })).data.created[0].id;
+    expect((await call(c, "update_item", { id: sol, patch: { stakeholderIds: [] } })).error).toMatch(/must fulfil at least one/);
+    expect((await call(c, "update_item", { id: sr, patch: { kind: "solution", stakeholderIds: [sr] } })).error).toBeDefined();
+    const reworded = await call(c, "update_item", { id: sr, patch: { story: "Free slots, please." } });
+    expect(reworded.error).toBeUndefined();
+    expect(reworded.data.warnings).toHaveLength(1);
+  });
+
+  it("won't delete the only stakeholder requirement a solution fulfils", async () => {
+    const c = await connect();
+    const sr = (await addStakeholder(c)).created[0].id;
+    const sol = (await call(c, "add_requirements", { requirements: [bookingView([sr])] })).data.created[0].id;
+    expect((await call(c, "delete_item", { id: sr })).error).toMatch(/only fulfils/);
+    await call(c, "delete_item", { id: sol });
+    expect((await call(c, "delete_item", { id: sr })).error).toBeUndefined();
+  });
+
+  it("validate flags unfulfilled stakeholder requirements and unlinked solution requirements", async () => {
+    const c = await connect();
+    const sr = (await addStakeholder(c)).created[0].id;
+    expect((await call(c, "get_item", { id: sr })).data.warnings).toEqual(["Not yet fulfilled by any solution requirement."]);
+    let problems = validate(load(root), readConfig(root));
+    expect(problems).toEqual([expect.objectContaining({ level: "warning", message: "not yet fulfilled by any solution requirement" })]);
+
+    // A hand-edited solution requirement without a stakeholder link fails validation.
+    const sol = (await call(c, "add_requirements", { requirements: [bookingView([sr])] })).data.created[0];
+    const file = join(root, sol.file);
+    writeFileSync(file, readFileSync(file, "utf8").replace(/stakeholderIds:\n {2}- REQ-0001\n/, ""));
+    problems = validate(load(root), readConfig(root));
+    expect(problems.filter((p) => p.level === "error").map((p) => p.message)).toEqual([expect.stringMatching(/must fulfil at least one stakeholder requirement/)]);
+
+    // Obsolete requirements are left alone.
+    writeFileSync(file, readFileSync(file, "utf8").replace("status: draft", "status: obsolete"));
+    expect(validate(load(root), readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
   });
 });

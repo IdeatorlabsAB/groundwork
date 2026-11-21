@@ -69,6 +69,15 @@ Talk to your agent as you normally would:
 
 Groundwork writes files like `groundwork/insights/INS-0001-setup-takes-too-long.md`. Commit them like any other file.
 
+## Requirements in two layers
+
+Write requirements before you build, and keep them in two linked layers:
+
+- **Stakeholder requirements** say who needs what and why, as user stories: *"As a medical secretary I want a view of all practitioners' calendars with their unbooked slots highlighted so that I can find them and book appointments easily."*
+- **Solution requirements** say what the solution must do to meet those needs, as "shall" statements: *"The appointment view shall show the calendars of the selected practitioners with the free slots highlighted. It shall be possible to click a free slot to start the booking flow."*
+
+Every solution requirement fulfils at least one stakeholder requirement, and Groundwork refuses one that doesn't. `groundwork validate` warns about stakeholder requirements that no solution requirement fulfils yet, and about stories that don't fit their layer. Linking findings is optional, so you can write requirements before there's any experiment behind them.
+
 ## The CLI
 
 ```sh
