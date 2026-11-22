@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
-import { fulfilledBy, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
+import { canBeReplaced, fulfilledBy, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
@@ -46,7 +46,7 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
    - Fix: restores intended behaviour, e.g. "This path is broken, fix it". Refactors and dependency bumps count as fixes.
 2. State the call in one line of the plan, e.g. "New need: adds 2 stakeholder and 4 solution requirements" or "Bug fix under REQ-0007; no requirement changes".
 3. New need: the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before writing code.
-4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one, and once that's agreed make the old one obsolete with obsolete_requirement and replacedBy.
+4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one with replaces: [the old id]. When the new one is approved, the old one becomes obsolete in the version the new one ships in (or straight away if the product has no versions).
 5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
 6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
 7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
@@ -219,6 +219,17 @@ class Session {
       const hit = find(s, id);
       if (!hit) throw new UserError(`${field}: no item with id ${id}.`);
       if (hit.kind !== kind) throw new UserError(`${field}: ${id} is ${an(hit.kind)}, not ${an(kind)}.`);
+    }
+  }
+
+  /** A requirement can replace only approved ones: drafts are updated in place, obsolete ones are gone already. */
+  checkReplaces(s: State, ids: string[] | undefined) {
+    this.check(s, "requirement", ids, "replaces");
+    for (const id of ids ?? []) {
+      const r = s.requirements.find((x) => x.id === id)!;
+      if (r.status === "draft") throw new UserError(`"${r.title}" is a draft: update it instead of replacing it.`);
+      if (r.status === "obsolete") throw new UserError(`"${r.title}" is already obsolete.`);
+      if (!canBeReplaced(r)) throw new UserError(`"${r.title}" is ${r.status}; only approved requirements can be replaced.`);
     }
   }
 
@@ -569,6 +580,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, r.stakeholderIds);
+        s.checkReplaces(state, r.replaces);
         const product = s.product(r.product);
         const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
         if (r.findingIds.length) {
@@ -734,6 +746,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
           s.check(state, "insight", p.insightIds as string[] | undefined, "insightIds");
           s.check(state, "hypothesis", p.hypothesisIds as string[] | undefined, "hypothesisIds");
           s.checkStakeholders(state, p.stakeholderIds as string[] | undefined);
+          s.checkReplaces(state, p.replaces as string[] | undefined);
           const merged = { ...r, ...(p as Partial<Requirement>) };
           const problem = layerProblem(merged);
           if (problem) throw new UserError(`"${merged.title}": ${problem}.`);
@@ -897,7 +910,15 @@ export function buildServer({ root }: ServerOptions): McpServer {
     write((s, state, c, { id, approvedBy, note, plannedFor }: { id: string; approvedBy?: string; note?: string; plannedFor?: string }) => {
       const r = requirementOf(state, id);
       const plan = s.planOnApproval(r, plannedFor);
-      const planned = (next: State): State => (plan ? apply(next, ops.planRequirements(next, c, [id], plan))[0] : next);
+      // After approval: plan it, and deal with what it replaces. With a planned version, the old requirements stay valid
+      // until that version ships; without versions they become obsolete now, as before.
+      const planned = (after: State): State => {
+        let next = plan ? apply(after, ops.planRequirements(after, c, [id], plan))[0] : after;
+        const old = (r.replaces ?? []).filter((x) => next.requirements.some((y) => y.id === x && canBeReplaced(y)));
+        if (old.length && plan) next = apply(next, ops.planObsolescence(next, c, old, plan, [id]))[0];
+        else for (const x of old) next = apply(next, ops.obsoleteRequirement(next, c, x, [id]))[0];
+        return next;
+      };
       // Naming yourself isn't recording someone else's approval: the normal approver check applies.
       if (approvedBy && approvedBy !== s.actor.id) {
         const person = s.config.people.find((m) => m.id === approvedBy);
@@ -968,13 +989,25 @@ export function buildServer({ root }: ServerOptions): McpServer {
     "obsolete_requirement",
     {
       title: "Make requirement obsolete",
-      description: "Retire an approved requirement, e.g. when newer evidence supersedes it, optionally naming the requirements that replace it.",
-      inputSchema: { id: itemId, replacedBy: z.array(localId).max(20).optional() },
+      description:
+        "Retire an approved requirement, optionally naming the requirements that replace it. To replace one, prefer adding the new requirement with replaces. With inVersion (a planned version of its product), it stays valid until that version is released; a requirement that has shipped needs inVersion.",
+      inputSchema: {
+        id: itemId,
+        replacedBy: z.array(localId).max(20).optional(),
+        inVersion: z.string().max(40).optional().describe("The planned version that removes it. It stays valid until then."),
+      },
     },
-    write((s, state, c, { id, replacedBy }: { id: string; replacedBy?: string[] }) => {
+    write((s, state, c, { id, replacedBy, inVersion }: { id: string; replacedBy?: string[]; inVersion?: string }) => {
       const r = requirementOf(state, id);
-      if (r.status !== "approved") throw new UserError(`Only approved requirements can be made obsolete; "${r.title}" is ${r.status}.`);
       s.check(state, "requirement", replacedBy, "replacedBy");
+      if (inVersion) {
+        if (!canBeReplaced(r)) throw new UserError(`Only approved requirements can be made obsolete; "${r.title}" is ${r.status}.`);
+        s.checkPlanned(r, inVersion);
+        const [next] = apply(state, ops.planObsolescence(state, c, [id], inVersion, replacedBy));
+        return { state: next, result: { obsoleteIn: inVersion, requirement: s.summary("requirement", requirementOf(next, id)) } };
+      }
+      if (r.releasedIn) throw new UserError(`"${r.title}" shipped in ${r.releasedIn}: pass inVersion, the version that removes it.`);
+      if (r.status !== "approved") throw new UserError(`Only approved requirements can be made obsolete; "${r.title}" is ${r.status}.`);
       const [next] = apply(state, ops.obsoleteRequirement(state, c, id, replacedBy));
       return { state: next, result: { obsolete: s.summary("requirement", requirementOf(next, id)) } };
     }),

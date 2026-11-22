@@ -447,3 +447,19 @@ export function planRequirements(s: Collections, c: Ctx, ids: string[], version:
     result: true,
   };
 }
+
+/**
+ * Plan requirements to become obsolete in a version, e.g. the one their replacement ships in. They stay approved
+ * (and valid) until that version is released.
+ */
+export function planObsolescence(s: Collections, c: Ctx, ids: string[], version: string, by?: string[]): Change<boolean> {
+  const hit = s.requirements.filter((r) => ids.includes(r.id));
+  if (!hit.length) return nothing(false);
+  return {
+    next: {
+      requirements: s.requirements.map((r) => (ids.includes(r.id) ? { ...r, obsoletePlannedFor: version, ...(by?.length ? { obsoletedBy: by } : {}) } : r)),
+      activity: [...hit.map((r) => log(c, "requirement", `"${r.title}" will be obsolete in ${version}`, r.id)), ...s.activity],
+    },
+    result: true,
+  };
+}

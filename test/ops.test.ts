@@ -130,6 +130,11 @@ describe("requirement status rules", () => {
     expect(s.requirements.find((r) => r.id === ID.approvedReq)?.obsoletePlannedFor).toBe("1.2");
   });
 
+  it("plans obsolescence without changing the status", () => {
+    const s = apply(workspace(), ops.planObsolescence(workspace(), ctx(), [ID.approvedReq], "1.2", [ID.solutionReq]));
+    expect(s.requirements.find((r) => r.id === ID.approvedReq)).toMatchObject({ status: "approved", obsoletePlannedFor: "1.2", obsoletedBy: [ID.solutionReq] });
+  });
+
   it("only approved requirements can be made obsolete", () => {
     expect(ops.obsoleteRequirement(workspace(), ctx(), ID.solutionReq).result).toBe(false);
     const s = apply(workspace(), ops.obsoleteRequirement(workspace(), ctx(), ID.approvedReq, [ID.solutionReq]));

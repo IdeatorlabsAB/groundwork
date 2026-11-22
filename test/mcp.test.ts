@@ -728,10 +728,61 @@ describe("planning requirements for versions", () => {
     expect(stored(sol)).toMatchObject({ approvedBy: "alex", recordedBy: "sam", plannedFor: "1.2" });
   });
 
+  const replacement = async (replaces: string[]) =>
+    call(c, "add_requirements", {
+      requirements: [{ kind: "solution", title: "Slots v2", story: "The booking view shall show free 15-minute slots.", acceptanceCriteria: ["a"], stakeholderIds: [need], replaces }],
+    });
+
+  it("keeps a replaced requirement valid until the version its replacement ships in", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    const next = (await replacement([sol])).data.created[0].id;
+    await approve(next, { plannedFor: "1.2" });
+    expect(stored(sol)).toMatchObject({ status: "approved", obsoletePlannedFor: "1.2", obsoletedBy: [next] });
+    await call(c, "plan_requirements", { ids: [next], version: "1.1" });
+    expect(stored(sol).obsoletePlannedFor).toBe("1.1");
+  });
+
+  it("refuses replacing a draft or an obsolete requirement", async () => {
+    expect((await replacement([sol])).error).toMatch(/"Slots" is a draft: update it instead of replacing it/);
+    await approve(sol, { plannedFor: "1.1" });
+    expect((await call(c, "obsolete_requirement", { id: sol })).error).toBeUndefined();
+    expect((await replacement([sol])).error).toMatch(/"Slots" is already obsolete/);
+  });
+
+  it("obsolete_requirement can wait for a version", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    expect((await call(c, "obsolete_requirement", { id: sol, inVersion: "1.2" })).error).toBeUndefined();
+    expect(stored(sol)).toMatchObject({ status: "approved", obsoletePlannedFor: "1.2" });
+  });
+
   it("re-plans an approved requirement, and refuses a draft", async () => {
     expect((await call(c, "plan_requirements", { ids: [sol], version: "1.2" })).error).toMatch(/approve it first/);
     await approve(sol, { plannedFor: "1.1" });
     expect((await call(c, "plan_requirements", { ids: [sol], version: "1.2" })).error).toBeUndefined();
     expect(stored(sol).plannedFor).toBe("1.2");
+  });
+});
+
+describe("replacing requirements without versions", () => {
+  it("makes the old requirement obsolete when its replacement is approved, as before", async () => {
+    const c = await connect();
+    const need = (await call(c, "add_requirements", { requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }] })).data.created[0].id;
+    const add = async (title: string, extra: Record<string, unknown> = {}) =>
+      (await call(c, "add_requirements", { requirements: [{ kind: "solution", title, story: "The view shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need], ...extra }] })).data.created[0].id;
+    const ok = async (id: string) => {
+      await call(c, "submit_requirement_for_approval", { id, approverId: "sam" });
+      expect((await call(c, "approve_requirement", { id })).error).toBeUndefined();
+    };
+    const old = await add("Slots");
+    await ok(old);
+    const next = await add("Slots v2", { replaces: [old] });
+    await ok(next);
+    expect(load(root).items.requirements.find((r) => r.id === old)).toMatchObject({ status: "obsolete", obsoletedBy: [next] });
+  });
+
+  it("tells agents to replace with replaces", async () => {
+    const text = (await connect()).getInstructions()!;
+    expect(text).toContain("replaces");
+    expect(text).not.toContain("obsolete_requirement and replacedBy");
   });
 });

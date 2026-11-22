@@ -45,7 +45,7 @@ State your call in one line of the plan, so the user can overrule it:
 *"New need: adds 2 stakeholder and 4 solution requirements"*, or *"Bug fix under REQ-0007; no requirement changes"*.
 
 - **New need:** the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before any code.
-- **Change:** update the requirement if it's a draft. If it's approved, add a new one; once it's agreed, make the old one obsolete with `obsolete_requirement` and `replacedBy`.
+- **Change:** update the requirement if it's a draft. If it's approved, add a new one with `replaces: [old id]`. Once the new one is approved, the old one becomes obsolete in the version the new one ships in, or straight away if the product has no versions.
 - **Fix:** don't write requirements. Name the requirement the fix restores when you can tell.
 - **No person reviewing the plan** (an autonomous workflow): follow your own call. The one-line call stays in the plan as the record.
 
