@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Product catalogue.** Each product is a file in `groundwork/products/` (`PRD-0001-…md`) holding its areas and versions, kept in the repo next to the code. Area ids are unique across products. A solution requirement's `product` is the product id.
+- `add_products` creates product files. `add_product_areas` adds areas to one, and the new `add_product_versions` adds planned versions. `get_workspace` returns each product with its areas and versions.
+- `groundwork migrate [--dry-run]` moves a project's products and areas from `config.yml` into product files and points requirements at product ids. Projects that haven't migrated keep working as before.
+- `validate` checks area ids across products, duplicate versions, and requirements that name a product by title instead of id.
+- `renumber` covers product files and requirements' `product` links.
+- `migrate` also finishes a migration that stopped half-way, and points free-text product names in older projects at product files added later.
+- **Breaking:** `config.yml` is now `schemaVersion: 2` for new projects, after `migrate`, and when the first product file is added to an older project. Older groundwork-mcp versions refuse such a folder and say to update. New `config.yml` files no longer include the old `productAreas` / `products` lists.
+
 ## 0.5.0
 
 - `groundwork validate --against <base>` also reports ids that the branch shares with a different item on the base branch. Everyone numbers new items on their own clone, so two branches can both create `REQ-0012`.

@@ -3,7 +3,7 @@ id: REQ-0002
 title: Guided CSV import
 kind: solution
 story: The CSV import shall guide the user step by step through uploading a file, mapping its columns, fixing errors and confirming. Each error shall name the row, the column and how to fix it, and it shall be possible to fix errors inline without uploading the file again.
-product: Acme app
+product: PRD-0001
 stakeholderIds:
   - REQ-0001
 acceptanceCriteria:

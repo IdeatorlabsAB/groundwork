@@ -4,6 +4,7 @@ import YAML from "yaml";
 import { COLLECTION_KEYS, diffCollections, emptyCollections, type Collections } from "../core/collections";
 import { ID_PREFIX, LOCAL_ID, type Kind } from "../core/schemas";
 import { DIR } from "./config";
+import { loadProducts, type Product } from "./products";
 
 /**
  * Items as files: groundwork/<collection>/<ID>-<slug>.md, YAML frontmatter for the fields, and a Markdown body
@@ -37,6 +38,8 @@ export interface FileProblem {
 
 export interface Loaded {
   items: Collections;
+  /** Product files (groundwork/products/). Not part of Collections, which the hosted app shares. */
+  products: Product[];
   /** Item id -> file path relative to the project root. */
   paths: Map<string, string>;
   problems: FileProblem[];
@@ -113,7 +116,9 @@ export function load(root: string): Loaded {
       }
     }
   }
-  return { items, paths, problems };
+  const prod = loadProducts(root);
+  prod.paths.forEach((path, id) => paths.set(id, path));
+  return { items, products: prod.products, paths, problems: [...problems, ...prod.problems] };
 }
 
 /** The next free id per kind: one more than the highest in use. */

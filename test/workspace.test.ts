@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeAreas, mergeProducts, slugify, WorkspaceError } from "../src/core/workspace";
+import { mergeAreas, mergeProducts, mergeVersions, slugify, WorkspaceError } from "../src/core/workspace";
 
 describe("slugify", () => {
   it("turns a label into an id", () => {
@@ -67,5 +67,18 @@ describe("mergeProducts", () => {
 
   it("rejects an empty name", () => {
     expect(() => mergeProducts([], ["  "])).toThrow(WorkspaceError);
+  });
+});
+
+describe("mergeVersions", () => {
+  it("adds new versions as planned, in order, and skips ones already there", () => {
+    const r = mergeVersions([{ version: "1.0", status: "released" }], [{ version: "1.0" }, { version: "1.1", plannedFor: "2027-01-15" }, { version: "1.2" }]);
+    expect(r.added).toEqual([{ version: "1.1", status: "planned", plannedFor: "2027-01-15" }, { version: "1.2", status: "planned" }]);
+    expect(r.alreadyThere).toEqual([{ version: "1.0", status: "released" }]);
+    expect(r.list.map((v) => v.version)).toEqual(["1.0", "1.1", "1.2"]);
+  });
+
+  it("dedupes within one call", () => {
+    expect(mergeVersions([], [{ version: "2.0" }, { version: "2.0" }]).added).toHaveLength(1);
   });
 });

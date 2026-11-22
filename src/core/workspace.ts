@@ -68,3 +68,32 @@ export function mergeProducts(existing: string[], input: string[]): { list: stri
   }
   return { list, added, alreadyThere };
 }
+
+export interface VersionEntry {
+  version: string;
+  status: "planned" | "released";
+  plannedFor?: string;
+}
+
+/** Add planned versions in the order given. Versions already listed are skipped, never changed. */
+export function mergeVersions<V extends { version: string }>(
+  existing: V[],
+  input: { version: string; plannedFor?: string }[],
+): { list: (V | VersionEntry)[]; added: VersionEntry[]; alreadyThere: (V | VersionEntry)[] } {
+  const list: (V | VersionEntry)[] = [...existing];
+  const added: VersionEntry[] = [];
+  const alreadyThere: (V | VersionEntry)[] = [];
+  for (const raw of input) {
+    const version = raw.version.trim();
+    if (!version) throw new WorkspaceError("A version can't be empty.");
+    const hit = list.find((v) => v.version === version);
+    if (hit) {
+      if (!added.includes(hit as VersionEntry)) alreadyThere.push(hit);
+      continue;
+    }
+    const v: VersionEntry = { version, status: "planned", ...(raw.plannedFor ? { plannedFor: raw.plannedFor } : {}) };
+    list.push(v);
+    added.push(v);
+  }
+  return { list, added, alreadyThere };
+}

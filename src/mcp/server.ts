@@ -6,11 +6,13 @@ import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
 import { fulfilledBy, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
-import { mergeAreas, mergeProducts, WorkspaceError } from "../core/workspace";
+import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
-import { appendToConfig, isInitialized, readConfig, resolveActor, writeConfig, type Config } from "../store/config";
+import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
+import { nextProductId, writeProduct, type Product } from "../store/products";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
+import { catalogueOf, findArea, findProduct, type Catalogue } from "../store/catalogue";
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
@@ -30,7 +32,7 @@ insight -> hypothesis -> experiment -> finding -> requirement.
   Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need) when there is evidence or an outside source; they're optional.
 
 How to work:
-1. Call get_workspace first: it gives product areas, products and people (for approvers). If an area or product you need is missing, add it with add_product_areas or add_products, after checking for an existing match.
+1. Call get_workspace first: it gives the products (with their areas and versions) and people (for approvers). If an area, product or version you need is missing, add it with add_product_areas, add_products or add_product_versions, after checking for an existing match. If it says catalogue is legacy, suggest the user runs groundwork migrate before adding versions.
 2. Before creating anything, search_items for duplicates and for evidence to link. Prefer linking to existing items over creating near-duplicates.
 3. Always link evidence: hypotheses to insights, experiments to a hypothesis, findings to experiments/hypotheses/insights, solution requirements to the stakeholder requirements they fulfil, and requirements to findings when there are any.
 4. Ask the user before deleting items or approving requirements, unless they already told you to.
@@ -124,28 +126,63 @@ class Session {
   readonly config: Config;
   readonly loaded: Loaded;
   readonly actor: ReturnType<typeof resolveActor>;
+  readonly catalogue: Catalogue;
 
   constructor(readonly root: string) {
     this.config = readConfig(root);
     this.loaded = load(root);
     this.actor = resolveActor(root, this.config);
+    this.catalogue = catalogueOf(this.config, this.loaded.products);
   }
 
   file(kind: Kind, item: AnyItem) {
     return this.loaded.paths.get(item.id) ?? newPath(kind, item.id, item.title);
   }
 
-  areaLabel = (id: string | undefined) => this.config.productAreas.find((a) => a.id === id)?.label ?? "";
+  areaLabel = (id: string | undefined) => this.catalogue.areas.find((a) => a.id === id)?.label ?? "";
 
   /** Accept an area's id or label; undefined stays undefined. */
   area(value: string | undefined): string | undefined {
     if (!value) return undefined;
-    const a = this.config.productAreas.find((x) => x.id === value || x.label.toLowerCase() === value.trim().toLowerCase());
+    const a = findArea(this.catalogue, value);
     if (!a) {
-      const known = this.config.productAreas.map((x) => x.label).join(", ") || "none defined";
-      throw new UserError(`Unknown product area "${value}". Areas in groundwork/config.yml: ${known}. Add it with add_product_areas, or leave it out.`);
+      const known = this.catalogue.areas.map((x) => x.label).join(", ") || "none defined";
+      const where = this.catalogue.products.length ? "Areas of the products in groundwork/products/" : "Areas in groundwork/config.yml";
+      throw new UserError(`Unknown product area "${value}". ${where}: ${known}. Add it with add_product_areas, or leave it out.`);
     }
     return a.id;
+  }
+
+  /** The product a product-level change is for: the named one, or the only one. */
+  targetProduct(value: string | undefined): Product {
+    const products = this.catalogue.products;
+    if (!products.length) throw new UserError("Add a product first with add_products.");
+    if (value) {
+      const p = findProduct(this.catalogue, value);
+      if (!p) throw new UserError(`Unknown product "${value}". Products: ${this.catalogue.productNames.join(", ")}.`);
+      return p;
+    }
+    if (products.length > 1) throw new UserError(`Name the product: one of ${products.map((p) => `${p.id} (${p.title})`).join(", ")}.`);
+    return products[0];
+  }
+
+  /** A requirement's product as stored: the product id with product files, the config spelling for legacy projects. */
+  product(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    if (this.catalogue.products.length) {
+      const p = findProduct(this.catalogue, value);
+      if (!p) {
+        throw new UserError(`Unknown product "${value}". Products: ${this.catalogue.productNames.join(", ")}. Add it with add_products, or leave it out.`);
+      }
+      return p.id;
+    }
+    if (!this.catalogue.legacy) throw new UserError(`No products yet, so "${value}" can't be used. Add a product first with add_products, or leave product out.`);
+    const names = this.catalogue.productNames;
+    const hit = names.find((p) => p.toLowerCase() === value.trim().toLowerCase());
+    if (names.length && !hit) {
+      throw new UserError(`Unknown product "${value}". Products in groundwork/config.yml: ${names.join(", ")}. Add it with add_products, or leave it out.`);
+    }
+    return hit ?? value;
   }
 
   /** Every id must be an item of this kind. */
@@ -251,6 +288,30 @@ export function buildServer({ root }: ServerOptions): McpServer {
     };
 
   /**
+   * Create or change product files (groundwork/products/). The first product file moves config.yml to
+   * schemaVersion 2: older groundwork-mcp versions don't know where products live.
+   */
+  const writeProducts =
+    <A>(fn: (s: Session, args: A) => { write: Product[]; result: Record<string, unknown> }) =>
+    async (args: A): Promise<Result> => {
+      try {
+        const s = open();
+        const refused = refusal(s);
+        if (refused) return fail(refused);
+        const { write, result } = fn(s, args);
+        if (!isInitialized(root)) writeConfig(root, s.config);
+        const files = write.map((p) => writeProduct(root, p, s.loaded.paths.get(p.id)));
+        if (files.length) setSchemaVersion(root, 2);
+        return ok({ ...result, filesChanged: files });
+      } catch (e) {
+        if (e instanceof UserError || e instanceof WorkspaceError) return fail(e.message);
+        return fail(`Groundwork couldn't save that: ${(e as Error).message}`);
+      }
+    };
+  /** Legacy projects (flat lists in config.yml) keep their old behaviour; everything else uses product files. */
+  const usesProductFiles = () => !open().catalogue.legacy;
+
+  /**
    * Run a change against the files as they are now: `fn` returns the new state and what to tell the agent. New
    * items get readable ids, and only the files that changed are written.
    */
@@ -285,7 +346,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     "get_workspace",
     {
       title: "Get workspace",
-      description: "The project's name, product areas, products, people, item counts and any file problems. Call this first.",
+      description: "The project's name, its products with their areas and versions, people, item counts and any file problems. Call this first.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
@@ -298,8 +359,12 @@ export function buildServer({ root }: ServerOptions): McpServer {
         initialized: isInitialized(root),
         ...(s.config.migrated ? { migratedTo: s.config.migrated, readOnly: true } : {}),
         you: { id: s.actor.id, name: s.actor.person?.name, role: s.actor.person?.role ?? "editor" },
-        productAreas: s.config.productAreas,
-        products: s.config.products,
+        catalogue: s.catalogue.legacy ? "legacy" : "files",
+        ...(s.catalogue.legacy ? { migrate: "Run groundwork migrate to move products into groundwork/products/ and add versions." } : {}),
+        products: s.catalogue.products.length
+          ? s.catalogue.products.map(({ id, title, areas, versions }) => ({ id, title, areas, versions }))
+          : s.catalogue.productNames.map((title) => ({ title, areas: [], versions: [] })),
+        productAreas: s.catalogue.areas,
         members: s.config.people.map(({ id, name, role }) => ({ id, name, role })),
         counts: Object.fromEntries(KIND.options.map((k) => [k, items[COLLECTIONS[k]].length])),
         problems: {
@@ -476,10 +541,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, r.stakeholderIds);
-        const product = r.product && s.config.products.find((p) => p.toLowerCase() === r.product!.toLowerCase());
-        if (r.product && s.config.products.length && !product) {
-          throw new UserError(`Unknown product "${r.product}". Products in groundwork/config.yml: ${s.config.products.join(", ")}. Add it with add_products, or leave it out.`);
-        }
+        const product = s.product(r.product);
         const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
         if (r.findingIds.length) {
           derived.push(base);
@@ -505,8 +567,9 @@ export function buildServer({ root }: ServerOptions): McpServer {
     {
       title: "Add product areas",
       description:
-        "Add product areas to groundwork/config.yml so items can be tagged with them. Give labels; ids are made from them unless you pass one. Areas already there are skipped. Check get_workspace first and reuse an existing area rather than adding a near-duplicate. Can't rename or remove areas: those are edits to config.yml.",
+        "Add product areas so items can be tagged with them. They go into the product's file in groundwork/products/ (or config.yml for a project that hasn't migrated). Give labels; ids are made from them unless you pass one. Area ids are unique across products. Areas already there are skipped. Check get_workspace first and reuse an existing area rather than adding a near-duplicate. Can't rename or remove areas: those are edits to the files.",
       inputSchema: {
+        product: z.string().max(100).optional().describe("The product's id or title. Needed when there's more than one product."),
         areas: z
           .array(
             z.object({
@@ -518,10 +581,21 @@ export function buildServer({ root }: ServerOptions): McpServer {
           .max(20),
       },
     },
-    writeConfigOnly((s, { areas }: { areas: { label: string; id?: string }[] }) => {
-      const { list, added, alreadyThere } = mergeAreas(s.config.productAreas, areas);
-      return { add: { productAreas: added }, result: { added, alreadyThere, productAreas: list } };
-    }),
+    (args: { areas: { label: string; id?: string }[]; product?: string }) =>
+      usesProductFiles()
+        ? writeProducts((s, { areas, product }: typeof args) => {
+            const p = s.targetProduct(product);
+            const { list, added, alreadyThere } = mergeAreas(p.areas, areas);
+            for (const a of added) {
+              const other = s.catalogue.products.find((x) => x.id !== p.id && x.areas.some((y) => y.id === a.id));
+              if (other) throw new UserError(`"${a.label}" would get the id "${a.id}", which ${other.title} already uses. Area ids are unique across products: give a different id.`);
+            }
+            return { write: added.length ? [{ ...p, areas: list }] : [], result: { product: p.id, added, alreadyThere, productAreas: list } };
+          })(args)
+        : writeConfigOnly((s, { areas }: typeof args) => {
+            const { list, added, alreadyThere } = mergeAreas(s.config.productAreas, areas);
+            return { add: { productAreas: added }, result: { added, alreadyThere, productAreas: list } };
+          })(args),
   );
 
   server.registerTool(
@@ -529,13 +603,52 @@ export function buildServer({ root }: ServerOptions): McpServer {
     {
       title: "Add products",
       description:
-        "Add products to groundwork/config.yml so requirements can name them. Products already there are skipped. Check get_workspace first and reuse an existing name rather than adding a near-duplicate.",
+        "Add products, each as a file in groundwork/products/ (or to config.yml for a project that hasn't migrated), so requirements can name them and areas and versions can be added to them. Products already there are skipped. Check get_workspace first and reuse an existing name rather than adding a near-duplicate.",
       inputSchema: { products: z.array(z.string().trim().min(1).max(100)).min(1).max(20) },
     },
-    writeConfigOnly((s, { products }: { products: string[] }) => {
-      const { list, added, alreadyThere } = mergeProducts(s.config.products, products);
-      return { add: { products: added }, result: { added, alreadyThere, products: list } };
-    }),
+    (args: { products: string[] }) =>
+      usesProductFiles()
+        ? writeProducts((s, { products }: typeof args) => {
+            const { added, alreadyThere } = mergeProducts(s.catalogue.productNames, products);
+            const created: Product[] = [];
+            for (const title of added) created.push({ id: nextProductId([...s.catalogue.products, ...created]), title, areas: [], versions: [] });
+            return {
+              write: created,
+              result: { added: created.map(({ id, title }) => ({ id, title })), alreadyThere, products: [...s.catalogue.productNames, ...added] },
+            };
+          })(args)
+        : writeConfigOnly((s, { products }: typeof args) => {
+            const { list, added, alreadyThere } = mergeProducts(s.config.products, products);
+            return { add: { products: added }, result: { added, alreadyThere, products: list } };
+          })(args),
+  );
+
+  server.registerTool(
+    "add_product_versions",
+    {
+      title: "Add product versions",
+      description:
+        "Add planned versions to a product, in release order (e.g. 1.0, then 1.1). Versions already listed are skipped. Needs product files: if get_workspace says catalogue is legacy, the user must run groundwork migrate first.",
+      inputSchema: {
+        product: z.string().max(100).optional().describe("The product's id or title. Needed when there's more than one product."),
+        versions: z
+          .array(
+            z.object({
+              version: z.string().trim().min(1).max(40),
+              plannedFor: z.string().trim().max(40).optional().describe("Target release date, e.g. 2027-03-01."),
+            }),
+          )
+          .min(1)
+          .max(20),
+      },
+    },
+    (args: { product?: string; versions: { version: string; plannedFor?: string }[] }) =>
+      writeProducts((s, { product, versions }: typeof args) => {
+        if (s.catalogue.legacy) throw new UserError('Run "groundwork migrate" first: products and their versions now live in groundwork/products/.');
+        const p = s.targetProduct(product);
+        const { list, added, alreadyThere } = mergeVersions(p.versions, versions);
+        return { write: added.length ? [{ ...p, versions: list as Product["versions"] }] : [], result: { product: p.id, added, alreadyThere, versions: list } };
+      })(args),
   );
 
   // -------------------------------------------------------------------------------------------
@@ -558,6 +671,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const p = parsed.data as Record<string, unknown> & { productArea?: string };
       if (!Object.keys(p).length) throw new UserError("The patch has no fields to change.");
       if ("productArea" in p) p.productArea = s.area(p.productArea);
+      if (hit.kind === "requirement" && typeof p.product === "string") p.product = s.product(p.product);
       const warnings: string[] = [];
       let change: ops.Change;
       switch (hit.kind) {

@@ -3,7 +3,8 @@ import type { Collections } from "../core/collections";
 import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, REQUIREMENT_KIND, localSchemas, type Kind } from "../core/schemas";
 import type { Requirement } from "../core/types";
-import type { Config } from "./config";
+import { catalogueOf, findProduct } from "./catalogue";
+import { CONFIG_FILE, DIR, type Config } from "./config";
 import { COLLECTIONS, type Loaded } from "./files";
 
 export interface Problem {
@@ -32,7 +33,28 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
   const s: Collections = loaded.items;
   const kindById = new Map<string, Kind>();
   for (const kind of Object.keys(COLLECTIONS) as Kind[]) for (const x of s[COLLECTIONS[kind]] as { id: string }[]) kindById.set(x.id, kind);
-  const areaIds = new Set(config.productAreas.map((a) => a.id));
+  const catalogue = catalogueOf(config, loaded.products);
+  const areaIds = new Set(catalogue.areas.map((a) => a.id));
+  const where = catalogue.legacy || !catalogue.products.length ? "config.yml productAreas" : "any product in groundwork/products/";
+
+  // Product files: area ids unique across products, version strings unique within a product.
+  const areaOwner = new Map<string, string>();
+  for (const p of loaded.products) {
+    const file = loaded.paths.get(p.id) ?? p.id;
+    for (const a of p.areas) {
+      const owner = areaOwner.get(a.id);
+      if (owner && owner !== p.id) out.push({ level: "error", file, message: `productArea "${a.id}" is defined by both ${owner} and ${p.id}` });
+      else areaOwner.set(a.id, p.id);
+    }
+    const seen = new Set<string>();
+    for (const v of p.versions) {
+      if (seen.has(v.version)) out.push({ level: "error", file, message: `version "${v.version}" is listed twice` });
+      seen.add(v.version);
+    }
+  }
+  if (loaded.products.length && (config.productAreas.length || config.products.length)) {
+    out.push({ level: "warning", file: `${DIR}/${CONFIG_FILE}`, message: "config.yml productAreas/products are ignored: products live in groundwork/products/" });
+  }
   const people = new Set(config.people.map((p) => p.id));
 
   for (const kind of Object.keys(COLLECTIONS) as Kind[]) {
@@ -54,7 +76,7 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
       };
 
       const area = item.productArea as string | undefined;
-      if (area && !areaIds.has(area)) warn(`productArea "${area}" isn't in config.yml productAreas`);
+      if (area && !areaIds.has(area)) warn(`productArea "${area}" isn't in ${where}`);
 
       switch (kind) {
         case "hypothesis":
@@ -91,7 +113,13 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
             }
             wordingWarnings(r).forEach(warn);
           }
-          if (r.product && config.products.length && !config.products.includes(r.product)) warn(`product "${r.product}" isn't in config.yml products`);
+          if (r.product && catalogue.products.length) {
+            const byTitle = findProduct(catalogue, r.product);
+            if (!byTitle) err(`product "${r.product}" isn't a product in groundwork/products/`);
+            else if (byTitle.id !== r.product) err(`use the product id ${byTitle.id} instead of its title (groundwork migrate fixes this)`);
+          } else if (r.product && config.products.length && !config.products.includes(r.product)) {
+            warn(`product "${r.product}" isn't in config.yml products`);
+          }
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
           break;
         }

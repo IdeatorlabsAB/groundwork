@@ -7,7 +7,7 @@ import { z } from "zod";
 /** The folder inside a project that holds everything Groundwork writes. */
 export const DIR = "groundwork";
 export const CONFIG_FILE = "config.yml";
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const slugId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "lowercase letters, digits and dashes");
 
@@ -76,14 +76,16 @@ export function readConfig(root: string): Config {
 }
 
 const CONFIG_HEADER = `# Groundwork settings. See SPEC.md in the groundwork-mcp package for every field.
-# productAreas: [{ id: onboarding, label: Onboarding }]
-# products: [Acme app]
 # people: [{ id: sam, name: Sam, role: owner }]   # roles: owner, editor, viewer
+# Products, with their areas and versions, are files in groundwork/products/ (agents add them with add_products).
 `;
 
 export function writeConfig(root: string, config: Config) {
   mkdirSync(join(root, DIR), { recursive: true });
-  writeFileSync(configPath(root), CONFIG_HEADER + YAML.stringify(config, { lineWidth: 0 }));
+  // Empty flat lists aren't written: products live in groundwork/products/ now, and the lists are only for older folders.
+  const { productAreas, products, ...rest } = config;
+  const out = { ...rest, ...(productAreas.length ? { productAreas } : {}), ...(products.length ? { products } : {}) };
+  writeFileSync(configPath(root), CONFIG_HEADER + YAML.stringify(out, { lineWidth: 0 }));
 }
 
 /**
@@ -124,4 +126,13 @@ export function resolveActor(root: string, config: Config): { id: string; person
   if (match) return { id: match.id, person: match };
   if (config.people.length === 1) return { id: config.people[0].id, person: config.people[0] };
   return { id: "me" };
+}
+
+/** Set schemaVersion in an existing config.yml, editing it in place so comments and other keys are kept. */
+export function setSchemaVersion(root: string, version: number) {
+  const file = configPath(root);
+  const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+  if (doc.get("schemaVersion") === version) return;
+  doc.set("schemaVersion", version);
+  writeFileSync(file, doc.toString({ lineWidth: 0 }));
 }

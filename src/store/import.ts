@@ -1,6 +1,7 @@
 import { readConfig, writeConfig } from "./config";
 import { load } from "./files";
 import { validate, type Problem } from "./validate";
+import { catalogueOf } from "./catalogue";
 
 /**
  * Moving a project into the Groundwork web app: send every item to its /api/import endpoint, then mark the folder
@@ -40,10 +41,17 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
   if (problems.length) throw new ImportError(`Fix ${problems.length} error${problems.length === 1 ? "" : "s"} first (run groundwork validate).`, problems);
   const { activity: _activity, ...items } = loaded.items;
   void _activity;
+  // The web app knows products by name: send each requirement's product as its title, not its id (PRD-0001).
+  const titles = new Map(loaded.products.map((p) => [p.id, p.title]));
+  items.requirements = items.requirements.map((r) => (r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product) } : r));
   return {
     format: BUNDLE_FORMAT,
     schemaVersion: 1,
-    config: { name: config.name, productAreas: config.productAreas, products: config.products, people: config.people },
+    config: (() => {
+      // The web app takes flat lists, so the catalogue is flattened: areas across products, product titles.
+      const c = catalogueOf(config, loaded.products);
+      return { name: config.name, productAreas: c.areas.map(({ id, label }) => ({ id, label })), products: c.productNames, people: config.people };
+    })(),
     items,
     dryRun: Boolean(opts.dryRun),
     overwrite: Boolean(opts.overwrite),
