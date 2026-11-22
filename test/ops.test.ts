@@ -120,6 +120,21 @@ describe("requirement status rules", () => {
     expect(r.recordedBy).toBeUndefined();
   });
 
+  it("plans requirements for a version, and moves the obsolescence of what they replace", () => {
+    const w = workspace();
+    w.requirements = w.requirements.map((r) =>
+      r.id === ID.solutionReq ? { ...r, replaces: [ID.approvedReq] } : r.id === ID.approvedReq ? { ...r, obsoletePlannedFor: "1.1", obsoletedBy: [ID.solutionReq] } : r,
+    );
+    const s = apply(w, ops.planRequirements(w, ctx(), [ID.solutionReq], "1.2"));
+    expect(s.requirements.find((r) => r.id === ID.solutionReq)?.plannedFor).toBe("1.2");
+    expect(s.requirements.find((r) => r.id === ID.approvedReq)?.obsoletePlannedFor).toBe("1.2");
+  });
+
+  it("plans obsolescence without changing the status", () => {
+    const s = apply(workspace(), ops.planObsolescence(workspace(), ctx(), [ID.approvedReq], "1.2", [ID.solutionReq]));
+    expect(s.requirements.find((r) => r.id === ID.approvedReq)).toMatchObject({ status: "approved", obsoletePlannedFor: "1.2", obsoletedBy: [ID.solutionReq] });
+  });
+
   it("only approved requirements can be made obsolete", () => {
     expect(ops.obsoleteRequirement(workspace(), ctx(), ID.solutionReq).result).toBe(false);
     const s = apply(workspace(), ops.obsoleteRequirement(workspace(), ctx(), ID.approvedReq, [ID.solutionReq]));

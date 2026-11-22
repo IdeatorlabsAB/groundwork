@@ -21,7 +21,7 @@ beforeEach(() => {
   rmSync(join(root, "groundwork/products"), { recursive: true, force: true });
   for (const name of readdirSync(join(root, "groundwork/requirements"))) {
     const file = join(root, "groundwork/requirements", name);
-    writeFileSync(file, readFileSync(file, "utf8").replace(/^product: PRD-0001$/m, "product: Acme app"));
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^product: PRD-0001$/m, "product: Acme app").replace(/^plannedFor: .*\n/m, ""));
   }
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));

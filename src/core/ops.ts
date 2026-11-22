@@ -310,7 +310,18 @@ export function deleteRequirement(s: Collections, id: string): Change {
   return nothing0({
     requirements: s.requirements
       .filter((r) => r.id !== id)
-      .map((r) => (r.stakeholderIds?.includes(id) ? { ...r, stakeholderIds: r.stakeholderIds.filter((x) => x !== id) } : r)),
+      .map((r) => {
+        if (![r.stakeholderIds, r.replaces, r.obsoletedBy].some((l) => l?.includes(id))) return r;
+        const x = { ...r };
+        if (r.stakeholderIds?.includes(id)) x.stakeholderIds = r.stakeholderIds.filter((v) => v !== id);
+        if (r.replaces?.includes(id)) x.replaces = r.replaces.filter((v) => v !== id);
+        if (r.obsoletedBy?.includes(id)) {
+          x.obsoletedBy = r.obsoletedBy.filter((v) => v !== id);
+          // Its only replacement is gone: it isn't going to become obsolete after all.
+          if (!x.obsoletedBy.length && r.obsoletePlannedFor && r.status !== "obsolete") delete x.obsoletePlannedFor;
+        }
+        return x;
+      }),
   });
 }
 
@@ -423,4 +434,43 @@ export function markSentToDelivery(s: Collections, c: Ctx, id: string, delivery:
 
 export function updateDeliveryStates(s: Collections, byRequirement: Record<string, Delivery>): Change {
   return nothing0({ requirements: s.requirements.map((r) => (byRequirement[r.id] ? { ...r, delivery: byRequirement[r.id] } : r)) });
+}
+
+/**
+ * Plan requirements for a product version. Requirements they replace, whose obsolescence was planned with them,
+ * move to the same version: an old requirement stays valid until its replacement ships.
+ */
+export function planRequirements(s: Collections, c: Ctx, ids: string[], version: string): Change<boolean> {
+  const planned = s.requirements.filter((r) => ids.includes(r.id));
+  if (!planned.length) return nothing(false);
+  const replaced = new Set(planned.flatMap((r) => r.replaces ?? []));
+  return {
+    next: {
+      requirements: s.requirements.map((r) =>
+        ids.includes(r.id)
+          ? { ...r, plannedFor: version }
+          : replaced.has(r.id) && r.obsoletePlannedFor && !r.obsoletedIn && r.obsoletedBy?.some((x) => ids.includes(x))
+            ? { ...r, obsoletePlannedFor: version }
+            : r,
+      ),
+      activity: [...planned.map((r) => log(c, "requirement", `planned "${r.title}" for ${version}`, r.id)), ...s.activity],
+    },
+    result: true,
+  };
+}
+
+/**
+ * Plan requirements to become obsolete in a version, e.g. the one their replacement ships in. They stay approved
+ * (and valid) until that version is released.
+ */
+export function planObsolescence(s: Collections, c: Ctx, ids: string[], version: string, by?: string[]): Change<boolean> {
+  const hit = s.requirements.filter((r) => ids.includes(r.id));
+  if (!hit.length) return nothing(false);
+  return {
+    next: {
+      requirements: s.requirements.map((r) => (ids.includes(r.id) ? { ...r, obsoletePlannedFor: version, ...(by?.length ? { obsoletedBy: by } : {}) } : r)),
+      activity: [...hit.map((r) => log(c, "requirement", `"${r.title}" will be obsolete in ${version}`, r.id)), ...s.activity],
+    },
+    result: true,
+  };
 }

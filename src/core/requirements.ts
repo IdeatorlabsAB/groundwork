@@ -11,6 +11,8 @@ export const isActive = (r: Pick<Requirement, "status">) => !isObsolete(r);
 /** Only approved requirements can be made obsolete. Drafts are updated in place instead. */
 export const canObsolete = (r: Pick<Requirement, "status">) => r.status === "approved";
 export const canUpdateInPlace = (r: Pick<Requirement, "status">) => r.status === "draft";
+/** Approved (or in-delivery) requirements are replaced; drafts are updated in place instead. */
+export const canBeReplaced = (r: Pick<Requirement, "status">) => r.status === "approved" || r.status === "in-delivery";
 
 /** Only approved solution requirements go to a delivery tool, and only once. */
 export const canSendToDelivery = (r: Pick<Requirement, "kind" | "status" | "delivery">) =>

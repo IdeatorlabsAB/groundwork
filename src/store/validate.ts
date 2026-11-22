@@ -3,7 +3,7 @@ import type { Collections } from "../core/collections";
 import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, REQUIREMENT_KIND, localSchemas, type Kind } from "../core/schemas";
 import type { Requirement } from "../core/types";
-import { catalogueOf, findProduct } from "./catalogue";
+import { catalogueOf, findProduct, plannedVersions, productOf } from "./catalogue";
 import { CONFIG_FILE, DIR, type Config } from "./config";
 import { COLLECTIONS, type Loaded } from "./files";
 
@@ -57,6 +57,30 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
   }
   const people = new Set(config.people.map((p) => p.id));
 
+  /** Version references on a requirement: they must be versions of its product, in the right state. */
+  const checkVersions = (r: Requirement, err: (m: string) => void, warn: (m: string) => void) => {
+    const fields = ["plannedFor", "obsoletePlannedFor", "releasedIn", "obsoletedIn"] as const;
+    if (kindOf(r) === "stakeholder") {
+      if (r.plannedFor || r.releasedIn || r.obsoletedIn) err("only solution requirements are planned for versions");
+      return;
+    }
+    const p = productOf(catalogue, r);
+    if (!p) return;
+    for (const f of fields) {
+      const v = r[f];
+      if (v && !p.versions.some((x) => x.version === v)) err(`${f} "${v}" isn't a version of ${p.title}`);
+    }
+    const status = (v: string | undefined) => p.versions.find((x) => x.version === v)?.status;
+    if (r.releasedIn && status(r.releasedIn) === "planned") err(`releasedIn "${r.releasedIn}" isn't released yet`);
+    const approved = r.status === "approved" || r.status === "in-delivery";
+    if (approved && !r.plannedFor && !r.releasedIn && plannedVersions(p).length) {
+      err(`approved but not planned for a version of ${p.title}: plan it with plan_requirements`);
+    }
+    if (r.plannedFor && !r.releasedIn && status(r.plannedFor) === "released") {
+      warn(`planned for ${r.plannedFor}, which is released, but not released in it`);
+    }
+  };
+
   for (const kind of Object.keys(COLLECTIONS) as Kind[]) {
     for (const item of s[COLLECTIONS[kind]] as unknown as (Record<string, unknown> & { id: string })[]) {
       const file = loaded.paths.get(item.id) ?? item.id;
@@ -101,6 +125,7 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
           link("hypothesisIds", "hypothesis", r.hypothesisIds);
           link("stakeholderIds", "requirement", r.stakeholderIds);
           link("obsoletedBy", "requirement", r.obsoletedBy);
+          link("replaces", "requirement", r.replaces);
           for (const id of r.stakeholderIds ?? []) {
             const t = s.requirements.find((x) => x.id === id);
             if (t && kindOf(t) !== "stakeholder") err(`stakeholderIds: ${id} is a solution requirement, not a stakeholder requirement`);
@@ -121,6 +146,7 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
             warn(`product "${r.product}" isn't in config.yml products`);
           }
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
+          if (isActive(r)) checkVersions(r, err, warn);
           break;
         }
       }

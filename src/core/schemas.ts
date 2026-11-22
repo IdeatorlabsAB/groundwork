@@ -126,6 +126,7 @@ export function makeSchemas(id: z.ZodString) {
     findingIds: ids("the findings that justify it").default([]),
     insightIds: ids("customer evidence linked directly").optional(),
     hypothesisIds: ids("hypotheses it was committed from").optional(),
+    replaces: ids("approved requirements this one replaces; they become obsolete when this one ships").optional(),
     origin: REQUIREMENT_ORIGIN.optional().describe(
       "Where a requirement decided outside the evidence loop comes from (tender, regulation, contract, customer-need). Optional.",
     ),
