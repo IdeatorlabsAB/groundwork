@@ -84,12 +84,24 @@ describe("validate with product files", () => {
       join(root, "groundwork/requirements/REQ-0002-slots.md"),
       renderItem({ id: "REQ-0002", title: "Slots", kind: "solution", story: "The system shall show slots.", stakeholderIds: ["REQ-0001"], product: "Clinicare Web Application", acceptanceCriteria: ["a"], priority: "must", status: "draft", findingIds: [], createdAt: "x" }),
     );
-    expect(messages()).toContain("error: use the product id PRD-0001 instead of its title");
+    expect(messages()).toContain("error: use the product id PRD-0001 instead of its title (groundwork migrate fixes this)");
   });
 
   it("warns that flat config lists are ignored once product files exist", () => {
     writeProduct(root, clinicare);
     writeConfig(root, { ...readConfig(root), productAreas: [{ id: "onboarding", label: "Onboarding" }] });
     expect(messages()).toContain("warning: config.yml productAreas/products are ignored: products live in groundwork/products/");
+  });
+});
+
+describe("a new config.yml", () => {
+  it("doesn't steer people to the old flat lists", () => {
+    const fresh = mkdtempSync(join(tmpdir(), "gw-fresh-"));
+    writeConfig(fresh, readConfig(fresh));
+    const text = readFileSync(join(fresh, "groundwork/config.yml"), "utf8");
+    rmSync(fresh, { recursive: true, force: true });
+    expect(text).toContain("schemaVersion: 2");
+    expect(text).not.toMatch(/productAreas|^products:/m);
+    expect(text).toContain("groundwork/products/");
   });
 });

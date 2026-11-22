@@ -661,6 +661,16 @@ describe("product tools on product files", () => {
     expect((await call(c, "add_product_areas", { areas: [{ label: "Scheduling" }] })).error).toMatch(/Add a product first/);
   });
 
+  it("refuses a requirement's product before any product exists", async () => {
+    const need = await call(c, "add_requirements", {
+      requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }],
+    });
+    const { error } = await call(c, "add_requirements", {
+      requirements: [{ kind: "solution", title: "Slots", story: "The system shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need.data.created[0].id], product: "Whatever" }],
+    });
+    expect(error).toMatch(/Add a product first/);
+  });
+
   it("refuses versions in a project that hasn't migrated", async () => {
     writeConfig(root, { ...readConfig(root), products: ["Acme app"] });
     expect((await call(c, "add_product_versions", { versions: [{ version: "1.0" }] })).error).toMatch(/groundwork migrate/);

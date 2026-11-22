@@ -41,6 +41,9 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
   if (problems.length) throw new ImportError(`Fix ${problems.length} error${problems.length === 1 ? "" : "s"} first (run groundwork validate).`, problems);
   const { activity: _activity, ...items } = loaded.items;
   void _activity;
+  // The web app knows products by name: send each requirement's product as its title, not its id (PRD-0001).
+  const titles = new Map(loaded.products.map((p) => [p.id, p.title]));
+  items.requirements = items.requirements.map((r) => (r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product) } : r));
   return {
     format: BUNDLE_FORMAT,
     schemaVersion: 1,

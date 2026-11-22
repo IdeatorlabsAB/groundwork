@@ -28,6 +28,13 @@ function fakeServer(status = 200, reply: Record<string, unknown> = {}) {
 }
 
 describe("groundwork import", () => {
+  it("sends product names, not product ids, so the web app's product list stays clean", () => {
+    const b = buildBundle(root, { dryRun: true });
+    const products = b.items.requirements.map((r) => r.product).filter(Boolean);
+    expect(products.length).toBeGreaterThan(0);
+    expect(new Set(products)).toEqual(new Set(["Acme app"]));
+  });
+
   it("bundles every item, the config and the options", () => {
     const b = buildBundle(root, { dryRun: true });
     expect(b).toMatchObject({ format: "groundwork-files", schemaVersion: 1, dryRun: true, overwrite: false, config: { name: "Acme", products: ["Acme app"] } });

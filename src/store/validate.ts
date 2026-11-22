@@ -116,7 +116,7 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
           if (r.product && catalogue.products.length) {
             const byTitle = findProduct(catalogue, r.product);
             if (!byTitle) err(`product "${r.product}" isn't a product in groundwork/products/`);
-            else if (byTitle.id !== r.product) err(`use the product id ${byTitle.id} instead of its title`);
+            else if (byTitle.id !== r.product) err(`use the product id ${byTitle.id} instead of its title (groundwork migrate fixes this)`);
           } else if (r.product && config.products.length && !config.products.includes(r.product)) {
             warn(`product "${r.product}" isn't in config.yml products`);
           }

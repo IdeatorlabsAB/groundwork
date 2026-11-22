@@ -176,6 +176,7 @@ class Session {
       }
       return p.id;
     }
+    if (!this.catalogue.legacy) throw new UserError(`No products yet, so "${value}" can't be used. Add a product first with add_products, or leave product out.`);
     const names = this.catalogue.productNames;
     const hit = names.find((p) => p.toLowerCase() === value.trim().toLowerCase());
     if (names.length && !hit) {

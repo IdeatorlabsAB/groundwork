@@ -76,14 +76,16 @@ export function readConfig(root: string): Config {
 }
 
 const CONFIG_HEADER = `# Groundwork settings. See SPEC.md in the groundwork-mcp package for every field.
-# productAreas: [{ id: onboarding, label: Onboarding }]
-# products: [Acme app]
 # people: [{ id: sam, name: Sam, role: owner }]   # roles: owner, editor, viewer
+# Products, with their areas and versions, are files in groundwork/products/ (agents add them with add_products).
 `;
 
 export function writeConfig(root: string, config: Config) {
   mkdirSync(join(root, DIR), { recursive: true });
-  writeFileSync(configPath(root), CONFIG_HEADER + YAML.stringify(config, { lineWidth: 0 }));
+  // Empty flat lists aren't written: products live in groundwork/products/ now, and the lists are only for older folders.
+  const { productAreas, products, ...rest } = config;
+  const out = { ...rest, ...(productAreas.length ? { productAreas } : {}), ...(products.length ? { products } : {}) };
+  writeFileSync(configPath(root), CONFIG_HEADER + YAML.stringify(out, { lineWidth: 0 }));
 }
 
 /**

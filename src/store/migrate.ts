@@ -17,33 +17,44 @@ export interface MigrationPlan {
   notes: string[];
 }
 
-/** What migrating would do, or undefined when there's nothing to migrate. Changes nothing. */
+/**
+ * What migrating would do, or undefined when there's nothing to migrate. Changes nothing. Also finishes a migration
+ * that stopped half-way, or an older project that got product files later: requirements that still name a product
+ * by title get its id, and leftover flat lists are removed from config.yml.
+ */
 export function planMigration(root: string): MigrationPlan | undefined {
   const config = readConfig(root);
   const loaded = load(root);
-  if (!catalogueOf(config, loaded.products).legacy) return undefined;
-
-  const titles = config.products.length ? config.products : [config.name];
-  const products: Product[] = titles.map((title, i) => ({
-    id: `PRD-${String(i + 1).padStart(4, "0")}`,
-    title,
-    areas: i === 0 ? config.productAreas.map(({ id, label }) => ({ id, label })) : [],
-    versions: [],
-  }));
   const notes: string[] = [];
-  if (titles.length > 1 && config.productAreas.length) {
-    notes.push(`All areas went to ${titles[0]}. Move any that belong to another product by editing the product files.`);
+  let products: Product[] = [];
+  if (catalogueOf(config, loaded.products).legacy) {
+    const titles = config.products.length ? config.products : [config.name];
+    products = titles.map((title, i) => ({
+      id: `PRD-${String(i + 1).padStart(4, "0")}`,
+      title,
+      areas: i === 0 ? config.productAreas.map(({ id, label }) => ({ id, label })) : [],
+      versions: [],
+    }));
+    if (titles.length > 1 && config.productAreas.length) {
+      notes.push(`All areas went to ${titles[0]}. Move any that belong to another product by editing the product files.`);
+    }
+  } else if (!loaded.products.length) {
+    return undefined; // no products anywhere: nothing to migrate
   }
+  const known = products.length ? products : loaded.products;
 
   const requirementProducts: MigrationPlan["requirementProducts"] = [];
   const unknownProducts: MigrationPlan["unknownProducts"] = [];
   for (const r of loaded.items.requirements) {
     if (!r.product) continue;
     const file = loaded.paths.get(r.id) ?? r.id;
-    const p = products.find((x) => x.title.trim().toLowerCase() === r.product!.trim().toLowerCase());
+    if (known.some((x) => x.id === r.product)) continue; // already an id
+    const p = known.find((x) => x.title.trim().toLowerCase() === r.product!.trim().toLowerCase());
     if (p) requirementProducts.push({ file, from: r.product, to: p.id });
     else unknownProducts.push({ file, value: r.product });
   }
+  const leftoverLists = config.productAreas.length > 0 || config.products.length > 0 || config.schemaVersion < 2;
+  if (!products.length && !requirementProducts.length && !leftoverLists) return undefined;
   return { products, requirementProducts, unknownProducts, notes };
 }
 

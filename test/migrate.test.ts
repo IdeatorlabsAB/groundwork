@@ -7,6 +7,7 @@ import { readConfig } from "../src/store/config";
 import { load, parseItem } from "../src/store/files";
 import { migrate, planMigration } from "../src/store/migrate";
 import { validate } from "../src/store/validate";
+import { writeProduct } from "../src/store/products";
 
 let root: string;
 beforeEach(() => {
@@ -81,5 +82,34 @@ describe("groundwork migrate", () => {
     const plan = migrate(root)!;
     expect(plan.unknownProducts).toEqual([{ file: REQ, value: "Old name" }]);
     expect(readFileSync(join(root, REQ), "utf8")).toBe(before);
+  });
+});
+
+describe("groundwork migrate finishes a partial or older project", () => {
+  it("finishes a migration that stopped half-way", () => {
+    migrate(root);
+    const file = join(root, "groundwork/config.yml");
+    writeFileSync(file, readFileSync(file, "utf8") + "products:\n  - Acme app\n");
+    writeFileSync(join(root, REQ), readFileSync(join(root, REQ), "utf8").replace("product: PRD-0001", "product: Acme app"));
+    const plan = migrate(root)!;
+    expect(plan.requirementProducts).toEqual([{ file: REQ, from: "Acme app", to: "PRD-0001" }]);
+    expect(parseItem(readFileSync(join(root, REQ), "utf8")).data.product).toBe("PRD-0001");
+    expect(readFileSync(file, "utf8")).not.toMatch(/products:/);
+    expect(validate(load(root), readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
+  });
+
+  it("points an older project's free-text products at product files added later", () => {
+    const file = join(root, "groundwork/config.yml");
+    writeFileSync(file, "schemaVersion: 1\nname: Acme\npeople: []\n");
+    writeProduct(root, { id: "PRD-0001", title: "Acme app", areas: [{ id: "onboarding", label: "Onboarding" }, { id: "reporting", label: "Reporting" }], versions: [] });
+    expect(migrate(root)!.requirementProducts).toContainEqual({ file: REQ, from: "Acme app", to: "PRD-0001" });
+    expect(validate(load(root), readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
+  });
+
+  it("changes no file the second time", () => {
+    migrate(root);
+    const before = snapshot(root);
+    expect(migrate(root)).toBeUndefined();
+    expect(snapshot(root)).toEqual(before);
   });
 });

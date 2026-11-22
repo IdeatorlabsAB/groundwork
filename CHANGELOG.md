@@ -7,7 +7,8 @@
 - `groundwork migrate [--dry-run]` moves a project's products and areas from `config.yml` into product files and points requirements at product ids. Projects that haven't migrated keep working as before.
 - `validate` checks area ids across products, duplicate versions, and requirements that name a product by title instead of id.
 - `renumber` covers product files and requirements' `product` links.
-- **Breaking:** `config.yml` is now `schemaVersion: 2` for new projects and after `migrate`. Older groundwork-mcp versions refuse such a folder and say to update.
+- `migrate` also finishes a migration that stopped half-way, and points free-text product names in older projects at product files added later.
+- **Breaking:** `config.yml` is now `schemaVersion: 2` for new projects, after `migrate`, and when the first product file is added to an older project. Older groundwork-mcp versions refuse such a folder and say to update. New `config.yml` files no longer include the old `productAreas` / `products` lists.
 
 ## 0.5.0
 
