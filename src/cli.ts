@@ -238,7 +238,7 @@ async function main(): Promise<number> {
       overwrite: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
   });
   const [cmd, arg] = positionals;
-  const list = (v: string | undefined) => (v ? v.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined);
+  const list = (v: string | undefined) => (v === undefined ? undefined : v.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean));
   /** [product] <version>: the version is the last positional; a product before it is optional. */
   const productVersion = (rest: string[]) => (rest.length > 1 ? { product: rest[0], version: rest[1] } : { version: rest[0] });
   const print = (out: { code: number; lines: string[] }) => {

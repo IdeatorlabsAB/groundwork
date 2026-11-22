@@ -79,6 +79,21 @@ function find(s: State, id: string): { kind: Kind; item: AnyItem } | undefined {
   return undefined;
 }
 
+/**
+ * Why a requirement is part of a release record and can't be edited or deleted any more, if it is: it shipped, it
+ * was made obsolete in a version, or (for a stakeholder requirement) a released solution requirement meets it.
+ */
+export function releaseRecordReason(requirements: Requirement[], r: Requirement): string | undefined {
+  const fix = "Add a new requirement that replaces it, or fix the record with correct_release.";
+  if (r.releasedIn) return `"${r.title}" shipped in ${r.releasedIn}, so it's part of that release's record and can't be changed. ${fix}`;
+  if (r.obsoletedIn) return `"${r.title}" was made obsolete in ${r.obsoletedIn}, so it's part of that release's record and can't be changed. ${fix}`;
+  const versions = [...new Set(requirements.filter((x) => x.releasedIn && x.stakeholderIds?.includes(r.id)).map((x) => x.releasedIn!))];
+  if (versions.length) {
+    return `"${r.title}" is met by requirements released in ${versions.join(", ")}, so it's part of their release record and can't be changed. Add a new stakeholder requirement instead.`;
+  }
+  return undefined;
+}
+
 /** The ids each kind links to. */
 export function outgoing(kind: Kind, item: AnyItem): string[] {
   switch (kind) {
@@ -187,6 +202,15 @@ class Session {
     if (!r || r.product) return state;
     const p = productOf(this.catalogue, r);
     return p ? { ...state, requirements: state.requirements.map((x) => (x.id === id ? { ...x, product: p.id } : x)) } : state;
+  }
+
+  /** Releasing is recorded with who did it, so it needs a known owner or editor. */
+  requireReleaser() {
+    if (!this.actor.person) {
+      throw new UserError(
+        `Releasing is recorded with who did it, so it needs a person from groundwork/config.yml people (owner or editor). You're "${this.actor.id}": set GROUNDWORK_USER, or add your git email there.`,
+      );
+    }
   }
 
   /** The later of two versions in the requirement's product's release order (list order). */
@@ -778,6 +802,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
           if (r.status === "obsolete" || r.status === "in-delivery") {
             throw new UserError(`"${r.title}" is ${r.status}, so it can't be edited. Create a new requirement instead.`);
           }
+          const locked = releaseRecordReason(state.requirements, r);
+          if (locked) throw new UserError(locked);
           s.check(state, "finding", p.findingIds as string[] | undefined, "findingIds");
           s.check(state, "insight", p.insightIds as string[] | undefined, "insightIds");
           s.check(state, "hypothesis", p.hypothesisIds as string[] | undefined, "hypothesisIds");
@@ -824,6 +850,10 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const hit = find(state, id);
       if (!hit) throw new UserError(`No item with id ${id}.`);
       const add = (list: string[] | undefined, x: string) => (list?.includes(x) ? list : [...(list ?? []), x]);
+      if (hit.kind === "requirement") {
+        const locked = releaseRecordReason(state.requirements, hit.item as Requirement);
+        if (locked) throw new UserError(locked);
+      }
       let item = { ...hit.item } as AnyItem & Record<string, unknown>;
       for (const target of linkTo) {
         const t = find(state, target);
@@ -1076,6 +1106,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       inputSchema: { product: productArg, version: versionArg, shipped: reqIds, removed: reqIds.optional(), moveTo: versionArg.optional() },
     },
     write((s, state, c, a: { product?: string; version: string; shipped: string[]; removed?: string[]; moveTo?: string }) => {
+      s.requireReleaser();
       const p = s.targetProduct(a.product);
       const out = releaseVersion(state.requirements, s.catalogue, { product: p, version: a.version, shipped: a.shipped, removed: a.removed, moveTo: a.moveTo, actor: c.actor, now: c.now });
       const next = { ...state, requirements: out.requirements };
@@ -1091,6 +1122,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       inputSchema: { product: productArg, version: versionArg, ids: reqIds.min(1) },
     },
     write((s, state, c, a: { product?: string; version: string; ids: string[] }) => {
+      s.requireReleaser();
       const p = s.targetProduct(a.product);
       const requirements = releaseRequirements(state.requirements, s.catalogue, { product: p, version: a.version, ids: a.ids, actor: c.actor, now: c.now });
       return { state: { ...state, requirements }, result: { report: releaseReport(requirements, s.catalogue, p, a.version) } };
@@ -1115,6 +1147,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       },
     },
     write((s, state, c, a: { product?: string; version: string; reason: string; addShipped?: string[]; removeShipped?: string[]; addObsolete?: string[]; removeObsolete?: string[]; moveTo?: string }) => {
+      s.requireReleaser();
       const p = s.targetProduct(a.product);
       const out = correctRelease(state.requirements, s.catalogue, { ...a, product: p, actor: c.actor, now: c.now });
       return { state: { ...state, requirements: out.requirements }, products: [out.product], result: { report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version) } };
@@ -1178,6 +1211,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const hit = find(state, id);
       if (!hit) throw new UserError(`No item with id ${id}.`);
       if (hit.kind === "requirement") {
+        const locked = releaseRecordReason(state.requirements, hit.item as Requirement);
+        if (locked) throw new UserError(locked.replace("can't be changed", "can't be deleted"));
         const orphaned = fulfilledBy(id, state.requirements).filter((r) => r.stakeholderIds?.length === 1);
         if (orphaned.length) {
           throw new UserError(

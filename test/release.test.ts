@@ -151,3 +151,34 @@ describe("release report and stakeholder progress", () => {
     expect(md).toContain("B's flag was off");
   });
 });
+
+describe("release record integrity", () => {
+  const released = () => release([req("A", { plannedFor: "1.0" }), req("B", { plannedFor: "1.1" })], product(), { version: "1.0", shipped: ["A"] });
+
+  it("refuses a correction that lists the same requirement twice", () => {
+    const { requirements, product: p } = released();
+    expect(() => correctRelease(requirements, cat(p), { product: p, version: "1.0", reason: "x", removeShipped: ["A"], addObsolete: ["A"], moveTo: "1.1", actor: "sam", now: NOW })).toThrow(/more than once/);
+  });
+
+  it("refuses making another product's requirement obsolete in this version", () => {
+    const { requirements, product: p } = released();
+    const other = req("Z", { product: "PRD-0002" });
+    expect(() => correctRelease([...requirements, other], cat(p), { product: p, version: "1.0", reason: "x", addObsolete: ["Z"], actor: "sam", now: NOW })).toThrow(/isn't a solution requirement of/);
+  });
+
+  it("keeps an old report the same when needs get new requirements later", () => {
+    const S = req("S", { kind: "stakeholder", title: "Need", stakeholderIds: undefined, product: undefined });
+    const p = product();
+    const r1 = releaseVersion([S, req("A", { plannedFor: "1.0", stakeholderIds: ["S"], approvedAt: "2026-11-01T00:00:00.000Z" })], cat(p), { product: p, version: "1.0", shipped: ["A"], actor: "sam", now: NOW });
+    const before = releaseReport(r1.requirements, cat(r1.product), r1.product, "1.0").stakeholders[0];
+    expect(before).toMatchObject({ inThisVersion: "fully met", released: 1, total: 1 });
+    const later = [...r1.requirements, req("D", { status: "draft", stakeholderIds: ["S"] }), req("E", { plannedFor: "1.1", stakeholderIds: ["S"], approvedAt: "2026-12-20T00:00:00.000Z" })];
+    expect(releaseReport(later, cat(r1.product), r1.product, "1.0").stakeholders[0]).toMatchObject({ inThisVersion: "fully met", released: 1, total: 1 });
+  });
+
+  it("marks requirements added to a release later, with when and who", () => {
+    const { requirements, product: p } = released();
+    const later = releaseRequirements(requirements, cat(p), { product: p, version: "1.0", ids: ["B"], actor: "alex", now: "2027-01-05T00:00:00.000Z" });
+    expect(renderReleaseReport(releaseReport(later, cat(p), p, "1.0"))).toContain("added 2027-01-05 by alex");
+  });
+});

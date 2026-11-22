@@ -163,10 +163,15 @@ export function correctRelease(requirements: Requirement[], catalogue: Catalogue
   const reason = input.reason?.trim();
   if (!reason) throw new ReleaseError("A correction needs a reason.");
   if (versionOf(p, version).status !== "released") throw new ReleaseError(`${p.title} ${version} isn't released yet, so there's nothing to correct.`);
-  const addShipped = input.addShipped ?? [];
-  const removeShipped = input.removeShipped ?? [];
-  const addObsolete = input.addObsolete ?? [];
-  const removeObsolete = input.removeObsolete ?? [];
+  const uniq = (l?: string[]) => [...new Set(l ?? [])];
+  const addShipped = uniq(input.addShipped);
+  const removeShipped = uniq(input.removeShipped);
+  const addObsolete = uniq(input.addObsolete);
+  const removeObsolete = uniq(input.removeObsolete);
+  // One change per requirement, so the record says exactly what was done.
+  const all = [...addShipped, ...removeShipped, ...addObsolete, ...removeObsolete];
+  const twice = all.filter((id, i) => all.indexOf(id) !== i);
+  if (twice.length) throw new ReleaseError(`${[...new Set(twice)].join(", ")} is listed more than once in the correction. Correct one thing per requirement.`);
   if (![addShipped, removeShipped, addObsolete, removeObsolete].some((l) => l.length)) throw new ReleaseError("The correction doesn't change anything.");
   const find = (id: string) => {
     const r = requirements.find((x) => x.id === id);
@@ -176,7 +181,11 @@ export function correctRelease(requirements: Requirement[], catalogue: Catalogue
   checkShippable(requirements, catalogue, p, addShipped);
   for (const id of removeShipped) if (find(id).releasedIn !== version) throw new ReleaseError(`${id} didn't ship in ${version}.`);
   for (const id of removeObsolete) if (find(id).obsoletedIn !== version) throw new ReleaseError(`${id} wasn't made obsolete in ${version}.`);
-  for (const id of addObsolete) if (!isActive(find(id))) throw new ReleaseError(`${id} is ${find(id).status}; only approved requirements can be made obsolete.`);
+  for (const id of addObsolete) {
+    const r = find(id);
+    if (!inProduct(catalogue, p)(r)) throw new ReleaseError(`${id} isn't a solution requirement of ${p.title}.`);
+    if (!isActive(r)) throw new ReleaseError(`${id} is ${r.status}; only approved requirements can be made obsolete.`);
+  }
   const moveTo = removeShipped.length || removeObsolete.length ? checkMoveTo(p, version, input.moveTo, "Requirements taken out of a release go back to a planned version.") : undefined;
 
   const out = requirements.map((r) => {
@@ -220,28 +229,43 @@ export interface StakeholderProgress {
 export function stakeholderProgress(requirements: Requirement[], stakeholderId: string, catalogue: Catalogue, asOf?: { product: Product; version: string }): StakeholderProgress {
   const s = requirements.find((r) => r.id === stakeholderId);
   const fulfilling = requirements.filter((r) => kindOf(r) === "solution" && r.stakeholderIds?.includes(stakeholderId));
+  if (asOf) return progressAsOf(stakeholderId, s, fulfilling, asOf);
   const counted = fulfilling.filter((r) => r.status !== "obsolete" || r.releasedIn);
-  // "As of" a version: only releases up to and including it count, so an old report still reads as it did then.
-  const order = (p: Product | undefined, v: string) => p?.versions.findIndex((x) => x.version === v) ?? -1;
-  const shippedBy = (r: Requirement) => {
-    if (!r.releasedIn) return false;
-    if (!asOf) return true;
-    const p = productOf(catalogue, r);
-    return p?.id !== asOf.product.id || order(p, r.releasedIn) <= order(asOf.product, asOf.version);
-  };
-  const released = counted.filter(shippedBy);
+  const released = counted.filter((r) => r.releasedIn);
   const current = fulfilling.filter((r) => r.status !== "obsolete");
   let fullyMetIn: string | undefined;
-  if (current.length && current.every(shippedBy)) {
+  if (current.length && current.every((r) => r.releasedIn)) {
     for (const r of current) fullyMetIn = laterVersion(productOf(catalogue, r), fullyMetIn, r.releasedIn!);
   }
   return { id: stakeholderId, title: s?.title ?? stakeholderId, released: released.length, total: counted.length, ...(fullyMetIn ? { fullyMetIn } : {}) };
 }
 
+/**
+ * Progress as it stood when a version was released, by time: requirements approved after the release, drafts, and
+ * releases after it don't count. So an old report reads the same later, even if versions were released out of order.
+ */
+function progressAsOf(id: string, s: Requirement | undefined, fulfilling: Requirement[], asOf: { product: Product; version: string }): StakeholderProgress {
+  const cutoff = asOf.product.versions.find((v) => v.version === asOf.version)?.releasedAt;
+  const by = (t: string | undefined) => !cutoff || !t || t <= cutoff;
+  const releasedAsOf = (r: Requirement) => Boolean(r.releasedIn) && (r.releasedIn === asOf.version || (by(r.releasedAt) && Boolean(r.releasedAt)) || !cutoff);
+  const existedAsOf = (r: Requirement) =>
+    releasedAsOf(r) || ((r.status === "approved" || r.status === "in-delivery" || r.status === "obsolete") && by(r.approvedAt) && !(r.obsoletedAt && cutoff && r.obsoletedAt <= cutoff));
+  const counted = fulfilling.filter(existedAsOf);
+  const released = counted.filter(releasedAsOf);
+  const metHere = counted.length > 0 && released.length === counted.length && counted.some((r) => r.releasedIn === asOf.version);
+  return {
+    id,
+    title: s?.title ?? id,
+    released: released.length,
+    total: counted.length,
+    ...(metHere ? { fullyMetIn: asOf.version } : {}),
+  };
+}
+
 export interface ReleaseReport {
   product: { id: string; title: string };
   version: ProductVersion;
-  introduced: { id: string; title: string; story: string; tickets: unknown[]; stakeholders: { id: string; title: string }[] }[];
+  introduced: { id: string; title: string; story: string; tickets: unknown[]; stakeholders: { id: string; title: string }[]; releasedAt?: string; releasedBy?: string }[];
   madeObsolete: { id: string; title: string; replacedBy: { id: string; title: string }[] }[];
   stakeholders: (StakeholderProgress & { inThisVersion: "fully met" | "partly met" })[];
   corrections: Correction[];
@@ -260,6 +284,8 @@ export function releaseReport(requirements: Requirement[], catalogue: Catalogue,
       story: r.story,
       tickets: ((r as { tickets?: unknown[] }).tickets ?? []) as unknown[],
       stakeholders: (r.stakeholderIds ?? []).map(ref),
+      ...(r.releasedAt ? { releasedAt: r.releasedAt } : {}),
+      ...(r.releasedBy ? { releasedBy: r.releasedBy } : {}),
     }));
   const madeObsolete = mine
     .filter((r) => r.obsoletedIn === version)
@@ -281,7 +307,8 @@ export function renderReleaseReport(r: ReleaseReport): string {
   lines.push("## Introduced", "");
   if (!r.introduced.length) lines.push("Nothing.");
   for (const x of r.introduced) {
-    lines.push(`- **${x.id}** ${x.title}: ${x.story}`);
+    const late = x.releasedAt && r.version.releasedAt && x.releasedAt > r.version.releasedAt ? ` (added ${day(x.releasedAt)} by ${x.releasedBy ?? "unknown"})` : "";
+    lines.push(`- **${x.id}** ${x.title}${late}: ${x.story}`);
     if (x.stakeholders.length) lines.push(`  - Meets: ${x.stakeholders.map((s) => `${s.id} ${s.title}`).join("; ")}`);
   }
   lines.push("", "## Made obsolete", "");

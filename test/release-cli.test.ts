@@ -63,3 +63,12 @@ describe("groundwork release and report", () => {
     expect(runReportCommand(root, { version: "1.0" }).lines.join("\n")).toContain("Import wizard was behind a flag");
   });
 });
+
+describe("groundwork release refuses ambiguous commands", () => {
+  it("refuses correction flags without --correct, and a release without --shipped", () => {
+    expect(runReleaseCommand(root, { version: "1.0", reason: "oops", remove: ["REQ-0002"] }).code).toBe(1);
+    expect(runReleaseCommand(root, { version: "1.0" }).lines.join(" ")).toMatch(/--shipped/);
+    expect(runReleaseCommand(root, { version: "1.0", correct: true, reason: "x", shipped: ["REQ-0002"] }).code).toBe(1);
+    expect(load(root).products[0].versions[0].status).toBe("planned");
+  });
+});

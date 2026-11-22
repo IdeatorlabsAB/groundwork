@@ -908,4 +908,18 @@ describe("releasing", () => {
     process.env.GROUNDWORK_USER = "vic";
     expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/viewer/);
   });
+
+  it("refuses someone who isn't in config.yml", async () => {
+    process.env.GROUNDWORK_USER = "mallory";
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/config.yml people/);
+  });
+
+  it("protects released requirements, and the needs they meet, from edits and deletes", async () => {
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect((await call(c, "update_item", { id: a, patch: { title: "Rewritten" } })).error).toMatch(/shipped in 1.0/);
+    expect((await call(c, "delete_item", { id: a })).error).toMatch(/shipped in 1.0/);
+    const need = stored(a).stakeholderIds![0];
+    expect((await call(c, "delete_item", { id: need })).error).toMatch(/released/);
+    expect((await call(c, "update_item", { id: b, patch: { title: "Still a plan" } })).error).toBeUndefined();
+  });
 });

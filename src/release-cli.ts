@@ -37,6 +37,16 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
   if (config.migrated) return { code: 1, lines: [`This folder was imported into the web app (${config.migrated}); release there.`] };
   const actor = resolveActor(root, config);
   if (actor.person?.role === "viewer") return { code: 1, lines: ["Viewers can't release."] };
+  if (!actor.person) {
+    return { code: 1, lines: [`Releasing is recorded with who did it, so it needs a person from groundwork/config.yml people (owner or editor). You're "${actor.id}": set GROUNDWORK_USER, or add your git email there.`] };
+  }
+  // A release can't be undone, so ambiguous commands are refused rather than guessed.
+  const correctionFlags = [args.reason, args.add, args.remove, args.addObsolete, args.removeObsolete].some((x) => x !== undefined);
+  if (!args.correct && correctionFlags) return { code: 1, lines: ["--reason, --add, --remove, --add-obsolete and --remove-obsolete are for corrections: add --correct."] };
+  if (args.correct && (args.shipped !== undefined || args.removed !== undefined)) {
+    return { code: 1, lines: ["--shipped and --removed are for releasing; a correction uses --add, --remove, --add-obsolete and --remove-obsolete."] };
+  }
+  if (!args.correct && args.shipped === undefined) return { code: 1, lines: ['Say what shipped: --shipped REQ-0001,REQ-0002 (or --shipped "" to release a version with nothing in it).'] };
   const loaded = load(root);
   const catalogue = catalogueOf(config, loaded.products);
   const p = productFor(catalogue, args.product);
