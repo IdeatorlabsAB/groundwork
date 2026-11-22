@@ -10,7 +10,7 @@ import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../cor
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
 import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
 import { nextProductId, writeProduct, type Product } from "../store/products";
-import { laterVersion, stakeholderProgress } from "../store/release";
+import { correctRelease, laterVersion, pendingRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, stakeholderProgress } from "../store/release";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
 import { catalogueOf, findArea, findProduct, plannedVersions, productOf, type Catalogue } from "../store/catalogue";
@@ -52,6 +52,12 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
 7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
 8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
+
+Releasing a version ("Release Clinicare 1.1"):
+1. Call get_release for the version.
+2. If the workflow has a tracker tool, check each planned requirement's tickets and propose as shipped the ones whose tickets are all done. Without a tracker, ask the user which requirements shipped.
+3. Show the user what ships, what becomes obsolete, and where the rest will move. Call release_version only once they agree.
+4. A mistake in a released version is fixed with correct_release and the user's reason, never by editing files. Requirements that shipped later go in with release_requirements.
 
 Recording evidence or requirements directly isn't planning work. A product manager logging interview notes, drafting hypotheses, recording experiment results or writing requirements gets no new need / change / fix call: record what they ask for with the tools above.`;
 
@@ -383,21 +389,22 @@ export function buildServer({ root }: ServerOptions): McpServer {
    * items get readable ids, and only the files that changed are written.
    */
   const write =
-    <A>(fn: (s: Session, state: State, ctx: ops.Ctx, args: A) => { state: State; result: unknown }) =>
+    <A>(fn: (s: Session, state: State, ctx: ops.Ctx, args: A) => { state: State; result: unknown; products?: Product[] }) =>
     async (args: A): Promise<Result> => {
       try {
         const s = open();
         const refused = refusal(s);
         if (refused) return fail(refused);
         if (!isInitialized(root)) writeConfig(root, s.config);
-        const { state, result } = fn(s, s.loaded.items, s.ctx(), args);
+        const { state, result, products } = fn(s, s.loaded.items, s.ctx(), args);
         const { items, renamed } = assignIds(s.loaded.items, state);
         const files = save(root, s.loaded, items);
+        for (const p of products ?? []) files.push(writeProduct(root, p, s.loaded.paths.get(p.id)));
         let text = JSON.stringify({ ...(result as object), filesChanged: files }, null, 2);
         renamed.forEach((to, from) => (text = text.split(from).join(to)));
         return { content: [{ type: "text", text }] };
       } catch (e) {
-        if (e instanceof UserError) return fail(e.message);
+        if (e instanceof UserError || e instanceof ReleaseError) return fail(e.message);
         return fail(`Groundwork couldn't save that: ${(e as Error).message}`);
       }
     };
@@ -1017,6 +1024,100 @@ export function buildServer({ root }: ServerOptions): McpServer {
         if (last && last !== o.obsoletePlannedFor) next = apply(next, ops.planObsolescence(next, c, [o.id], last))[0];
       }
       return { state: next, result: { planned: ids.map((id) => s.summary("requirement", requirementOf(next, id))), version } };
+    }),
+  );
+
+  // -------------------------------------------------------------------------------------------
+  // Releasing
+  // -------------------------------------------------------------------------------------------
+
+  const productArg = z.string().max(100).optional().describe("The product's id or title. Needed when there's more than one product.");
+  const versionArg = z.string().trim().min(1).max(40);
+  const reqIds = z.array(localId).max(100);
+  /** The catalogue with one product replaced, for a report on the state after a change. */
+  const withProduct = (s: Session, p: Product) => catalogueOf(s.config, s.catalogue.products.map((x) => (x.id === p.id ? p : x)));
+
+  server.registerTool(
+    "get_release",
+    {
+      title: "Get release",
+      description:
+        "For a planned version: the solution requirements planned to ship in it and the requirements planned to become obsolete in it. For a released version: its release report (introduced, made obsolete, stakeholder needs met, corrections).",
+      inputSchema: { product: productArg, version: versionArg },
+      annotations: { readOnlyHint: true },
+    },
+    read((s, { product, version }: { product?: string; version: string }) => {
+      const p = s.targetProduct(product);
+      const v = p.versions.find((x) => x.version === version);
+      if (!v) throw new UserError(`${version} isn't a version of ${p.title}. Versions: ${p.versions.map((x) => x.version).join(", ") || "none"}.`);
+      const requirements = s.loaded.items.requirements;
+      if (v.status === "released") return { product: p.id, version, status: "released", report: releaseReport(requirements, s.catalogue, p, version) };
+      const pending = pendingRelease(requirements, p, version, s.catalogue);
+      const ref = (id: string) => ({ id, title: requirements.find((r) => r.id === id)?.title ?? id });
+      return {
+        product: p.id,
+        version,
+        status: "planned",
+        planned: pending.planned.map((r) => ({ ...s.summary("requirement", r), tickets: (r as { tickets?: unknown[] }).tickets ?? [] })),
+        obsoleteWhenReleased: {
+          replaced: pending.replacedBy.map((r) => ({ ...s.summary("requirement", r), replacedBy: (r.obsoletedBy ?? []).map(ref) })),
+          removals: pending.removals.map((r) => s.summary("requirement", r)),
+        },
+      };
+    }),
+  );
+
+  server.registerTool(
+    "release_version",
+    {
+      title: "Release version",
+      description:
+        "Release a planned version: `shipped` are the planned requirements that went out in it. Planned requirements not listed, and planned removals not confirmed in `removed`, move to `moveTo` (another planned version), which is required if there are any. Replaced requirements become obsolete once all their replacements have shipped. Show the user the list and get their agreement first.",
+      inputSchema: { product: productArg, version: versionArg, shipped: reqIds, removed: reqIds.optional(), moveTo: versionArg.optional() },
+    },
+    write((s, state, c, a: { product?: string; version: string; shipped: string[]; removed?: string[]; moveTo?: string }) => {
+      const p = s.targetProduct(a.product);
+      const out = releaseVersion(state.requirements, s.catalogue, { product: p, version: a.version, shipped: a.shipped, removed: a.removed, moveTo: a.moveTo, actor: c.actor, now: c.now });
+      const next = { ...state, requirements: out.requirements };
+      return { state: next, products: [out.product], result: { released: `${p.title} ${a.version}`, report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version) } };
+    }),
+  );
+
+  server.registerTool(
+    "release_requirements",
+    {
+      title: "Release requirements",
+      description: "Record approved solution requirements as shipped in a version that's already released, e.g. for teams that ship continuously.",
+      inputSchema: { product: productArg, version: versionArg, ids: reqIds.min(1) },
+    },
+    write((s, state, c, a: { product?: string; version: string; ids: string[] }) => {
+      const p = s.targetProduct(a.product);
+      const requirements = releaseRequirements(state.requirements, s.catalogue, { product: p, version: a.version, ids: a.ids, actor: c.actor, now: c.now });
+      return { state: { ...state, requirements }, result: { report: releaseReport(requirements, s.catalogue, p, a.version) } };
+    }),
+  );
+
+  server.registerTool(
+    "correct_release",
+    {
+      title: "Correct release",
+      description:
+        "Correct a released version, e.g. a requirement recorded as shipped that didn't. Changes only what's listed; requirements taken out go back to `moveTo` (a planned version). The correction is recorded on the version with who, when and the reason, and shows in the release report. Ask the user for the reason.",
+      inputSchema: {
+        product: productArg,
+        version: versionArg,
+        reason: z.string().trim().min(1).max(500),
+        addShipped: reqIds.optional(),
+        removeShipped: reqIds.optional(),
+        addObsolete: reqIds.optional(),
+        removeObsolete: reqIds.optional(),
+        moveTo: versionArg.optional(),
+      },
+    },
+    write((s, state, c, a: { product?: string; version: string; reason: string; addShipped?: string[]; removeShipped?: string[]; addObsolete?: string[]; removeObsolete?: string[]; moveTo?: string }) => {
+      const p = s.targetProduct(a.product);
+      const out = correctRelease(state.requirements, s.catalogue, { ...a, product: p, actor: c.actor, now: c.now });
+      return { state: { ...state, requirements: out.requirements }, products: [out.product], result: { report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version) } };
     }),
   );
 

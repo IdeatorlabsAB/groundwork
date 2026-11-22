@@ -20,6 +20,7 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 | Proposing a feature or bet | Look for supporting insights (`search_items`), then offer to draft a hypothesis linked to them (`add_hypotheses`) |
 | Planning a test, pilot or A/B test | `add_experiment` for that hypothesis, with a primary metric, baseline and target |
 | Sharing results | `record_experiment_results`, then offer a finding (`add_findings`) linked to the experiment and hypothesis |
+| Releasing a version, or asking what a version contains ("Release Clinicare 1.1", "what's in 1.0?") | `get_release`, then `release_version` once the user agrees on what shipped (see "Releasing") |
 | Planning a task (plan mode, a written plan, an autonomous workflow) | Classify it as new need, change or fix, and state that in the plan; for a new need or change, record requirements before code (see "When you plan work") |
 | Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below). Search existing requirements and findings first, and link findings when there are any |
 | Asking "what do we know about X?" or "why are we building Y?" | `search_items` and `get_item`, and answer with the item ids and files |
@@ -52,6 +53,17 @@ State your call in one line of the plan, so the user can overrule it:
 Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
 
 When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement.
+
+## Releasing
+
+Only solution requirements belong to releases. Stakeholder needs count as met through the solution requirements that fulfil them.
+
+1. `get_release` for the version shows what's planned to ship and what's planned to become obsolete.
+2. Work out what actually shipped. If you have a tracker tool (Linear, Jira, GitHub), check each planned requirement's tickets and propose the ones whose tickets are all done. Otherwise ask the user.
+3. Show the user what ships, what becomes obsolete, and which planned version the rest moves to. Call `release_version` only once they agree. Groundwork records who released it and when.
+4. A requirement that shipped later in an already released version goes in with `release_requirements`.
+5. A mistake in a released version is fixed with `correct_release`, with the user's reason. Never edit release fields in the files. The correction shows in the release report.
+6. For documentation, `npx -p groundwork-mcp groundwork report release <version>` prints the release report as Markdown.
 
 ## Rules
 
