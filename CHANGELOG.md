@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - `groundwork validate --against <base>` also reports ids that the branch shares with a different item on the base branch. Everyone numbers new items on their own clone, so two branches can both create `REQ-0012`.
 - `groundwork renumber --against <base>` fixes this on the branch. The branch's items get the next free ids, their files are renamed, and links to them are rewritten in the files the branch changed. Ids on the base never change. Notes that mention an old id are reported, not rewritten.
