@@ -12,7 +12,7 @@ import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersi
 import { nextProductId, writeProduct, type Product } from "../store/products";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
-import { catalogueOf, findArea, findProduct, type Catalogue } from "../store/catalogue";
+import { catalogueOf, findArea, findProduct, plannedVersions, productOf, type Catalogue } from "../store/catalogue";
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
@@ -151,6 +151,34 @@ class Session {
       throw new UserError(`Unknown product area "${value}". ${where}: ${known}. Add it with add_product_areas, or leave it out.`);
     }
     return a.id;
+  }
+
+  /** Check that `version` is a planned version of the requirement's product, and return it. */
+  checkPlanned(r: Requirement, version: string): string {
+    if (kindOf(r) === "stakeholder") throw new UserError("only solution requirements are planned for versions");
+    const p = productOf(this.catalogue, r);
+    if (!p) {
+      throw new UserError(
+        this.catalogue.products.length > 1
+          ? `"${r.title}" has no product, and there's more than one: set its product first.`
+          : `"${r.title}" has no product with versions. Add versions with add_product_versions.`,
+      );
+    }
+    const planned = plannedVersions(p);
+    if (!planned.includes(version)) {
+      throw new UserError(`${version} isn't a planned version of ${p.title}. Planned: ${planned.join(", ") || "none"}. Add one with add_product_versions.`);
+    }
+    return version;
+  }
+
+  /** The version an approval plans the requirement for: required for a solution requirement once its product has planned versions. */
+  planOnApproval(r: Requirement, plannedFor: string | undefined): string | undefined {
+    if (plannedFor) return this.checkPlanned(r, plannedFor);
+    if (kindOf(r) === "stakeholder") return undefined;
+    const p = productOf(this.catalogue, r);
+    const planned = p ? plannedVersions(p) : [];
+    if (planned.length) throw new UserError(`Which version is "${r.title}" planned for? Pass plannedFor: one of ${planned.join(", ")}.`);
+    return undefined;
   }
 
   /** The product a product-level change is for: the named one, or the only one. */
@@ -858,11 +886,18 @@ export function buildServer({ root }: ServerOptions): McpServer {
           .optional()
           .describe("Who approved it, when they did so outside Groundwork, e.g. verbally. A person id from get_workspace."),
         note: z.string().trim().max(300).optional().describe('How or where it was approved, e.g. "Approved by Maria in sprint planning".'),
+        plannedFor: z
+          .string()
+          .max(40)
+          .optional()
+          .describe("Solution requirements: the planned product version it should ship in. Required once the product has planned versions (see get_workspace)."),
       },
       annotations: { destructiveHint: false },
     },
-    write((s, state, c, { id, approvedBy, note }: { id: string; approvedBy?: string; note?: string }) => {
+    write((s, state, c, { id, approvedBy, note, plannedFor }: { id: string; approvedBy?: string; note?: string; plannedFor?: string }) => {
       const r = requirementOf(state, id);
+      const plan = s.planOnApproval(r, plannedFor);
+      const planned = (next: State): State => (plan ? apply(next, ops.planRequirements(next, c, [id], plan))[0] : next);
       // Naming yourself isn't recording someone else's approval: the normal approver check applies.
       if (approvedBy && approvedBy !== s.actor.id) {
         const person = s.config.people.find((m) => m.id === approvedBy);
@@ -877,8 +912,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
             `"${r.title}" is waiting for ${asked}, not ${person.name}. Record ${asked}'s approval, or ask ${asked} to send it back so it can be submitted to ${person.name}.`,
           );
         }
-        const [next] = apply(state, ops.approveRequirement(state, c, id, { approvedBy, note }));
-        return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)) } };
+        const next = planned(apply(state, ops.approveRequirement(state, c, id, { approvedBy, note }))[0]);
+        return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)), ...(plan ? { plannedFor: plan } : {}) } };
       }
       if (r.status !== "awaiting-approval") {
         const hint = r.status === "draft" ? " If someone approved it outside Groundwork, record it with approvedBy." : "";
@@ -888,8 +923,28 @@ export function buildServer({ root }: ServerOptions): McpServer {
         const name = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver ?? "someone else";
         throw new UserError(`"${r.title}" is waiting for ${name}, not you (${s.actor.id}). Set GROUNDWORK_USER or your email in config.yml people if that's wrong.`);
       }
-      const [next] = apply(state, ops.approveRequirement(state, c, id));
-      return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)) } };
+      const next = planned(apply(state, ops.approveRequirement(state, c, id))[0]);
+      return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)), ...(plan ? { plannedFor: plan } : {}) } };
+    }),
+  );
+
+  server.registerTool(
+    "plan_requirements",
+    {
+      title: "Plan requirements for a version",
+      description:
+        "Move approved solution requirements that haven't shipped to another planned version of their product, e.g. when work slips from 1.1 to 1.2. Requirements they replace move with them.",
+      inputSchema: { ids: z.array(localId).min(1).max(50), version: z.string().trim().min(1).max(40) },
+    },
+    write((s, state, c, { ids, version }: { ids: string[]; version: string }) => {
+      for (const id of ids) {
+        const r = requirementOf(state, id);
+        if (r.status !== "approved" && r.status !== "in-delivery") throw new UserError(`"${r.title}" is ${r.status}: approve it first, with plannedFor.`);
+        if (r.releasedIn) throw new UserError(`"${r.title}" shipped in ${r.releasedIn}.`);
+        s.checkPlanned(r, version);
+      }
+      const [next] = apply(state, ops.planRequirements(state, c, ids, version));
+      return { state: next, result: { planned: ids.map((id) => s.summary("requirement", requirementOf(next, id))), version } };
     }),
   );
 

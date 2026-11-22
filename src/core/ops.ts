@@ -424,3 +424,26 @@ export function markSentToDelivery(s: Collections, c: Ctx, id: string, delivery:
 export function updateDeliveryStates(s: Collections, byRequirement: Record<string, Delivery>): Change {
   return nothing0({ requirements: s.requirements.map((r) => (byRequirement[r.id] ? { ...r, delivery: byRequirement[r.id] } : r)) });
 }
+
+/**
+ * Plan requirements for a product version. Requirements they replace, whose obsolescence was planned with them,
+ * move to the same version: an old requirement stays valid until its replacement ships.
+ */
+export function planRequirements(s: Collections, c: Ctx, ids: string[], version: string): Change<boolean> {
+  const planned = s.requirements.filter((r) => ids.includes(r.id));
+  if (!planned.length) return nothing(false);
+  const replaced = new Set(planned.flatMap((r) => r.replaces ?? []));
+  return {
+    next: {
+      requirements: s.requirements.map((r) =>
+        ids.includes(r.id)
+          ? { ...r, plannedFor: version }
+          : replaced.has(r.id) && r.obsoletePlannedFor && !r.obsoletedIn
+            ? { ...r, obsoletePlannedFor: version }
+            : r,
+      ),
+      activity: [...planned.map((r) => log(c, "requirement", `planned "${r.title}" for ${version}`, r.id)), ...s.activity],
+    },
+    result: true,
+  };
+}

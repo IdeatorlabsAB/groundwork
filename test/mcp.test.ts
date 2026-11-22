@@ -138,6 +138,7 @@ describe("local MCP server", () => {
         "get_workspace",
         "link_items",
         "obsolete_requirement",
+        "plan_requirements",
         "record_experiment_results",
         "search_items",
         "send_back_requirement",
@@ -674,5 +675,63 @@ describe("product tools on product files", () => {
   it("refuses versions in a project that hasn't migrated", async () => {
     writeConfig(root, { ...readConfig(root), products: ["Acme app"] });
     expect((await call(c, "add_product_versions", { versions: [{ version: "1.0" }] })).error).toMatch(/groundwork migrate/);
+  });
+});
+
+describe("planning requirements for versions", () => {
+  let c: Client;
+  let need: string;
+  let sol: string;
+  const approve = async (id: string, extra: Record<string, unknown> = {}) => {
+    await call(c, "submit_requirement_for_approval", { id, approverId: "sam" });
+    return call(c, "approve_requirement", { id, ...extra });
+  };
+  beforeEach(async () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 2, productAreas: [], products: [] });
+    writeProduct(root, {
+      id: "PRD-0001",
+      title: "Clinicare Web Application",
+      areas: [],
+      versions: [
+        { version: "1.0", status: "released" },
+        { version: "1.1", status: "planned" },
+        { version: "1.2", status: "planned" },
+      ],
+    });
+    c = await connect();
+    need = (await call(c, "add_requirements", { requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }] })).data.created[0].id;
+    sol = (await call(c, "add_requirements", { requirements: [{ kind: "solution", title: "Slots", story: "The booking view shall show free slots.", acceptanceCriteria: ["a"], stakeholderIds: [need] }] })).data.created[0].id;
+  });
+  const stored = (id: string) => load(root).items.requirements.find((r) => r.id === id)!;
+
+  it("asks which version a solution requirement is planned for", async () => {
+    expect((await approve(sol)).error).toMatch(/Which version is "Slots" planned for\? Pass plannedFor: one of 1.1, 1.2/);
+  });
+
+  it("approves and plans in one step", async () => {
+    expect((await approve(sol, { plannedFor: "1.1" })).error).toBeUndefined();
+    expect(stored(sol)).toMatchObject({ status: "approved", plannedFor: "1.1" });
+  });
+
+  it("refuses a released version, or one that doesn't exist", async () => {
+    expect((await approve(sol, { plannedFor: "1.0" })).error).toMatch(/1.0 isn't a planned version of Clinicare Web Application. Planned: 1.1, 1.2/);
+    expect((await call(c, "approve_requirement", { id: sol, plannedFor: "9.9" })).error).toMatch(/9.9 isn't a planned version/);
+  });
+
+  it("approves a stakeholder requirement without a version, and refuses one with a version", async () => {
+    expect((await approve(need, { plannedFor: "1.1" })).error).toMatch(/only solution requirements are planned for versions/);
+    expect((await call(c, "approve_requirement", { id: need })).error).toBeUndefined();
+  });
+
+  it("records a verbal approval with its version", async () => {
+    expect((await call(c, "approve_requirement", { id: sol, approvedBy: "alex", plannedFor: "1.2" })).error).toBeUndefined();
+    expect(stored(sol)).toMatchObject({ approvedBy: "alex", recordedBy: "sam", plannedFor: "1.2" });
+  });
+
+  it("re-plans an approved requirement, and refuses a draft", async () => {
+    expect((await call(c, "plan_requirements", { ids: [sol], version: "1.2" })).error).toMatch(/approve it first/);
+    await approve(sol, { plannedFor: "1.1" });
+    expect((await call(c, "plan_requirements", { ids: [sol], version: "1.2" })).error).toBeUndefined();
+    expect(stored(sol).plannedFor).toBe("1.2");
   });
 });
