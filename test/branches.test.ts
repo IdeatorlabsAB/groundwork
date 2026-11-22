@@ -11,11 +11,13 @@ import { validate } from "../src/store/validate";
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-function repo() {
-  const root = mkdtempSync(join(tmpdir(), "gw-branches-"));
-  dirs.push(root);
+function repo(sub = "") {
+  const top = mkdtempSync(join(tmpdir(), "gw-branches-"));
+  dirs.push(top);
+  const root = join(top, sub);
+  mkdirSync(root, { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  git("init", "-q", "-b", "main");
+  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: top }); // the repo starts at `top`; the project may be deeper
   git("config", "user.name", "Test");
   git("config", "user.email", "test@example.com");
   writeConfig(root, { schemaVersion: 1, name: "Clinicare", productAreas: [], products: [], people: [] });
@@ -53,8 +55,8 @@ const R = "groundwork/requirements";
  * feature (branched before REQ-0002-from-main): REQ-0002-from-feature (stakeholder) and REQ-0003 (solution for it).
  * Ends checked out on feature.
  */
-export function scenario(opts: { featureNotes?: string; featureComment?: string } = {}) {
-  const r = repo();
+export function scenario(opts: { featureNotes?: string; featureComment?: string; sub?: string } = {}) {
+  const r = repo(opts.sub);
   r.write(`${R}/REQ-0001-need.md`, req("REQ-0001", "Need"));
   r.commit("base");
   r.git("branch", "feature");
@@ -171,5 +173,53 @@ describe("renumber", () => {
     const out = renumber(r.root, "main");
     expect(out.renumbered.map((x) => x.to)).toEqual(["REQ-0004", "REQ-0005"]);
     expect(findClashes(r.root, "main")).toEqual([]);
+  });
+});
+
+describe("renumber in real-world setups", () => {
+  it("works when the project is in a subfolder of the repo", () => {
+    const r = scenario({ sub: "apps/my app" });
+    expect(findClashes(r.root, "main").map((c) => c.id)).toEqual(["REQ-0002"]);
+    expect(renumber(r.root, "main").renumbered.map((x) => x.to)).toEqual(["REQ-0004"]);
+  });
+
+  it("never rewrites the base's items when git converts line endings", () => {
+    const r = scenario();
+    r.git("merge", "-q", "--no-edit", "main");
+    r.git("config", "core.autocrlf", "true");
+    r.git("rm", "-q", "-r", "--cached", ".");
+    r.git("reset", "-q", "--hard");
+    const before = readFileSync(join(r.root, `${R}/REQ-0002-from-main.md`), "utf8");
+    expect(before).toContain("\r\n");
+    const out = renumber(r.root, "main");
+    expect(out.renumbered.map((x) => x.oldPath)).toEqual([`${R}/REQ-0002-from-feature.md`]);
+    expect(readFileSync(join(r.root, `${R}/REQ-0002-from-main.md`), "utf8")).toBe(before);
+    expect(out.rewritten).not.toContain(`${R}/REQ-0002-from-main.md`);
+  });
+
+  it("keeps a base item's links to the base's item when the branch edits it after merging", () => {
+    const r = repo();
+    r.write(`${R}/REQ-0001-need.md`, req("REQ-0001", "Need"));
+    r.commit("base");
+    r.git("branch", "feature");
+    r.write(`${R}/REQ-0002-main-need.md`, req("REQ-0002", "Main need"));
+    r.write(`${R}/REQ-0003-main-sol.md`, solution("REQ-0003", "Main sol", ["REQ-0002"]));
+    r.commit("main");
+    r.git("checkout", "-q", "feature");
+    r.write(`${R}/REQ-0002-feat.md`, req("REQ-0002", "Feat"));
+    r.commit("feature");
+    r.git("merge", "-q", "--no-edit", "main");
+    const file = join(r.root, `${R}/REQ-0003-main-sol.md`);
+    writeFileSync(file, readFileSync(file, "utf8").replace("title: Main sol", "title: Main solution"));
+    expect(renumber(r.root, "main").renumbered.map((x) => x.to)).toEqual(["REQ-0004"]);
+    expect(parseItem(readFileSync(file, "utf8")).data.stakeholderIds).toEqual(["REQ-0002"]);
+  });
+
+  it("never overwrites an existing file, even an unreadable one", () => {
+    const r = scenario();
+    writeFileSync(join(r.root, `${R}/REQ-0004-draft.md`), "half-written, no frontmatter");
+    const out = renumber(r.root, "main");
+    expect(out.renumbered.map((x) => x.to)).toEqual(["REQ-0005"]);
+    expect(readFileSync(join(r.root, `${R}/REQ-0004-draft.md`), "utf8")).toBe("half-written, no frontmatter");
   });
 });

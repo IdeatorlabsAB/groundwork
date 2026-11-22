@@ -71,7 +71,7 @@ export function itemsAt(root: string, ref: string): ItemFile[] {
     .filter(isItemPath);
   if (!paths.length) return [];
   // One `git cat-file --batch` call: each object comes back as "<sha> blob <size>\n<bytes>\n".
-  const out = git(root, ["cat-file", "--batch"], paths.map((p) => `${ref}:${p}`).join("\n") + "\n");
+  const out = git(root, ["cat-file", "--batch"], paths.map((p) => `${ref}:./${p}`).join("\n") + "\n");
   const items: ItemFile[] = [];
   let at = 0;
   for (const path of paths) {
@@ -132,24 +132,34 @@ export interface Renumbered {
 const SPLIT = /^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)([\s\S]*)$/;
 const ID = /^([A-Z]+)-(\d+)$/;
 
-/** Rewrite ids in a file's frontmatter, editing the YAML in place so comments and layout survive. Never the body. */
-function rewriteFrontmatter(text: string, map: Map<string, string>): string {
+/**
+ * Rewrite ids in a file's frontmatter, editing the YAML in place so comments and layout survive. Never the body.
+ * `newId` renames the item itself. A link is rewritten only if `base` (this file's version on the base branch, if
+ * any) didn't already have it in that field: a link the base already had means the base's item, not the branch's.
+ */
+function rewriteFrontmatter(text: string, map: Map<string, string>, base: Record<string, unknown> | undefined, newId?: string): string {
   const m = SPLIT.exec(text);
   if (!m) return text;
   const doc = YAML.parseDocument(m[2]);
+  const inBase = (field: string, v: string) => {
+    const b = base?.[field];
+    return Array.isArray(b) ? b.includes(v) : b === v;
+  };
   let changed = false;
-  for (const field of ["id", "hypothesisId"]) {
-    const v = doc.get(field);
-    if (typeof v === "string" && map.has(v)) {
-      doc.set(field, map.get(v));
-      changed = true;
-    }
+  if (newId && doc.get("id") !== newId) {
+    doc.set("id", newId);
+    changed = true;
+  }
+  const h = doc.get("hypothesisId");
+  if (typeof h === "string" && map.has(h) && !inBase("hypothesisId", h)) {
+    doc.set("hypothesisId", map.get(h));
+    changed = true;
   }
   for (const field of LINK_FIELDS) {
     const seq = doc.get(field);
     if (!YAML.isSeq(seq)) continue;
     for (const node of seq.items) {
-      if (YAML.isScalar(node) && typeof node.value === "string" && map.has(node.value)) {
+      if (YAML.isScalar(node) && typeof node.value === "string" && map.has(node.value) && !inBase(field, node.value)) {
         node.value = map.get(node.value)!;
         changed = true;
       }
@@ -170,9 +180,15 @@ export function renumber(root: string, ref: string): { renumbered: Renumbered[];
   const work = itemsInWorkingTree(root);
 
   const next = new Map<string, number>();
-  for (const x of [...base, ...work]) {
-    const m = ID.exec(x.id);
+  const take = (id: string) => {
+    const m = ID.exec(id);
     if (m) next.set(m[1], Math.max(next.get(m[1]) ?? 1, Number(m[2]) + 1));
+  };
+  for (const x of [...base, ...work]) take(x.id);
+  // Files that couldn't be read still hold their number.
+  for (const folder of FOLDERS) {
+    const dir = join(root, DIR, folder);
+    if (existsSync(dir)) for (const name of readdirSync(dir)) take(/^[A-Z]+-\d+/.exec(name)?.[0] ?? "");
   }
   const renumbered: Renumbered[] = [];
   const map = new Map<string, string>();
@@ -183,27 +199,33 @@ export function renumber(root: string, ref: string): { renumbered: Renumbered[];
     next.set(prefix, n + 1);
     const to = `${prefix}-${String(n).padStart(4, "0")}`;
     const dir = c.path.slice(0, c.path.lastIndexOf("/") + 1);
-    const name = c.path.slice(dir.length).replace(/^[A-Z]+-\d+/, to);
-    const r = { from: c.id, to, oldPath: c.path, newPath: dir + name };
+    const newPath = dir + c.path.slice(dir.length).replace(/^[A-Z]+-\d+/, to);
+    if (existsSync(join(root, newPath))) throw new GitError(`Can't renumber ${c.path}: ${newPath} already exists.`);
+    const r = { from: c.id, to, oldPath: c.path, newPath };
     renumbered.push(r);
     byPath.set(c.path, r);
     if (!map.has(c.id)) map.set(c.id, to);
   }
 
-  const baseText = new Map(base.map((x) => [x.path, x.text]));
-  const changed = work.filter((x) => baseText.get(x.path) !== x.text);
+  // Compare with the base by content, not bytes: git may have converted line endings on checkout.
+  const baseByPath = new Map(base.map((x) => [x.path, x]));
+  const bodyOf = (text: string) => (SPLIT.exec(text)?.[4] ?? "").replace(/\r\n/g, "\n");
   const rewritten: string[] = [];
   const mentions: { file: string; id: string }[] = [];
-  for (const x of changed) {
-    const target = byPath.get(x.path)?.newPath ?? x.path;
-    const text = rewriteFrontmatter(x.text, map);
+  for (const x of work) {
+    const own = byPath.get(x.path);
+    const onBase = baseByPath.get(x.path);
+    const target = own?.newPath ?? x.path;
+    const text = rewriteFrontmatter(x.text, map, own ? undefined : onBase?.data, own?.to);
     if (text !== x.text || target !== x.path) {
       writeFileSync(join(root, target), text);
       if (target !== x.path) unlinkSync(join(root, x.path));
       if (text !== x.text) rewritten.push(target);
     }
-    const body = SPLIT.exec(x.text)?.[4] ?? "";
-    for (const from of map.keys()) if (new RegExp(`\\b${from}\\b`).test(body)) mentions.push({ file: target, id: from });
+    const body = bodyOf(x.text);
+    if (own || !onBase || bodyOf(onBase.text) !== body) {
+      for (const from of map.keys()) if (new RegExp(`\\b${from}\\b`).test(body)) mentions.push({ file: target, id: from });
+    }
   }
   return { renumbered, rewritten, mentions };
 }
