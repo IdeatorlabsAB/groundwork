@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 - **Product catalogue.** Each product is a file in `groundwork/products/` (`PRD-0001-…md`) holding its areas and versions, kept in the repo next to the code. Area ids are unique across products. A solution requirement's `product` is the product id.
 - `add_products` creates product files. `add_product_areas` adds areas to one, and the new `add_product_versions` adds planned versions. `get_workspace` returns each product with its areas and versions.
