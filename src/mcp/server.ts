@@ -719,13 +719,35 @@ export function buildServer({ root }: ServerOptions): McpServer {
     "approve_requirement",
     {
       title: "Approve requirement",
-      description: "Sign off a requirement that is awaiting your approval. Only the named approver can approve.",
-      inputSchema: { id: itemId },
+      description:
+        "Sign off a requirement that is awaiting your approval. Only the named approver can approve. If the approver signed off outside Groundwork (e.g. verbally), pass approvedBy and a note. Groundwork records who entered it.",
+      inputSchema: {
+        id: itemId,
+        approvedBy: z
+          .string()
+          .max(40)
+          .optional()
+          .describe("Who approved it, when they did so outside Groundwork, e.g. verbally. A person id from get_workspace."),
+        note: z.string().trim().max(300).optional().describe('How or where it was approved, e.g. "Approved by Maria in sprint planning".'),
+      },
       annotations: { destructiveHint: false },
     },
-    write((s, state, c, { id }: { id: string }) => {
+    write((s, state, c, { id, approvedBy, note }: { id: string; approvedBy?: string; note?: string }) => {
       const r = requirementOf(state, id);
-      if (r.status !== "awaiting-approval") throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.`);
+      if (approvedBy) {
+        const person = s.config.people.find((m) => m.id === approvedBy);
+        if (!person) throw new UserError(`${approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
+        if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+        if (r.status !== "draft" && r.status !== "awaiting-approval") {
+          throw new UserError(`"${r.title}" is ${r.status}; only drafts and requirements awaiting approval can be approved.`);
+        }
+        const [next] = apply(state, ops.approveRequirement(state, c, id, { approvedBy, note }));
+        return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)) } };
+      }
+      if (r.status !== "awaiting-approval") {
+        const hint = r.status === "draft" ? " If someone approved it outside Groundwork, record it with approvedBy." : "";
+        throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.${hint}`);
+      }
       if (r.approver !== s.actor.id) {
         const name = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver ?? "someone else";
         throw new UserError(`"${r.title}" is waiting for ${name}, not you (${s.actor.id}). Set GROUNDWORK_USER or your email in config.yml people if that's wrong.`);

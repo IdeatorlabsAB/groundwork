@@ -57,7 +57,7 @@ Required fields are in bold.
 **`title`**, **`summary`**, `experimentIds`, `hypothesisIds`, `insightIds`, `confidence` (`low` | `medium` | `high`), `productArea`, `createdAt`.
 
 **Requirement** (`requirements/`, `REQ-`): what is needed before building, in two layers.
-**`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need`) and `originNote`, `approver`, `approvedBy`, `approvedAt`, `obsoletedBy`, `obsoletedAt`, `productArea`, `createdAt`, `updatedAt`.
+**`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need`) and `originNote`, `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `obsoletedBy`, `obsoletedAt`, `productArea`, `createdAt`, `updatedAt`.
 
 The two layers:
 
@@ -87,6 +87,7 @@ These rules live in the core library, so every Groundwork tool applies them the 
 - New hypotheses, findings and requirements without a `productArea` take the most common one among their linked evidence.
 - A solution requirement can't be saved without at least one stakeholder requirement in `stakeholderIds`, and a stakeholder requirement can't have any. A stakeholder requirement can't be deleted while it is the only one a solution requirement fulfils. `validate` reports an active solution requirement without stakeholder links as an error.
 - `validate` warns about an active stakeholder requirement that no solution requirement fulfils yet, and about a `story` that doesn't fit its layer: a stakeholder story without "As a … I want … so that …", or a solution requirement without "shall". The tools save these and return the same warnings.
+- An approval given outside Groundwork (e.g. verbally) can be recorded with `approvedBy` and an optional note; the person recording it is stored as `recordedBy`.
 - Requirements go from `draft` to `awaiting-approval` (with an `approver`) to `approved`. The approver can send one back to `draft`. Only `approved` requirements can become `obsolete`.
 - Deleting an item removes links to it. Deleting a hypothesis also deletes its experiments.
 
