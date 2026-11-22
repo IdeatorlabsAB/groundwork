@@ -2,8 +2,10 @@
 id: REQ-0003
 title: Keep audit log of imports for 7 years
 kind: solution
-story: As a compliance officer I want every import logged so that we meet record-keeping rules.
+story: The system shall log every import with who ran it, when, and which file was imported, and shall keep each log entry for 7 years.
 product: Acme app
+stakeholderIds:
+  - REQ-0004
 acceptanceCriteria:
   - Each import records who, when and which file
   - Logs are kept for 7 years

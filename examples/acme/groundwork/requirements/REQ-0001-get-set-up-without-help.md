@@ -2,7 +2,7 @@
 id: REQ-0001
 title: Get set up without help
 kind: stakeholder
-story: New ops leads need to get their data in on the first day, without contacting support.
+story: As a new ops lead I want to get our data into Acme on my first day without contacting support, so that my team can start using it straight away.
 stakeholder: Ops leads
 acceptanceCriteria:
   - A new account can import its first data set unaided

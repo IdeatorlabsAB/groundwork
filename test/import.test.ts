@@ -31,7 +31,7 @@ describe("groundwork import", () => {
   it("bundles every item, the config and the options", () => {
     const b = buildBundle(root, { dryRun: true });
     expect(b).toMatchObject({ format: "groundwork-files", schemaVersion: 1, dryRun: true, overwrite: false, config: { name: "Acme", products: ["Acme app"] } });
-    expect(Object.fromEntries(Object.entries(b.items).map(([k, v]) => [k, v.length]))).toEqual({ insights: 3, hypotheses: 2, experiments: 1, findings: 1, requirements: 3 });
+    expect(Object.fromEntries(Object.entries(b.items).map(([k, v]) => [k, v.length]))).toEqual({ insights: 3, hypotheses: 2, experiments: 1, findings: 1, requirements: 4 });
     expect(b.items.insights[0]).toMatchObject({ id: "INS-0001", notes: expect.stringContaining("Interview context") });
   });
 

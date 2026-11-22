@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
-import { kindOf } from "../core/requirements";
+import { fulfilledBy, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
@@ -24,15 +24,33 @@ insight -> hypothesis -> experiment -> finding -> requirement.
 - Hypothesis: "We believe we will [outcome] if [forWhom] get [benefit] with [feature]", built on insights (insightIds), ideally with a successMetric (baseline, target, timeframe).
 - Experiment: tests exactly one hypothesis (hypothesisId) with one primary metric and optional guardrails. Lifecycle: planned -> start_experiment -> record_experiment_results (Groundwork computes the verdict and updates the hypothesis).
 - Finding: what was learned, linked to the experiments, hypotheses and insights behind it.
-- Requirement: "stakeholder" (a need, in the stakeholder's words) or "solution" (what the product must do). Justified by findingIds, or, when decided elsewhere, by an origin (tender, regulation, contract, customer-need).
+- Requirement, in two layers, written before building:
+  - "stakeholder": who needs what and why, as a user story: "As a <role> I want <need> so that <reason>".
+  - "solution": the qualities and behaviour the solution must have, as "shall" statements: "The <system or part> shall …". Every solution requirement fulfils at least one stakeholder requirement (stakeholderIds); one stakeholder requirement is usually fulfilled by several solution requirements.
+  Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need) when there is evidence or an outside source; they're optional.
 
 How to work:
 1. Call get_workspace first: it gives product areas, products and people (for approvers). If an area or product you need is missing, add it with add_product_areas or add_products, after checking for an existing match.
 2. Before creating anything, search_items for duplicates and for evidence to link. Prefer linking to existing items over creating near-duplicates.
-3. Always link evidence: hypotheses to insights, experiments to a hypothesis, findings to experiments/hypotheses/insights, requirements to findings.
+3. Always link evidence: hypotheses to insights, experiments to a hypothesis, findings to experiments/hypotheses/insights, solution requirements to the stakeholder requirements they fulfil, and requirements to findings when there are any.
 4. Ask the user before deleting items or approving requirements, unless they already told you to.
 5. Use these tools rather than editing the files directly: they keep ids unique and links valid. Each result includes the item's file: mention it so the user can open it.
-6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.`;
+6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.
+
+When you plan work (a plan, plan mode, or a step in an autonomous workflow):
+1. Classify the task first. If unsure, search_items for related requirements.
+   - New need: something users can't do today, e.g. "Let's add a feature to book appointments".
+   - Change: existing behaviour that should work differently.
+   - Fix: restores intended behaviour, e.g. "This path is broken, fix it". Refactors and dependency bumps count as fixes.
+2. State the call in one line of the plan, e.g. "New need: adds 2 stakeholder and 4 solution requirements" or "Bug fix under REQ-0007; no requirement changes".
+3. New need: the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before writing code.
+4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one, and once that's agreed make the old one obsolete with obsolete_requirement and replacedBy.
+5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
+6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
+7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
+8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
+
+Recording evidence or requirements directly isn't planning work. A product manager logging interview notes, drafting hypotheses, recording experiment results or writing requirements gets no new need / change / fix call: record what they ask for with the tools above.`;
 
 type State = Collections;
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -349,6 +367,16 @@ export function buildServer({ root }: ServerOptions): McpServer {
       for (const k of KIND.options) {
         for (const item of items[COLLECTIONS[k]] as AnyItem[]) if (outgoing(k, item).includes(id)) linkedFrom.push(s.summary(k, item));
       }
+      if (hit.kind === "requirement" && kindOf(hit.item as Requirement) === "stakeholder") {
+        const fulfilling = fulfilledBy(id, items.requirements).map((x) => s.summary("requirement", x));
+        return {
+          item: s.full(hit.kind, hit.item),
+          fulfilledBy: fulfilling,
+          ...(fulfilling.length ? {} : { warnings: ["Not yet fulfilled by any solution requirement."] }),
+          linksTo,
+          linkedFrom,
+        };
+      }
       return { item: s.full(hit.kind, hit.item), linksTo, linkedFrom };
     }),
   );
@@ -432,14 +460,18 @@ export function buildServer({ root }: ServerOptions): McpServer {
     {
       title: "Add requirements",
       description:
-        "Add stakeholder or solution requirements as drafts. Link findingIds when they come from evidence; otherwise give an origin (tender, regulation, contract, customer-need). To ask for sign-off afterwards, use submit_requirement_for_approval.",
+        'Add requirements as drafts. Stakeholder requirements are user stories ("As a <role> I want <need> so that <reason>"). Solution requirements are "shall" statements and must list the stakeholder requirements they fulfil in stakeholderIds, so add the stakeholder requirements first, in an earlier call. findingIds, insightIds and origin are optional evidence. The result lists wording warnings, if any. To ask for sign-off afterwards, use submit_requirement_for_approval.',
       inputSchema: { requirements: z.array(requirementInput).min(1).max(30) },
     },
     write((s, state, c, { requirements }: { requirements: z.infer<typeof requirementInput>[] }) => {
       let next = state;
       const created: Requirement[] = [];
       const derived: ops.DerivedRequirement[] = [];
+      const warnings: string[] = [];
       for (const r of requirements) {
+        const problem = layerProblem(r);
+        if (problem) throw new UserError(`"${r.title}": ${problem}.`);
+        wordingWarnings(r).forEach((w) => warnings.push(`"${r.title}": ${w}.`));
         s.check(state, "finding", r.findingIds, "findingIds");
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
@@ -452,7 +484,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
         if (r.findingIds.length) {
           derived.push(base);
         } else {
-          if (!r.origin) throw new UserError(`"${r.title}": link findingIds, or give an origin for a requirement decided elsewhere.`);
           const { findingIds: _unused, ...direct } = base;
           void _unused;
           const [after, one] = apply(next, ops.createRequirement(next, c, { ...direct, status: "draft" }));
@@ -465,7 +496,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         next = after;
         created.push(...many);
       }
-      return { state: next, result: { created: created.map((x) => s.summary("requirement", x)) } };
+      return { state: next, result: { created: created.map((x) => s.summary("requirement", x)), ...(warnings.length ? { warnings } : {}) } };
     }),
   );
 
@@ -527,6 +558,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const p = parsed.data as Record<string, unknown> & { productArea?: string };
       if (!Object.keys(p).length) throw new UserError("The patch has no fields to change.");
       if ("productArea" in p) p.productArea = s.area(p.productArea);
+      const warnings: string[] = [];
       let change: ops.Change;
       switch (hit.kind) {
         case "insight":
@@ -560,13 +592,23 @@ export function buildServer({ root }: ServerOptions): McpServer {
           s.check(state, "insight", p.insightIds as string[] | undefined, "insightIds");
           s.check(state, "hypothesis", p.hypothesisIds as string[] | undefined, "hypothesisIds");
           s.checkStakeholders(state, p.stakeholderIds as string[] | undefined);
+          const merged = { ...r, ...(p as Partial<Requirement>) };
+          const problem = layerProblem(merged);
+          if (problem) throw new UserError(`"${merged.title}": ${problem}.`);
+          if (kindOf(r) === "stakeholder" && kindOf(merged) === "solution") {
+            const fulfilling = fulfilledBy(id, state.requirements);
+            if (fulfilling.length) {
+              throw new UserError(`"${r.title}" is fulfilled by ${fulfilling.map((x) => x.id).join(", ")}, so it can't become a solution requirement.`);
+            }
+          }
+          warnings.push(...wordingWarnings(merged).map((w) => `"${merged.title}": ${w}.`));
           change = ops.updateRequirement(state, id, { ...(p as Partial<Requirement>), updatedAt: c.now });
           break;
         }
       }
       const [next] = apply(state, change);
       const updated = find(next, id)!;
-      return { state: next, result: { updated: s.full(updated.kind, updated.item) } };
+      return { state: next, result: { updated: s.full(updated.kind, updated.item), ...(warnings.length ? { warnings } : {}) } };
     }),
   );
 
@@ -692,13 +734,42 @@ export function buildServer({ root }: ServerOptions): McpServer {
     "approve_requirement",
     {
       title: "Approve requirement",
-      description: "Sign off a requirement that is awaiting your approval. Only the named approver can approve.",
-      inputSchema: { id: itemId },
+      description:
+        "Sign off a requirement that is awaiting your approval. Only the named approver can approve. If the approver signed off outside Groundwork (e.g. verbally), pass approvedBy and a note. Groundwork records who entered it.",
+      inputSchema: {
+        id: itemId,
+        approvedBy: z
+          .string()
+          .max(40)
+          .optional()
+          .describe("Who approved it, when they did so outside Groundwork, e.g. verbally. A person id from get_workspace."),
+        note: z.string().trim().max(300).optional().describe('How or where it was approved, e.g. "Approved by Maria in sprint planning".'),
+      },
       annotations: { destructiveHint: false },
     },
-    write((s, state, c, { id }: { id: string }) => {
+    write((s, state, c, { id, approvedBy, note }: { id: string; approvedBy?: string; note?: string }) => {
       const r = requirementOf(state, id);
-      if (r.status !== "awaiting-approval") throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.`);
+      // Naming yourself isn't recording someone else's approval: the normal approver check applies.
+      if (approvedBy && approvedBy !== s.actor.id) {
+        const person = s.config.people.find((m) => m.id === approvedBy);
+        if (!person) throw new UserError(`${approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
+        if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+        if (r.status !== "draft" && r.status !== "awaiting-approval") {
+          throw new UserError(`"${r.title}" is ${r.status}; only drafts and requirements awaiting approval can be approved.`);
+        }
+        if (r.approver && r.approver !== approvedBy) {
+          const asked = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver;
+          throw new UserError(
+            `"${r.title}" is waiting for ${asked}, not ${person.name}. Record ${asked}'s approval, or ask ${asked} to send it back so it can be submitted to ${person.name}.`,
+          );
+        }
+        const [next] = apply(state, ops.approveRequirement(state, c, id, { approvedBy, note }));
+        return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)) } };
+      }
+      if (r.status !== "awaiting-approval") {
+        const hint = r.status === "draft" ? " If someone approved it outside Groundwork, record it with approvedBy." : "";
+        throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.${hint}`);
+      }
       if (r.approver !== s.actor.id) {
         const name = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver ?? "someone else";
         throw new UserError(`"${r.title}" is waiting for ${name}, not you (${s.actor.id}). Set GROUNDWORK_USER or your email in config.yml people if that's wrong.`);
@@ -752,6 +823,14 @@ export function buildServer({ root }: ServerOptions): McpServer {
     write((_s, state, _c, { id }: { id: string }) => {
       const hit = find(state, id);
       if (!hit) throw new UserError(`No item with id ${id}.`);
+      if (hit.kind === "requirement") {
+        const orphaned = fulfilledBy(id, state.requirements).filter((r) => r.stakeholderIds?.length === 1);
+        if (orphaned.length) {
+          throw new UserError(
+            `${orphaned.map((r) => `${r.id} "${r.title}"`).join(", ")} only fulfil${orphaned.length === 1 ? "s" : ""} "${hit.item.title}". Link ${orphaned.length === 1 ? "it" : "them"} to another stakeholder requirement or delete ${orphaned.length === 1 ? "it" : "them"} first.`,
+          );
+        }
+      }
       const change =
         hit.kind === "insight"
           ? ops.deleteInsight(state, id)

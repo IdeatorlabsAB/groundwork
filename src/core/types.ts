@@ -157,9 +157,11 @@ export type Priority = "must" | "should" | "could";
 export type RequirementStatus = "draft" | "awaiting-approval" | "approved" | "in-delivery" | "obsolete";
 
 /**
- * Stakeholder requirements state what a group of stakeholders needs, in their terms.
- * Solution requirements state what the product must do to meet one or more of those needs,
- * for a specific product and product area.
+ * Stakeholder requirements state who needs what and why, as a user story
+ * ("As a <role> I want <need> so that <reason>").
+ * Solution requirements state the qualities and behaviour the solution must have to meet one or
+ * more stakeholder requirements, as "shall" statements. Every solution requirement fulfils at
+ * least one stakeholder requirement.
  */
 export type RequirementKind = "stakeholder" | "solution";
 
@@ -197,13 +199,13 @@ export interface Requirement {
   /** Unset on requirements saved before the split; treat as "solution". */
   kind?: RequirementKind;
   title: string;
-  /** Stakeholder requirements: the need statement. Solution requirements: the user story. */
+  /** Stakeholder requirements: the user story. Solution requirements: the "shall" statements. */
   story: string;
   /** Stakeholder requirements: who has the need, e.g. "Finance managers". */
   stakeholder?: string;
   /** Solution requirements: the product that delivers it, e.g. "Acme mobile app". */
   product?: string;
-  /** Solution requirements: the stakeholder requirements this one helps meet. */
+  /** Solution requirements: the stakeholder requirements this one fulfils (at least one). */
   stakeholderIds?: ID[];
   acceptanceCriteria: string[];
   priority: Priority;
@@ -213,6 +215,10 @@ export interface Requirement {
   approver?: string;
   approvedBy?: string;
   approvedAt?: string;
+  /** Set when someone recorded an approval given by another person, e.g. verbally: who entered it. */
+  recordedBy?: string;
+  /** How or where it was approved, e.g. "Approved by Maria in sprint planning". */
+  approvalNote?: string;
   findingIds: ID[];
   /** Set when the requirement was created directly: decided, not validated by an experiment. */
   origin?: RequirementOrigin;
