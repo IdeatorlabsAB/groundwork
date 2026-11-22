@@ -7,7 +7,7 @@ import { z } from "zod";
 /** The folder inside a project that holds everything Groundwork writes. */
 export const DIR = "groundwork";
 export const CONFIG_FILE = "config.yml";
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const slugId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "lowercase letters, digits and dashes");
 
