@@ -171,6 +171,24 @@ class Session {
     return version;
   }
 
+  /**
+   * A requirement planned through the "only product" fallback gets that product written down, so it still knows its
+   * product (and whose versions it names) once a second product is added.
+   */
+  pinProduct(state: State, id: string): State {
+    const r = state.requirements.find((x) => x.id === id);
+    if (!r || r.product) return state;
+    const p = productOf(this.catalogue, r);
+    return p ? { ...state, requirements: state.requirements.map((x) => (x.id === id ? { ...x, product: p.id } : x)) } : state;
+  }
+
+  /** The later of two versions in the requirement's product's release order (list order). */
+  laterVersion(r: Requirement, a: string | undefined, b: string): string {
+    if (!a) return b;
+    const order = productOf(this.catalogue, r)?.versions.map((v) => v.version) ?? [];
+    return order.indexOf(a) > order.indexOf(b) ? a : b;
+  }
+
   /** The version an approval plans the requirement for: required for a solution requirement once its product has planned versions. */
   planOnApproval(r: Requirement, plannedFor: string | undefined): string | undefined {
     if (plannedFor) return this.checkPlanned(r, plannedFor);
@@ -222,11 +240,22 @@ class Session {
     }
   }
 
-  /** A requirement can replace only approved ones: drafts are updated in place, obsolete ones are gone already. */
-  checkReplaces(s: State, ids: string[] | undefined) {
+  /**
+   * A requirement can replace only approved ones (drafts are updated in place, obsolete ones are gone already), not
+   * itself, and only within its own product: the old one becomes obsolete in a version of that product.
+   */
+  checkReplaces(s: State, ids: string[] | undefined, by: Pick<Requirement, "kind" | "product"> & { id?: string }) {
     this.check(s, "requirement", ids, "replaces");
     for (const id of ids ?? []) {
+      if (id === by.id) throw new UserError("A requirement can't replace itself.");
       const r = s.requirements.find((x) => x.id === id)!;
+      if (kindOf(by) === "solution" && kindOf(r) === "solution") {
+        const mine = productOf(this.catalogue, by);
+        const theirs = productOf(this.catalogue, r);
+        if (mine && theirs && mine.id !== theirs.id) {
+          throw new UserError(`Can't replace "${r.title}": it belongs to another product (${theirs.title}). Make it obsolete there with obsolete_requirement.`);
+        }
+      }
       if (r.status === "draft") throw new UserError(`"${r.title}" is a draft: update it instead of replacing it.`);
       if (r.status === "obsolete") throw new UserError(`"${r.title}" is already obsolete.`);
       if (!canBeReplaced(r)) throw new UserError(`"${r.title}" is ${r.status}; only approved requirements can be replaced.`);
@@ -580,8 +609,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, r.stakeholderIds);
-        s.checkReplaces(state, r.replaces);
         const product = s.product(r.product);
+        s.checkReplaces(state, r.replaces, { kind: r.kind, product });
         const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
         if (r.findingIds.length) {
           derived.push(base);
@@ -746,7 +775,16 @@ export function buildServer({ root }: ServerOptions): McpServer {
           s.check(state, "insight", p.insightIds as string[] | undefined, "insightIds");
           s.check(state, "hypothesis", p.hypothesisIds as string[] | undefined, "hypothesisIds");
           s.checkStakeholders(state, p.stakeholderIds as string[] | undefined);
-          s.checkReplaces(state, p.replaces as string[] | undefined);
+          if (p.replaces !== undefined && r.status !== "draft" && r.status !== "awaiting-approval") {
+            throw new UserError(`"${r.title}": replaces can be changed only before it's approved. Add a new requirement that replaces it instead.`);
+          }
+          if (typeof p.product === "string" && (r.plannedFor || r.obsoletePlannedFor)) {
+            const was = productOf(s.catalogue, r);
+            if (productOf(s.catalogue, { product: p.product as string })?.id !== was?.id) {
+              throw new UserError(`"${r.title}" is planned for ${r.plannedFor ?? r.obsoletePlannedFor} of ${was?.title}, so its product can't change. Add a new requirement for the other product instead.`);
+            }
+          }
+          s.checkReplaces(state, p.replaces as string[] | undefined, { ...r, ...(p as Partial<Requirement>) });
           const merged = { ...r, ...(p as Partial<Requirement>) };
           const problem = layerProblem(merged);
           if (problem) throw new UserError(`"${merged.title}": ${problem}.`);
@@ -913,10 +951,16 @@ export function buildServer({ root }: ServerOptions): McpServer {
       // After approval: plan it, and deal with what it replaces. With a planned version, the old requirements stay valid
       // until that version ships; without versions they become obsolete now, as before.
       const planned = (after: State): State => {
-        let next = plan ? apply(after, ops.planRequirements(after, c, [id], plan))[0] : after;
+        let next = plan ? s.pinProduct(apply(after, ops.planRequirements(after, c, [id], plan))[0], id) : after;
         const old = (r.replaces ?? []).filter((x) => next.requirements.some((y) => y.id === x && canBeReplaced(y)));
-        if (old.length && plan) next = apply(next, ops.planObsolescence(next, c, old, plan, [id]))[0];
-        else for (const x of old) next = apply(next, ops.obsoleteRequirement(next, c, x, [id]))[0];
+        if (old.length && plan) {
+          // With several replacements, it stays valid until the last of them ships.
+          for (const x of old) {
+            const o = requirementOf(next, x);
+            const version = s.laterVersion(o, o.obsoletePlannedFor, plan);
+            next = apply(next, ops.planObsolescence(next, c, [x], version, [...new Set([...(o.obsoletedBy ?? []), id])]))[0];
+          }
+        } else for (const x of old) next = apply(next, ops.obsoleteRequirement(next, c, x, [id]))[0];
         return next;
       };
       // Naming yourself isn't recording someone else's approval: the normal approver check applies.
@@ -964,7 +1008,14 @@ export function buildServer({ root }: ServerOptions): McpServer {
         if (r.releasedIn) throw new UserError(`"${r.title}" shipped in ${r.releasedIn}.`);
         s.checkPlanned(r, version);
       }
-      const [next] = apply(state, ops.planRequirements(state, c, ids, version));
+      let [next] = apply(state, ops.planRequirements(state, c, ids, version));
+      for (const id of ids) next = s.pinProduct(next, id);
+      // Requirements they replace become obsolete when the last of their replacements ships.
+      for (const o of next.requirements.filter((x) => canBeReplaced(x) && !x.obsoletedIn && x.obsoletedBy?.some((y) => ids.includes(y)))) {
+        const versions = (o.obsoletedBy ?? []).map((y) => next.requirements.find((z) => z.id === y)?.plannedFor).filter((v): v is string => Boolean(v));
+        const last = versions.reduce<string | undefined>((a, v) => s.laterVersion(o, a, v), undefined);
+        if (last && last !== o.obsoletePlannedFor) next = apply(next, ops.planObsolescence(next, c, [o.id], last))[0];
+      }
       return { state: next, result: { planned: ids.map((id) => s.summary("requirement", requirementOf(next, id))), version } };
     }),
   );

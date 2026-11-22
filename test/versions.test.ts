@@ -66,7 +66,7 @@ describe("productOf", () => {
 describe("validate requirement versions", () => {
   it("errors on an approved solution requirement with no planned version", () => {
     solution({ status: "approved", approvedBy: "sam", approver: "sam" });
-    expect(messages()).toContain("error: approved but not planned for a version of Clinicare Web Application: approve_requirement takes plannedFor");
+    expect(messages()).toContain("error: approved but not planned for a version of Clinicare Web Application: plan it with plan_requirements");
   });
 
   it("errors on a version the product doesn't have", () => {

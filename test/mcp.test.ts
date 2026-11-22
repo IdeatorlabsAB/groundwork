@@ -755,6 +755,52 @@ describe("planning requirements for versions", () => {
     expect(stored(sol)).toMatchObject({ status: "approved", obsoletePlannedFor: "1.2" });
   });
 
+  it("deleting a replacement takes back the old requirement's planned obsolescence", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    const next = (await replacement([sol])).data.created[0].id;
+    await approve(next, { plannedFor: "1.2" });
+    expect((await call(c, "delete_item", { id: next })).error).toBeUndefined();
+    const old = stored(sol);
+    expect(old.obsoletePlannedFor).toBeUndefined();
+    expect(old.obsoletedBy ?? []).toEqual([]);
+  });
+
+  it("with two replacements, the old requirement stays valid until the last one ships", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    const b = (await replacement([sol])).data.created[0].id;
+    const d = (await replacement([sol])).data.created[0].id;
+    await approve(b, { plannedFor: "1.2" });
+    await approve(d, { plannedFor: "1.1" });
+    expect(stored(sol)).toMatchObject({ obsoletePlannedFor: "1.2", obsoletedBy: [b, d] });
+    await call(c, "plan_requirements", { ids: [b], version: "1.1" });
+    expect(stored(sol).obsoletePlannedFor).toBe("1.1");
+  });
+
+  it("refuses replacing a requirement of another product", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    writeProduct(root, { id: "PRD-0002", title: "Clinicare Mobile", areas: [], versions: [{ version: "5.0", status: "planned" }] });
+    const { error } = await call(c, "add_requirements", {
+      requirements: [{ kind: "solution", title: "Mobile slots", story: "The app shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need], product: "PRD-0002", replaces: [sol] }],
+    });
+    expect(error).toMatch(/another product/);
+  });
+
+  it("refuses changing the product of a planned requirement", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    writeProduct(root, { id: "PRD-0002", title: "Clinicare Mobile", areas: [], versions: [{ version: "1.1", status: "planned" }] });
+    expect((await call(c, "update_item", { id: sol, patch: { product: "PRD-0002" } })).error).toMatch(/planned for 1.1/);
+  });
+
+  it("refuses adding replaces after approval, and replacing itself", async () => {
+    await approve(sol, { plannedFor: "1.1" });
+    const next = (await replacement([sol])).data.created[0].id;
+    expect((await call(c, "update_item", { id: next, patch: { replaces: [next] } })).error).toMatch(/can't replace itself/);
+    await approve(next, { plannedFor: "1.2" });
+    const other = (await call(c, "add_requirements", { requirements: [{ kind: "solution", title: "Other", story: "The view shall do x.", acceptanceCriteria: ["a"], stakeholderIds: [need] }] })).data.created[0].id;
+    await approve(other, { plannedFor: "1.1" });
+    expect((await call(c, "update_item", { id: next, patch: { replaces: [sol, other] } })).error).toMatch(/only before it's approved/);
+  });
+
   it("re-plans an approved requirement, and refuses a draft", async () => {
     expect((await call(c, "plan_requirements", { ids: [sol], version: "1.2" })).error).toMatch(/approve it first/);
     await approve(sol, { plannedFor: "1.1" });

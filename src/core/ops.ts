@@ -310,7 +310,18 @@ export function deleteRequirement(s: Collections, id: string): Change {
   return nothing0({
     requirements: s.requirements
       .filter((r) => r.id !== id)
-      .map((r) => (r.stakeholderIds?.includes(id) ? { ...r, stakeholderIds: r.stakeholderIds.filter((x) => x !== id) } : r)),
+      .map((r) => {
+        if (![r.stakeholderIds, r.replaces, r.obsoletedBy].some((l) => l?.includes(id))) return r;
+        const x = { ...r };
+        if (r.stakeholderIds?.includes(id)) x.stakeholderIds = r.stakeholderIds.filter((v) => v !== id);
+        if (r.replaces?.includes(id)) x.replaces = r.replaces.filter((v) => v !== id);
+        if (r.obsoletedBy?.includes(id)) {
+          x.obsoletedBy = r.obsoletedBy.filter((v) => v !== id);
+          // Its only replacement is gone: it isn't going to become obsolete after all.
+          if (!x.obsoletedBy.length && r.obsoletePlannedFor && r.status !== "obsolete") delete x.obsoletePlannedFor;
+        }
+        return x;
+      }),
   });
 }
 
@@ -438,7 +449,7 @@ export function planRequirements(s: Collections, c: Ctx, ids: string[], version:
       requirements: s.requirements.map((r) =>
         ids.includes(r.id)
           ? { ...r, plannedFor: version }
-          : replaced.has(r.id) && r.obsoletePlannedFor && !r.obsoletedIn
+          : replaced.has(r.id) && r.obsoletePlannedFor && !r.obsoletedIn && r.obsoletedBy?.some((x) => ids.includes(x))
             ? { ...r, obsoletePlannedFor: version }
             : r,
       ),

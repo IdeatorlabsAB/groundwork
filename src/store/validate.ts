@@ -74,7 +74,7 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
     if (r.releasedIn && status(r.releasedIn) === "planned") err(`releasedIn "${r.releasedIn}" isn't released yet`);
     const approved = r.status === "approved" || r.status === "in-delivery";
     if (approved && !r.plannedFor && !r.releasedIn && plannedVersions(p).length) {
-      err(`approved but not planned for a version of ${p.title}: approve_requirement takes plannedFor`);
+      err(`approved but not planned for a version of ${p.title}: plan it with plan_requirements`);
     }
     if (r.plannedFor && !r.releasedIn && status(r.plannedFor) === "released") {
       warn(`planned for ${r.plannedFor}, which is released, but not released in it`);
