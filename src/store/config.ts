@@ -125,3 +125,12 @@ export function resolveActor(root: string, config: Config): { id: string; person
   if (config.people.length === 1) return { id: config.people[0].id, person: config.people[0] };
   return { id: "me" };
 }
+
+/** Set schemaVersion in an existing config.yml, editing it in place so comments and other keys are kept. */
+export function setSchemaVersion(root: string, version: number) {
+  const file = configPath(root);
+  const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+  if (doc.get("schemaVersion") === version) return;
+  doc.set("schemaVersion", version);
+  writeFileSync(file, doc.toString({ lineWidth: 0 }));
+}

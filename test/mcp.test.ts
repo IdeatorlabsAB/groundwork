@@ -129,6 +129,7 @@ describe("local MCP server", () => {
         "add_hypotheses",
         "add_insights",
         "add_product_areas", // local only for now: the hosted server should get these too
+        "add_product_versions",
         "add_products",
         "add_requirements",
         "approve_requirement",
@@ -329,11 +330,14 @@ describe("product areas and products", () => {
     expect(config.schemaVersion).toBe(1);
   });
 
-  it("creates config.yml when missing", async () => {
+  it("creates config.yml when missing, and puts the product and its areas in a product file", async () => {
     rmSync(join(root, "groundwork/config.yml"));
     const c = await connect();
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Billing" }] })).error).toMatch(/Add a product first/);
+    expect((await call(c, "add_products", { products: ["Acme app"] })).error).toBeUndefined();
     expect((await call(c, "add_product_areas", { areas: [{ label: "Billing" }] })).error).toBeUndefined();
-    expect(readConfig(root).productAreas).toEqual([{ id: "billing", label: "Billing" }]);
+    expect(readConfig(root).schemaVersion).toBe(2);
+    expect(load(root).products[0].areas).toEqual([{ id: "billing", label: "Billing" }]);
   });
 
   it("refused when migrated", async () => {
@@ -618,5 +622,47 @@ describe("product files", () => {
     const { data } = await call(c, "get_workspace");
     expect(data.catalogue).toBe("files");
     expect(data.products).toEqual([expect.objectContaining({ id: "PRD-0001", title: "Clinicare Web Application", areas: [{ id: "scheduling", label: "Scheduling" }] })]);
+  });
+});
+
+describe("product tools on product files", () => {
+  const AREAS = ["Settings and configuration", "Scheduling", "Prescriptions", "Medical Records", "Patient Data Protection"];
+  let c: Client;
+  beforeEach(async () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 1, productAreas: [], products: [] });
+    c = await connect();
+  });
+
+  it("creates a product file in a new project and moves it to schemaVersion 2", async () => {
+    const { data, error } = await call(c, "add_products", { products: ["Clinicare Web Application"] });
+    expect(error).toBeUndefined();
+    expect(data.added).toEqual([expect.objectContaining({ id: "PRD-0001", title: "Clinicare Web Application" })]);
+    expect(readdirSync(join(root, "groundwork/products"))).toEqual(["PRD-0001-clinicare-web-application.md"]);
+    expect(readConfig(root).schemaVersion).toBe(2);
+  });
+
+  it("adds areas and planned versions to the product file", async () => {
+    await call(c, "add_products", { products: ["Clinicare Web Application"] });
+    expect((await call(c, "add_product_areas", { areas: AREAS.map((label) => ({ label })) })).error).toBeUndefined();
+    expect((await call(c, "add_product_versions", { versions: [{ version: "1.0" }, { version: "1.1" }] })).error).toBeUndefined();
+    const p = load(root).products[0];
+    expect(p.areas.map((a) => a.label)).toEqual(AREAS);
+    expect(p.versions).toEqual([{ version: "1.0", status: "planned" }, { version: "1.1", status: "planned" }]);
+  });
+
+  it("with two products, needs the product, and refuses an area id another product uses", async () => {
+    await call(c, "add_products", { products: ["Clinicare Web Application", "Clinicare Mobile"] });
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Scheduling" }] })).error).toMatch(/Name the product/);
+    expect((await call(c, "add_product_areas", { product: "PRD-0001", areas: [{ label: "Scheduling" }] })).error).toBeUndefined();
+    expect((await call(c, "add_product_areas", { product: "Clinicare Mobile", areas: [{ label: "Scheduling" }] })).error).toMatch(/already uses/);
+  });
+
+  it("refuses areas before there is a product", async () => {
+    expect((await call(c, "add_product_areas", { areas: [{ label: "Scheduling" }] })).error).toMatch(/Add a product first/);
+  });
+
+  it("refuses versions in a project that hasn't migrated", async () => {
+    writeConfig(root, { ...readConfig(root), products: ["Acme app"] });
+    expect((await call(c, "add_product_versions", { versions: [{ version: "1.0" }] })).error).toMatch(/groundwork migrate/);
   });
 });
