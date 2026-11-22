@@ -747,12 +747,19 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     write((s, state, c, { id, approvedBy, note }: { id: string; approvedBy?: string; note?: string }) => {
       const r = requirementOf(state, id);
-      if (approvedBy) {
+      // Naming yourself isn't recording someone else's approval: the normal approver check applies.
+      if (approvedBy && approvedBy !== s.actor.id) {
         const person = s.config.people.find((m) => m.id === approvedBy);
         if (!person) throw new UserError(`${approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
         if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
         if (r.status !== "draft" && r.status !== "awaiting-approval") {
           throw new UserError(`"${r.title}" is ${r.status}; only drafts and requirements awaiting approval can be approved.`);
+        }
+        if (r.approver && r.approver !== approvedBy) {
+          const asked = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver;
+          throw new UserError(
+            `"${r.title}" is waiting for ${asked}, not ${person.name}. Record ${asked}'s approval, or ask ${asked} to send it back so it can be submitted to ${person.name}.`,
+          );
         }
         const [next] = apply(state, ops.approveRequirement(state, c, id, { approvedBy, note }));
         return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)) } };

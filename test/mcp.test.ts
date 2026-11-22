@@ -550,6 +550,20 @@ describe("approval on someone's behalf", () => {
     expect((await call(c, "approve_requirement", { id, approvedBy: "alex" })).error).toMatch(/is approved/);
   });
 
+  it("naming yourself as approvedBy doesn't skip the approver check", async () => {
+    await call(c, "submit_requirement_for_approval", { id, approverId: "alex" });
+    expect((await call(c, "approve_requirement", { id, approvedBy: "sam" })).error).toMatch(/waiting for Alex/);
+    expect(load(root).items.requirements[0].status).toBe("awaiting-approval");
+  });
+
+  it("refuses recording an approval from someone other than the person asked", async () => {
+    const config = readConfig(root);
+    writeConfig(root, { ...config, people: [...config.people, { id: "pat", name: "Pat", role: "editor" }] });
+    await call(c, "submit_requirement_for_approval", { id, approverId: "alex" });
+    expect((await call(c, "approve_requirement", { id, approvedBy: "pat" })).error).toMatch(/waiting for Alex/);
+    expect((await call(c, "approve_requirement", { id, approvedBy: "alex" })).data.approved.status).toBe("approved");
+  });
+
   it("without approvedBy, a draft still needs submitting first and points at approvedBy", async () => {
     expect((await call(c, "approve_requirement", { id })).error).toMatch(/approvedBy/);
   });
