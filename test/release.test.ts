@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+import type { Requirement } from "../src/core/types";
+import { catalogueOf } from "../src/store/catalogue";
+import { configSchema } from "../src/store/config";
+import type { Product } from "../src/store/products";
+import { correctRelease, ReleaseError, releaseRequirements, releaseVersion } from "../src/store/release";
+
+const NOW = "2026-12-15T10:00:00.000Z";
+const product = (versions: Product["versions"] = ["1.0", "1.1", "1.2"].map((version) => ({ version, status: "planned" as const }))): Product => ({
+  id: "PRD-0001",
+  title: "Clinicare Web Application",
+  areas: [],
+  versions,
+});
+const cat = (p: Product) => catalogueOf(configSchema.parse({ name: "Clinicare" }), [p]);
+const req = (id: string, extra: Partial<Requirement> = {}): Requirement => ({
+  id,
+  title: id,
+  kind: "solution",
+  story: `The system shall do ${id}.`,
+  stakeholderIds: ["S"],
+  product: "PRD-0001",
+  acceptanceCriteria: ["a"],
+  priority: "must",
+  status: "approved",
+  findingIds: [],
+  createdAt: "2026-11-01T00:00:00.000Z",
+  ...extra,
+});
+const by = (rs: Requirement[], id: string) => rs.find((r) => r.id === id)!;
+const release = (rs: Requirement[], p: Product, input: { version: string; shipped: string[]; removed?: string[]; moveTo?: string }) =>
+  releaseVersion(rs, cat(p), { product: p, actor: "sam", now: NOW, ...input });
+
+describe("releasing a version", () => {
+  it("ships what's listed, and requires a version for the rest", () => {
+    const p = product();
+    const rs = [req("A", { plannedFor: "1.0" }), req("B", { plannedFor: "1.0" })];
+    expect(() => release(rs, p, { version: "1.0", shipped: ["A"] })).toThrow(/B.*moveTo/s);
+    const out = release(rs, p, { version: "1.0", shipped: ["A"], moveTo: "1.1" });
+    expect(by(out.requirements, "A")).toMatchObject({ releasedIn: "1.0", releasedAt: NOW, releasedBy: "sam" });
+    expect(by(out.requirements, "B")).toMatchObject({ plannedFor: "1.1" });
+    expect(by(out.requirements, "B").releasedIn).toBeUndefined();
+    expect(out.product.versions[0]).toMatchObject({ version: "1.0", status: "released", releasedAt: NOW, releasedBy: "sam" });
+  });
+
+  it("makes a replaced requirement obsolete when its replacement ships", () => {
+    const p = product();
+    const rs = [req("O", { plannedFor: "0.9", releasedIn: undefined, obsoletePlannedFor: "1.0", obsoletedBy: ["R"] }), req("R", { plannedFor: "1.0", replaces: ["O"] })];
+    rs[0].plannedFor = undefined;
+    const out = release(rs, p, { version: "1.0", shipped: ["R"] });
+    expect(by(out.requirements, "O")).toMatchObject({ status: "obsolete", obsoletedIn: "1.0", obsoletedAt: NOW, madeObsoleteBy: "sam" });
+  });
+
+  it("keeps a requirement valid until the last of its replacements ships", () => {
+    const p = product();
+    const rs = [
+      req("O", { obsoletePlannedFor: "1.1", obsoletedBy: ["R1", "R2"] }),
+      req("R1", { plannedFor: "1.0", replaces: ["O"] }),
+      req("R2", { plannedFor: "1.1", replaces: ["O"] }),
+    ];
+    const out = release(rs, p, { version: "1.0", shipped: ["R1"] });
+    expect(by(out.requirements, "O")).toMatchObject({ status: "approved", obsoletePlannedFor: "1.1" });
+  });
+
+  it("needs planned removals confirmed, or moved", () => {
+    const p = product();
+    const rs = [req("X", { releasedIn: undefined, obsoletePlannedFor: "1.0" })];
+    expect(() => release(rs, p, { version: "1.0", shipped: [] })).toThrow(/X.*moveTo/s);
+    expect(by(release(rs, p, { version: "1.0", shipped: [], removed: ["X"] }).requirements, "X")).toMatchObject({ status: "obsolete", obsoletedIn: "1.0" });
+    expect(by(release(rs, p, { version: "1.0", shipped: [], moveTo: "1.1" }).requirements, "X")).toMatchObject({ status: "approved", obsoletePlannedFor: "1.1" });
+  });
+
+  it("refuses ids that aren't planned, and moveTo that isn't another planned version", () => {
+    const p = product();
+    const rs = [req("A", { plannedFor: "1.0" }), req("B", { plannedFor: "1.1" })];
+    expect(() => release(rs, p, { version: "1.0", shipped: ["B"] })).toThrow(/B isn't planned for 1.0/);
+    expect(() => release([...rs, req("C", { plannedFor: "1.0" })], p, { version: "1.0", shipped: ["A"], moveTo: "1.0" })).toThrow(ReleaseError);
+    expect(() => release([...rs, req("C", { plannedFor: "1.0" })], p, { version: "1.0", shipped: ["A"], moveTo: "9.9" })).toThrow(/another planned version/);
+  });
+
+  it("refuses releasing a version twice", () => {
+    const p = product();
+    const rs = [req("A", { plannedFor: "1.0" })];
+    const out = release(rs, p, { version: "1.0", shipped: ["A"] });
+    expect(() => release(out.requirements, out.product, { version: "1.0", shipped: [] })).toThrow(/already released.*correct_release.*release_requirements/s);
+  });
+});
+
+describe("after a release", () => {
+  const released = () => {
+    const p = product();
+    const rs = [req("A", { plannedFor: "1.0" }), req("C", { plannedFor: "1.1" })];
+    return release(rs, p, { version: "1.0", shipped: ["A"] });
+  };
+
+  it("adds requirements shipped later to a released version", () => {
+    const { requirements, product: p } = released();
+    const out = releaseRequirements(requirements, cat(p), { product: p, version: "1.0", ids: ["C"], actor: "sam", now: NOW });
+    expect(by(out, "C")).toMatchObject({ releasedIn: "1.0", releasedBy: "sam" });
+    expect(() => releaseRequirements(requirements, cat(p), { product: p, version: "1.1", ids: ["C"], actor: "sam", now: NOW })).toThrow(/not released yet/);
+  });
+
+  it("corrects a release, with a reason, and records it", () => {
+    const { requirements, product: p } = released();
+    const reason = "Feature flag was off in the 1.0 build";
+    const out = correctRelease(requirements, cat(p), { product: p, version: "1.0", reason, removeShipped: ["A"], moveTo: "1.1", actor: "sam", now: NOW });
+    const a = by(out.requirements, "A");
+    expect(a).toMatchObject({ plannedFor: "1.1" });
+    expect(a.releasedIn).toBeUndefined();
+    expect(out.product.versions[0].corrections?.[0]).toMatchObject({ by: "sam", at: NOW, reason, shipped: { added: [], removed: ["A"] }, movedTo: "1.1" });
+    expect(() => correctRelease(requirements, cat(p), { product: p, version: "1.0", reason: " ", removeShipped: ["A"], moveTo: "1.1", actor: "sam", now: NOW })).toThrow(/reason/);
+  });
+});

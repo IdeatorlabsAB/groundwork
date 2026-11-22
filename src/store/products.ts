@@ -19,6 +19,8 @@ export interface ProductVersion {
   plannedFor?: string;
   releasedAt?: string;
   releasedBy?: string;
+  /** Corrections made after the release, each with who, when and why. */
+  corrections?: import("./release").Correction[];
 }
 
 export interface Product {
@@ -46,6 +48,7 @@ export const productSchema = z
             plannedFor: z.string().optional(),
             releasedAt: z.string().optional(),
             releasedBy: z.string().optional(),
+            corrections: z.array(z.object({ at: z.string(), by: z.string(), reason: z.string().min(1) }).loose()).optional(),
           })
           .loose(),
       )

@@ -10,6 +10,7 @@ import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../cor
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
 import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
 import { nextProductId, writeProduct, type Product } from "../store/products";
+import { laterVersion } from "../store/release";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
 import { catalogueOf, findArea, findProduct, plannedVersions, productOf, type Catalogue } from "../store/catalogue";
@@ -184,9 +185,7 @@ class Session {
 
   /** The later of two versions in the requirement's product's release order (list order). */
   laterVersion(r: Requirement, a: string | undefined, b: string): string {
-    if (!a) return b;
-    const order = productOf(this.catalogue, r)?.versions.map((v) => v.version) ?? [];
-    return order.indexOf(a) > order.indexOf(b) ? a : b;
+    return laterVersion(productOf(this.catalogue, r), a, b);
   }
 
   /** The version an approval plans the requirement for: required for a solution requirement once its product has planned versions. */
