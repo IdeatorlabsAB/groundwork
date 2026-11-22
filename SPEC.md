@@ -58,7 +58,7 @@ Required fields are in bold.
 **`title`**, **`summary`**, `experimentIds`, `hypothesisIds`, `insightIds`, `confidence` (`low` | `medium` | `high`), `productArea`, `createdAt`.
 
 **Requirement** (`requirements/`, `REQ-`): what is needed before building, in two layers.
-**`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need`) and `originNote`, `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `replaces` (approved requirements this one replaces), `plannedFor`, `releasedIn`, `releasedAt`, `releasedBy`, `obsoletePlannedFor`, `obsoletedIn` (solution requirements only, versions of its product; see below), `obsoletedBy`, `obsoletedAt`, `productArea`, `createdAt`, `updatedAt`.
+**`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need`) and `originNote`, `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `replaces` (approved requirements this one replaces), `plannedFor`, `releasedIn`, `releasedAt`, `releasedBy`, `obsoletePlannedFor`, `obsoletedIn` (solution requirements only, versions of its product; see below), `obsoletedBy`, `obsoletedAt`, `madeObsoleteBy` (the person who made it obsolete), `productArea`, `createdAt`, `updatedAt`.
 
 The two layers:
 
@@ -101,6 +101,13 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - When it's approved for a version, the old ones stay approved and valid, with `obsoletePlannedFor` set to that version and `obsoletedBy` set to the new one. They become obsolete when that version is released. If the replacement moves to another version, they move with it.
   - Without versions, the old ones become obsolete when the replacement is approved.
   - `obsolete_requirement` with `inVersion` plans the same for a requirement removed without a replacement. Without `inVersion`, it applies straight away, which is only allowed before the requirement has shipped.
+- **Releasing.**
+  - Releasing a planned version sets `releasedIn`, `releasedAt` and `releasedBy` on the solution requirements that shipped, and `status: released`, `releasedAt` and `releasedBy` on the version.
+  - Planned requirements that didn't ship, and planned removals that weren't confirmed, move to another planned version, which must be given. A released version can't be released again.
+  - A replaced requirement becomes obsolete in the version where the last of its replacements ships (`status: obsolete`, `obsoletedIn`, `obsoletedAt`, `madeObsoleteBy`).
+  - Requirements that shipped later can be added to a released version.
+  - Any other change to a released version is a correction: it needs a reason, changes only what it lists, and is recorded on the version.
+  - The release report lists what a version introduced, what it made obsolete, how far each stakeholder requirement is met as of that version, and its corrections.
 - Requirements go from `draft` to `awaiting-approval` (with an `approver`) to `approved`. The approver can send one back to `draft`. Only `approved` requirements can become `obsolete`.
 - Deleting an item removes links to it. Deleting a hypothesis also deletes its experiments.
 
@@ -119,7 +126,7 @@ createdAt: 2026-11-22T10:00:00.000Z
 ```
 
 - **`areas`**: `id` (lowercase letters, digits and dashes) and `label`. Area ids are unique across all products in the folder, so an item's `productArea` points to exactly one product.
-- **`versions`**: in release order (the list order; no semver rules). `version` is unique within its product, and `(product id, version)` is its permanent key, so a version string isn't renamed once anything refers to it. `status` is `planned` or `released`. `plannedFor` is an optional target date. `releasedAt` and `releasedBy` are set when the version is released.
+- **`versions`**: in release order (the list order; no semver rules). `version` is unique within its product, and `(product id, version)` is its permanent key, so a version string isn't renamed once anything refers to it. `status` is `planned` or `released`. `plannedFor` is an optional target date. `releasedAt` and `releasedBy` are set when the version is released. `corrections` lists the corrections made to a released version: `{ at, by, reason, shipped: { added, removed }, obsolete: { added, removed }, movedTo? }`.
 - A solution requirement's `product` is a product id (`PRD-0001`).
 
 `add_products` creates product files. `add_product_areas` and `add_product_versions` add to one; they need the product when there's more than one. All three are add-only: they skip entries already there and never rename, reorder or remove anything. Rename or remove by editing the file.

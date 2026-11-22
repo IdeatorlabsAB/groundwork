@@ -10,6 +10,7 @@ import { clashProblems, GitError, renumber } from "./store/branches";
 import { migrate, planMigration, type MigrationPlan } from "./store/migrate";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
+import { runReleaseCommand, runReportCommand } from "./release-cli";
 import { ImportError, runImport } from "./store/import";
 
 declare const __VERSION__: string;
@@ -27,6 +28,13 @@ Usage:
                                        and fix links
   groundwork migrate [--dry-run]       Move products and areas from config.yml into product files
                                        (groundwork/products/), so products can have versions
+  groundwork release [product] <version> --shipped ID,ID [--removed ID,ID] [--move-rest <version>]
+                                       Release a version: what shipped, and where the rest moves
+  groundwork release [product] <version> --correct --reason "…" [--add ID] [--remove ID]
+                    [--add-obsolete ID] [--remove-obsolete ID] [--move-rest <version>]
+                                       Correct a released version (recorded with the reason)
+  groundwork report release [product] <version> [--json]
+                                       Print a version's release report as Markdown
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -216,11 +224,27 @@ async function main(): Promise<number> {
       json: { type: "boolean" },
       to: { type: "string" },
       against: { type: "string" },
+      shipped: { type: "string" },
+      removed: { type: "string" },
+      "move-rest": { type: "string" },
+      correct: { type: "boolean" },
+      reason: { type: "string" },
+      add: { type: "string" },
+      remove: { type: "string" },
+      "add-obsolete": { type: "string" },
+      "remove-obsolete": { type: "string" },
       token: { type: "string" },
       "dry-run": { type: "boolean" },
       overwrite: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
   });
   const [cmd, arg] = positionals;
+  const list = (v: string | undefined) => (v ? v.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined);
+  /** [product] <version>: the version is the last positional; a product before it is optional. */
+  const productVersion = (rest: string[]) => (rest.length > 1 ? { product: rest[0], version: rest[1] } : { version: rest[0] });
+  const print = (out: { code: number; lines: string[] }) => {
+    for (const l of out.lines) (out.code ? console.error : console.log)(out.code ? red(l) : l);
+    return out.code;
+  };
   if (values.version) return console.log(VERSION), 0;
   if (values.help || !cmd || cmd === "help") return console.log(HELP), 0;
   switch (cmd) {
@@ -228,6 +252,29 @@ async function main(): Promise<number> {
       return cmdInit(values.name);
     case "validate":
       return cmdValidate(Boolean(values.json), values.against);
+    case "release": {
+      const pv = productVersion(positionals.slice(1));
+      if (!pv.version) return console.error("Usage: groundwork release [product] <version> --shipped ID,ID [--move-rest <version>]"), 1;
+      return print(
+        runReleaseCommand(findRoot(), {
+          ...pv,
+          shipped: list(values.shipped),
+          removed: list(values.removed),
+          moveRest: values["move-rest"],
+          correct: Boolean(values.correct),
+          reason: values.reason,
+          add: list(values.add),
+          remove: list(values.remove),
+          addObsolete: list(values["add-obsolete"]),
+          removeObsolete: list(values["remove-obsolete"]),
+        }),
+      );
+    }
+    case "report": {
+      const pv = productVersion(positionals.slice(2));
+      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork report release [product] <version> [--json]"), 1;
+      return print(runReportCommand(findRoot(), { ...pv, json: Boolean(values.json) }));
+    }
     case "migrate":
       return cmdMigrate(Boolean(values["dry-run"]));
     case "renumber":

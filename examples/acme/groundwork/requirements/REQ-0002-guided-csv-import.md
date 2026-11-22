@@ -21,4 +21,7 @@ approver: sam
 approvedBy: sam
 approvedAt: 2026-11-18T08:31:25.146Z
 plannedFor: "1.0"
+releasedIn: "1.0"
+releasedAt: 2026-11-22T22:33:24.310Z
+releasedBy: sam
 ---

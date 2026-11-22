@@ -87,6 +87,38 @@ Every solution requirement fulfils at least one stakeholder requirement, and Gro
 
 When your agent plans a task, it first decides what kind of task it is. "Let's add a feature to book appointments" is a new need. "This path is broken, fix it" is a fix. It states the call in one line of the plan, such as *"New need: adds 2 stakeholder and 4 solution requirements"* or *"Bug fix under REQ-0007; no requirement changes"*. For a new need or a change, the plan records the requirements before any code. Tickets the workflow creates carry the REQ ids they implement. When a PM approves a requirement verbally, tell the agent and it records the approval on their behalf, noting who entered it.
 
+## Releasing
+
+When a version goes out, record it: tell your agent *"Release Clinicare 1.1"*, or use the CLI. Groundwork lists what was planned for 1.1. The agent checks the tickets if your workflow has a tracker; otherwise it asks you what shipped. Planned requirements that didn't make it move to the next version you name, so nothing is dropped. A replaced requirement becomes obsolete once all its replacements have shipped. Groundwork records who released the version and when.
+
+```sh
+npx -p groundwork-mcp groundwork release 1.1 --shipped REQ-0012,REQ-0014 --move-rest 1.2
+npx -p groundwork-mcp groundwork report release 1.1     # the release report, as Markdown
+```
+
+The release report lists what the version introduced, what it made obsolete and how far each stakeholder need is met, e.g. from [examples/acme](examples/acme):
+
+```markdown
+# Acme app 1.0: release report
+
+Released 2026-11-22 by sam. Product PRD-0001.
+
+## Introduced
+
+- **REQ-0002** Guided CSV import: The CSV import shall guide the user step by step through uploading a file, …
+  - Meets: REQ-0001 Get set up without help
+
+## Made obsolete
+
+Nothing.
+
+## Stakeholder requirements
+
+- **REQ-0001** Get set up without help: fully met (1 of 1 solution requirements released)
+```
+
+Put it in your release documentation, e.g. the technical documentation for an EU MDR medical device. A released version changes only through a correction, which needs a reason and shows in the report: *"Correct 1.1: REQ-0014 didn't ship, move it to 1.2. Reason: feature flag was off in the build"*, or `groundwork release 1.1 --correct --remove REQ-0014 --move-rest 1.2 --reason "…"`. For teams that ship continuously, `release_requirements` records requirements that shipped later in an already released version.
+
 ## Working on branches
 
 Everyone works on their own clone of the repo: developers writing requirements while they plan, and product managers logging insights and results. Groundwork numbers new items on each clone as one more than the highest id it can see. So two branches can both create `REQ-0012`, each meaning something different.
@@ -108,6 +140,8 @@ npx -p groundwork-mcp groundwork validate    # check every item and link; exits 
 npx -p groundwork-mcp groundwork validate --against origin/main   # also catch ids that clash with main
 npx -p groundwork-mcp groundwork renumber --against origin/main   # fix those clashes on this branch
 npx -p groundwork-mcp groundwork migrate --dry-run   # move products and areas from config.yml into product files
+npx -p groundwork-mcp groundwork release 1.1 --shipped REQ-0012 --move-rest 1.2   # release a version
+npx -p groundwork-mcp groundwork report release 1.1   # its release report
 npx -p groundwork-mcp groundwork trace REQ-0002
 npx -p groundwork-mcp groundwork list hypothesis
 npx -p groundwork-mcp groundwork import --to <web app>   # see "Groundwork for teams"
@@ -195,7 +229,7 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 | | `add_requirements` | `send_back_requirement` |
 | | `update_item`, `link_items` | `obsolete_requirement` |
 | | `delete_item` | |
-| | `add_products`, `add_product_areas`, `add_product_versions` | |
+| `get_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release` |
 
 ## Privacy
 
