@@ -1,6 +1,6 @@
 {
   "name": "groundwork-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Keep product evidence (insights, hypotheses, experiments, findings, requirements) as linked Markdown files in your repo, written by your own coding agent over MCP.",
   "license": "Apache-2.0",
   "type": "module",
