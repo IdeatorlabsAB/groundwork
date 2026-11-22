@@ -85,7 +85,7 @@ export function outgoing(kind: Kind, item: AnyItem): string[] {
     }
     case "requirement": {
       const r = item as Requirement;
-      return [...(r.findingIds ?? []), ...(r.insightIds ?? []), ...(r.hypothesisIds ?? []), ...(r.stakeholderIds ?? []), ...(r.obsoletedBy ?? [])];
+      return [...(r.findingIds ?? []), ...(r.insightIds ?? []), ...(r.hypothesisIds ?? []), ...(r.stakeholderIds ?? []), ...(r.obsoletedBy ?? []), ...(r.replaces ?? [])];
     }
     default:
       return [];

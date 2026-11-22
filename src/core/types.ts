@@ -231,6 +231,18 @@ export interface Requirement {
   /** Set when the requirement was made obsolete: the requirements that replaced it. */
   obsoletedBy?: ID[];
   obsoletedAt?: string;
+  /** The approved requirements this one replaces. They become obsolete when this one ships (or on approval, without versions). */
+  replaces?: ID[];
+  /** Solution requirements: the planned version of its product it's meant to ship in. Set on approval. */
+  plannedFor?: string;
+  /** Solution requirements: the version it shipped in. Set by the release step. */
+  releasedIn?: string;
+  releasedAt?: string;
+  releasedBy?: string;
+  /** The planned version that will make it obsolete, e.g. the one its replacement ships in. It stays valid until then. */
+  obsoletePlannedFor?: string;
+  /** The version that made it obsolete. Set by the release step. */
+  obsoletedIn?: string;
   createdAt: string;
   /** Last time an existing requirement was rewritten, e.g. a draft updated from a new finding. */
   updatedAt?: string;

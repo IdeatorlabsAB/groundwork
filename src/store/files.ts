@@ -139,7 +139,7 @@ export function idAllocator(items: Collections) {
   };
 }
 
-export const LINK_FIELDS = ["insightIds", "hypothesisIds", "experimentIds", "findingIds", "stakeholderIds", "obsoletedBy"] as const;
+export const LINK_FIELDS = ["insightIds", "hypothesisIds", "experimentIds", "findingIds", "stakeholderIds", "obsoletedBy", "replaces"] as const;
 
 /**
  * The operations make new items with temporary ids. Give each a readable id (INS-0008…) in creation order, and

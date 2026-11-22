@@ -1,4 +1,5 @@
 import type { Config } from "./config";
+import type { Requirement } from "../core/types";
 import type { Product } from "./products";
 
 /**
@@ -49,3 +50,14 @@ export function findArea(c: Catalogue, value: string): CatalogueArea | undefined
 export function findProduct(c: Catalogue, value: string): Product | undefined {
   return c.products.find((p) => p.id === value) ?? c.products.find((p) => same(p.title, value));
 }
+
+/** The product whose versions apply to a requirement: its own product, or the only product. */
+export function productOf(c: Catalogue, r: Pick<Requirement, "product">): Product | undefined {
+  if (r.product) return findProduct(c, r.product);
+  return c.products.length === 1 ? c.products[0] : undefined;
+}
+
+export const plannedVersions = (p: Product) => p.versions.filter((v) => v.status === "planned").map((v) => v.version);
+
+/** Whether the requirement's product has versions, so planning and release rules apply. */
+export const isVersioned = (c: Catalogue, r: Pick<Requirement, "product">) => (productOf(c, r)?.versions.length ?? 0) > 0;
