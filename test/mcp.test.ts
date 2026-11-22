@@ -154,6 +154,24 @@ describe("local MCP server", () => {
     }
   });
 
+  it("tells agents that recording evidence directly isn't planning work", async () => {
+    const text = (await connect()).getInstructions()!;
+    expect(text).toContain("isn't planning work");
+  });
+
+  it("lets a product manager run discovery and requirements end to end", async () => {
+    writeConfig(root, { ...readConfig(root), people: [...readConfig(root).people, { id: "pia", name: "Pia", role: "editor" }] });
+    process.env.GROUNDWORK_USER = "pia";
+    const c = await connect();
+    const { f, sr, r } = await chain(c);
+    expect((await call(c, "submit_requirement_for_approval", { id: sr, approverId: "pia" })).error).toBeUndefined();
+    expect((await call(c, "approve_requirement", { id: sr })).data.approved.status).toBe("approved");
+    const req = load(root).items.requirements.find((x) => x.id === r)!;
+    expect(req).toMatchObject({ kind: "solution", findingIds: [f], stakeholderIds: [sr] });
+    expect(req.recordedBy).toBeUndefined();
+    expect(validate(load(root), readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
+  });
+
   it("builds a whole evidence chain as readable, linked files", async () => {
     const c = await connect();
     const ids = await chain(c);

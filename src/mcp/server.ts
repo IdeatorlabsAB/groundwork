@@ -48,7 +48,9 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
 6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
 7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
-8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.`;
+8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
+
+Recording evidence or requirements directly isn't planning work. A product manager logging interview notes, drafting hypotheses, recording experiment results or writing requirements gets no new need / change / fix call: record what they ask for with the tools above.`;
 
 type State = Collections;
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };

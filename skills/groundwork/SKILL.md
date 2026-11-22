@@ -49,6 +49,8 @@ State your call in one line of the plan, so the user can overrule it:
 - **Fix:** don't write requirements. Name the requirement the fix restores when you can tell.
 - **No person reviewing the plan** (an autonomous workflow): follow your own call. The one-line call stays in the plan as the record.
 
+Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
+
 When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement.
 
 ## Rules
