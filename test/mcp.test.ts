@@ -832,3 +832,15 @@ describe("replacing requirements without versions", () => {
     expect(text).not.toContain("obsolete_requirement and replacedBy");
   });
 });
+
+describe("stakeholder progress in get_item", () => {
+  it("shows how many of a need's solution requirements are released", async () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 2, productAreas: [], products: [] });
+    writeProduct(root, { id: "PRD-0001", title: "Clinicare Web Application", areas: [], versions: [{ version: "1.0", status: "planned" }] });
+    const c = await connect();
+    const need = (await call(c, "add_requirements", { requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }] })).data.created[0].id;
+    await call(c, "add_requirements", { requirements: [{ kind: "solution", title: "Slots", story: "The view shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need] }] });
+    const { data } = await call(c, "get_item", { id: need });
+    expect(data.progress).toMatchObject({ released: 0, total: 1 });
+  });
+});

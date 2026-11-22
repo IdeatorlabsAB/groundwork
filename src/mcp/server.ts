@@ -10,7 +10,7 @@ import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../cor
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
 import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
 import { nextProductId, writeProduct, type Product } from "../store/products";
-import { laterVersion } from "../store/release";
+import { laterVersion, stakeholderProgress } from "../store/release";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
 import { catalogueOf, findArea, findProduct, plannedVersions, productOf, type Catalogue } from "../store/catalogue";
@@ -504,6 +504,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         return {
           item: s.full(hit.kind, hit.item),
           fulfilledBy: fulfilling,
+          progress: stakeholderProgress(items.requirements, id, s.catalogue),
           ...(fulfilling.length ? {} : { warnings: ["Not yet fulfilled by any solution requirement."] }),
           linksTo,
           linkedFrom,

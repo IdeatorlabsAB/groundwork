@@ -3,7 +3,7 @@ import type { Requirement } from "../src/core/types";
 import { catalogueOf } from "../src/store/catalogue";
 import { configSchema } from "../src/store/config";
 import type { Product } from "../src/store/products";
-import { correctRelease, ReleaseError, releaseRequirements, releaseVersion } from "../src/store/release";
+import { correctRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, renderReleaseReport, stakeholderProgress } from "../src/store/release";
 
 const NOW = "2026-12-15T10:00:00.000Z";
 const product = (versions: Product["versions"] = ["1.0", "1.1", "1.2"].map((version) => ({ version, status: "planned" as const }))): Product => ({
@@ -109,5 +109,45 @@ describe("after a release", () => {
     expect(a.releasedIn).toBeUndefined();
     expect(out.product.versions[0].corrections?.[0]).toMatchObject({ by: "sam", at: NOW, reason, shipped: { added: [], removed: ["A"] }, movedTo: "1.1" });
     expect(() => correctRelease(requirements, cat(p), { product: p, version: "1.0", reason: " ", removeShipped: ["A"], moveTo: "1.1", actor: "sam", now: NOW })).toThrow(/reason/);
+  });
+});
+
+describe("release report and stakeholder progress", () => {
+  const S = req("S", { kind: "stakeholder", title: "Book appointments quickly", story: "As a secretary I want free slots so that I can book quickly.", stakeholderIds: undefined, product: undefined });
+  const start = () => [S, req("A", { plannedFor: "1.0" }), req("B", { plannedFor: "1.0" }), req("C", { plannedFor: "1.1" })];
+
+  it("counts released solution requirements and says when a need is fully met", () => {
+    const p = product();
+    const r1 = release(start(), p, { version: "1.0", shipped: ["A", "B"] });
+    expect(stakeholderProgress(r1.requirements, "S", cat(r1.product))).toMatchObject({ released: 2, total: 3 });
+    expect(stakeholderProgress(r1.requirements, "S", cat(r1.product)).fullyMetIn).toBeUndefined();
+    const r2 = release(r1.requirements, r1.product, { version: "1.1", shipped: ["C"] });
+    expect(stakeholderProgress(r2.requirements, "S", cat(r2.product))).toMatchObject({ released: 3, total: 3, fullyMetIn: "1.1" });
+  });
+
+  it("reports what a version introduced, for which needs", () => {
+    const p = product();
+    const r1 = release(start(), p, { version: "1.0", shipped: ["A", "B"] });
+    const rep = releaseReport(r1.requirements, cat(r1.product), r1.product, "1.0");
+    expect(rep.introduced.map((x) => x.id)).toEqual(["A", "B"]);
+    expect(rep.introduced[0].stakeholders).toEqual([{ id: "S", title: "Book appointments quickly" }]);
+    expect(rep.stakeholders).toEqual([expect.objectContaining({ id: "S", inThisVersion: "partly met", released: 2, total: 3 })]);
+    const md = renderReleaseReport(rep);
+    expect(md).toContain("# Clinicare Web Application 1.0: release report");
+    expect(md).toContain("## Introduced");
+    expect(md).toContain("- **A** ");
+    expect(md).not.toContain("## Corrections");
+  });
+
+  it("shows corrections in their own section", () => {
+    const p = product();
+    const r1 = release(start(), p, { version: "1.0", shipped: ["A", "B"] });
+    const fixed = correctRelease(r1.requirements, cat(r1.product), { product: r1.product, version: "1.0", reason: "B's flag was off", removeShipped: ["B"], moveTo: "1.1", actor: "sam", now: NOW });
+    const rep = releaseReport(fixed.requirements, cat(fixed.product), fixed.product, "1.0");
+    expect(rep.introduced.map((x) => x.id)).toEqual(["A"]);
+    expect(rep.corrections).toHaveLength(1);
+    const md = renderReleaseReport(rep);
+    expect(md).toContain("## Corrections");
+    expect(md).toContain("B's flag was off");
   });
 });

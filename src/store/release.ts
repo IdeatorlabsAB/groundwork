@@ -204,3 +204,108 @@ export function correctRelease(requirements: Requirement[], catalogue: Catalogue
   };
   return { requirements: out, product: withVersion(p, version, (v) => ({ ...v, corrections: [...(v.corrections ?? []), correction] })) };
 }
+
+export interface StakeholderProgress {
+  id: string;
+  title: string;
+  /** Solution requirements fulfilling it that have shipped. */
+  released: number;
+  /** Solution requirements fulfilling it: the current ones, plus ones that shipped and were later made obsolete. */
+  total: number;
+  /** The version in which the last of its current solution requirements shipped, once all have. */
+  fullyMetIn?: string;
+}
+
+/** A stakeholder requirement's progress, derived from the solution requirements that fulfil it (never stored). */
+export function stakeholderProgress(requirements: Requirement[], stakeholderId: string, catalogue: Catalogue, asOf?: { product: Product; version: string }): StakeholderProgress {
+  const s = requirements.find((r) => r.id === stakeholderId);
+  const fulfilling = requirements.filter((r) => kindOf(r) === "solution" && r.stakeholderIds?.includes(stakeholderId));
+  const counted = fulfilling.filter((r) => r.status !== "obsolete" || r.releasedIn);
+  // "As of" a version: only releases up to and including it count, so an old report still reads as it did then.
+  const order = (p: Product | undefined, v: string) => p?.versions.findIndex((x) => x.version === v) ?? -1;
+  const shippedBy = (r: Requirement) => {
+    if (!r.releasedIn) return false;
+    if (!asOf) return true;
+    const p = productOf(catalogue, r);
+    return p?.id !== asOf.product.id || order(p, r.releasedIn) <= order(asOf.product, asOf.version);
+  };
+  const released = counted.filter(shippedBy);
+  const current = fulfilling.filter((r) => r.status !== "obsolete");
+  let fullyMetIn: string | undefined;
+  if (current.length && current.every(shippedBy)) {
+    for (const r of current) fullyMetIn = laterVersion(productOf(catalogue, r), fullyMetIn, r.releasedIn!);
+  }
+  return { id: stakeholderId, title: s?.title ?? stakeholderId, released: released.length, total: counted.length, ...(fullyMetIn ? { fullyMetIn } : {}) };
+}
+
+export interface ReleaseReport {
+  product: { id: string; title: string };
+  version: ProductVersion;
+  introduced: { id: string; title: string; story: string; tickets: unknown[]; stakeholders: { id: string; title: string }[] }[];
+  madeObsolete: { id: string; title: string; replacedBy: { id: string; title: string }[] }[];
+  stakeholders: (StakeholderProgress & { inThisVersion: "fully met" | "partly met" })[];
+  corrections: Correction[];
+}
+
+export function releaseReport(requirements: Requirement[], catalogue: Catalogue, product: Product, version: string): ReleaseReport {
+  const v = versionOf(product, version);
+  const mine = requirements.filter(inProduct(catalogue, product));
+  const ref = (id: string) => ({ id, title: requirements.find((r) => r.id === id)?.title ?? id });
+  const introduced = mine
+    .filter((r) => r.releasedIn === version)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      story: r.story,
+      tickets: ((r as { tickets?: unknown[] }).tickets ?? []) as unknown[],
+      stakeholders: (r.stakeholderIds ?? []).map(ref),
+    }));
+  const madeObsolete = mine
+    .filter((r) => r.obsoletedIn === version)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((r) => ({ id: r.id, title: r.title, replacedBy: (r.obsoletedBy ?? []).map(ref) }));
+  const stakeholderIds = [...new Set(introduced.flatMap((r) => r.stakeholders.map((s) => s.id)))].sort();
+  const stakeholders = stakeholderIds.map((id) => {
+    const p = stakeholderProgress(requirements, id, catalogue, { product, version });
+    return { ...p, inThisVersion: p.fullyMetIn === version ? ("fully met" as const) : ("partly met" as const) };
+  });
+  return { product: { id: product.id, title: product.title }, version: v, introduced, madeObsolete, stakeholders, corrections: v.corrections ?? [] };
+}
+
+/** The release report as Markdown, e.g. for technical documentation. */
+export function renderReleaseReport(r: ReleaseReport): string {
+  const day = (iso?: string) => (iso ? iso.slice(0, 10) : "not released yet");
+  const lines = [`# ${r.product.title} ${r.version.version}: release report`, ""];
+  lines.push(r.version.status === "released" ? `Released ${day(r.version.releasedAt)} by ${r.version.releasedBy ?? "unknown"}. Product ${r.product.id}.` : "This version isn't released yet.", "");
+  lines.push("## Introduced", "");
+  if (!r.introduced.length) lines.push("Nothing.");
+  for (const x of r.introduced) {
+    lines.push(`- **${x.id}** ${x.title}: ${x.story}`);
+    if (x.stakeholders.length) lines.push(`  - Meets: ${x.stakeholders.map((s) => `${s.id} ${s.title}`).join("; ")}`);
+  }
+  lines.push("", "## Made obsolete", "");
+  if (!r.madeObsolete.length) lines.push("Nothing.");
+  for (const x of r.madeObsolete) {
+    lines.push(`- **${x.id}** ${x.title}${x.replacedBy.length ? `, replaced by ${x.replacedBy.map((s) => `${s.id} ${s.title}`).join("; ")}` : ", removed"}`);
+  }
+  lines.push("", "## Stakeholder requirements", "");
+  if (!r.stakeholders.length) lines.push("None affected.");
+  for (const s of r.stakeholders) {
+    lines.push(`- **${s.id}** ${s.title}: ${s.inThisVersion} (${s.released} of ${s.total} solution requirements released)`);
+  }
+  if (r.corrections.length) {
+    lines.push("", "## Corrections", "");
+    for (const c of r.corrections) {
+      const parts = [
+        c.shipped.added.length && `added to shipped: ${c.shipped.added.join(", ")}`,
+        c.shipped.removed.length && `taken out of shipped: ${c.shipped.removed.join(", ")}`,
+        c.obsolete.added.length && `made obsolete: ${c.obsolete.added.join(", ")}`,
+        c.obsolete.removed.length && `no longer obsolete: ${c.obsolete.removed.join(", ")}`,
+        c.movedTo && `moved to ${c.movedTo}`,
+      ].filter(Boolean);
+      lines.push(`- ${day(c.at)}, ${c.by}: ${parts.join("; ")}. Reason: ${c.reason}`);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
