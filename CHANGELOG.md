@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - Requirements in two layers. Stakeholder requirements are user stories ("As a … I want … so that …"). Solution requirements are "shall" statements, and each must fulfil at least one stakeholder requirement through `stakeholderIds`. The tools refuse a solution requirement without one, and won't delete the only stakeholder requirement a solution requirement fulfils.
 - `add_requirements` and `update_item` return `warnings` when a story doesn't fit its layer. `get_item` on a stakeholder requirement lists the solution requirements that fulfil it (`fulfilledBy`).
@@ -9,6 +9,7 @@
 - **Breaking:** `add_requirements` requires `kind`. Existing solution requirements without `stakeholderIds` now fail `groundwork validate`. Link them to a stakeholder requirement with `link_items`.
 - The acme example now has a stakeholder requirement behind every solution requirement.
 - When agents plan work, they classify the task as a new need, a change or a fix, and state that in the plan. For a new need or a change, they record requirements before writing code, and they build tickets from requirements with the REQ ids in them.
+- Recording insights, hypotheses, experiment results or requirements directly isn't planning work, so agents record what a product manager asks for without the new need / change / fix call.
 - `approve_requirement` can record an approval given outside Groundwork, such as a PM approving verbally. It takes `approvedBy` and a `note`, and stores who entered it as `recordedBy`.
 - Setup instructions for Codex in the README, the skill and the CLI's messages (`--help`, `init`, `import`).
 
