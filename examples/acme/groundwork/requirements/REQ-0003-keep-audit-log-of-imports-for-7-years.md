@@ -3,7 +3,7 @@ id: REQ-0003
 title: Keep audit log of imports for 7 years
 kind: solution
 story: The system shall log every import with who ran it, when, and which file was imported, and shall keep each log entry for 7 years.
-product: Acme app
+product: PRD-0001
 stakeholderIds:
   - REQ-0004
 acceptanceCriteria:

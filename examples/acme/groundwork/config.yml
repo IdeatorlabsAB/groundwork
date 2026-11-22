@@ -1,13 +1,6 @@
 # Groundwork settings. See SPEC.md for every field.
-schemaVersion: 1
+schemaVersion: 2
 name: Acme
-productAreas:
-  - id: onboarding
-    label: Onboarding
-  - id: reporting
-    label: Reporting
-products:
-  - Acme app
 people:
   - id: sam
     name: Sam

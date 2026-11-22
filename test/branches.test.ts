@@ -223,3 +223,23 @@ describe("renumber in real-world setups", () => {
     expect(readFileSync(join(r.root, `${R}/REQ-0004-draft.md`), "utf8")).toBe("half-written, no frontmatter");
   });
 });
+
+describe("renumber and product files", () => {
+  it("gives the branch's product the next free id and fixes requirements that name it", () => {
+    const r = repo();
+    r.write(`${R}/REQ-0001-need.md`, req("REQ-0001", "Need"));
+    r.commit("base");
+    r.git("branch", "feature");
+    r.write("groundwork/products/PRD-0001-clinicare-web.md", renderItem({ id: "PRD-0001", title: "Clinicare Web", areas: [], versions: [] }));
+    r.commit("main adds a product");
+    r.git("checkout", "-q", "feature");
+    r.write("groundwork/products/PRD-0001-clinicare-mobile.md", renderItem({ id: "PRD-0001", title: "Clinicare Mobile", areas: [], versions: [] }));
+    r.write(`${R}/REQ-0002-mobile-sol.md`, req("REQ-0002", "Mobile sol", { kind: "solution", story: "The app shall work.", stakeholderIds: ["REQ-0001"], product: "PRD-0001" }));
+    r.commit("feature adds a product");
+    const out = renumber(r.root, "main");
+    expect(out.renumbered).toEqual([
+      { from: "PRD-0001", to: "PRD-0002", oldPath: "groundwork/products/PRD-0001-clinicare-mobile.md", newPath: "groundwork/products/PRD-0002-clinicare-mobile.md" },
+    ]);
+    expect(parseItem(readFileSync(join(r.root, `${R}/REQ-0002-mobile-sol.md`), "utf8")).data.product).toBe("PRD-0002");
+  });
+});

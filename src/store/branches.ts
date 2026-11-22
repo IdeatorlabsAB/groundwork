@@ -4,6 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { DIR } from "./config";
 import { COLLECTIONS, LINK_FIELDS, parseItem } from "./files";
+import { PRODUCTS_DIR } from "./products";
 import type { Problem } from "./validate";
 
 /**
@@ -30,10 +31,10 @@ export interface Clash {
   basePath: string;
 }
 
-const FOLDERS = new Set(Object.values(COLLECTIONS));
+const FOLDERS = new Set<string>([...Object.values(COLLECTIONS), PRODUCTS_DIR]);
 const isItemPath = (path: string) => {
   const parts = path.split("/");
-  return parts.length === 3 && parts[0] === DIR && FOLDERS.has(parts[1] as never) && parts[2].endsWith(".md");
+  return parts.length === 3 && parts[0] === DIR && FOLDERS.has(parts[1]) && parts[2].endsWith(".md");
 };
 
 function git(root: string, args: string[], input?: string): Buffer {
@@ -150,10 +151,13 @@ function rewriteFrontmatter(text: string, map: Map<string, string>, base: Record
     doc.set("id", newId);
     changed = true;
   }
-  const h = doc.get("hypothesisId");
-  if (typeof h === "string" && map.has(h) && !inBase("hypothesisId", h)) {
-    doc.set("hypothesisId", map.get(h));
-    changed = true;
+  // Single-id links: an experiment's hypothesis, a requirement's product.
+  for (const field of ["hypothesisId", "product"]) {
+    const v = doc.get(field);
+    if (typeof v === "string" && map.has(v) && !inBase(field, v)) {
+      doc.set(field, map.get(v));
+      changed = true;
+    }
   }
   for (const field of LINK_FIELDS) {
     const seq = doc.get(field);

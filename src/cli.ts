@@ -4,9 +4,10 @@ import { KIND, type Kind } from "./core/schemas";
 import type { Requirement } from "./core/types";
 import { kindOf } from "./core/requirements";
 import { ConfigError, DIR, findRoot, isInitialized, readConfig, writeConfig } from "./store/config";
-import { COLLECTIONS, load, type Loaded } from "./store/files";
+import { COLLECTIONS, load, slug, type Loaded } from "./store/files";
 import { validate } from "./store/validate";
 import { clashProblems, GitError, renumber } from "./store/branches";
+import { migrate, planMigration, type MigrationPlan } from "./store/migrate";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
 import { ImportError, runImport } from "./store/import";
@@ -24,6 +25,8 @@ Usage:
   groundwork renumber --against <base>
                                        Give this branch's items that clash with <base> new ids,
                                        and fix links
+  groundwork migrate [--dry-run]       Move products and areas from config.yml into product files
+                                       (groundwork/products/), so products can have versions
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -102,6 +105,24 @@ function cmdRenumber(against?: string) {
   for (const r of renumbered) console.log(`${bold(r.from)} → ${bold(r.to)}  ${r.newPath}`);
   if (rewritten.length) console.log(dim(`Updated links in: ${rewritten.join(", ")}`));
   for (const m of mentions) console.log(`${yellow("warning")} ${m.file}: mentions ${m.id} in its notes; update that by hand`);
+  return 0;
+}
+
+function cmdMigrate(dryRun: boolean) {
+  const root = findRoot();
+  const plan: MigrationPlan | undefined = dryRun ? planMigration(root) : migrate(root);
+  if (!plan) {
+    console.log(green("Nothing to migrate."));
+    return 0;
+  }
+  if (dryRun) console.log(bold("Dry run, nothing changed."));
+  for (const p of plan.products) {
+    console.log(`${bold(p.id)} ${p.title}  ${dim(`groundwork/products/${p.id}-${slug(p.title)}.md`)}${p.areas.length ? `, areas: ${p.areas.map((a) => a.label).join(", ")}` : ""}`);
+  }
+  for (const r of plan.requirementProducts) console.log(dim(`${r.file}: product "${r.from}" → ${r.to}`));
+  for (const u of plan.unknownProducts) console.log(`${yellow("warning")} ${u.file}: product "${u.value}" isn't a known product; left as it is`);
+  for (const n of plan.notes) console.log(yellow(n));
+  if (!dryRun) console.log(green("Migrated. Older groundwork-mcp versions won't read this folder: update them with npx -y groundwork-mcp@latest."));
   return 0;
 }
 
@@ -207,6 +228,8 @@ async function main(): Promise<number> {
       return cmdInit(values.name);
     case "validate":
       return cmdValidate(Boolean(values.json), values.against);
+    case "migrate":
+      return cmdMigrate(Boolean(values["dry-run"]));
     case "renumber":
       return cmdRenumber(values.against);
     case "trace":
