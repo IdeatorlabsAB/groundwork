@@ -11,6 +11,7 @@ import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../c
 import { appendToConfig, isInitialized, readConfig, resolveActor, writeConfig, type Config } from "../store/config";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
+import { catalogueOf, findArea, findProduct, type Catalogue } from "../store/catalogue";
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
@@ -124,28 +125,49 @@ class Session {
   readonly config: Config;
   readonly loaded: Loaded;
   readonly actor: ReturnType<typeof resolveActor>;
+  readonly catalogue: Catalogue;
 
   constructor(readonly root: string) {
     this.config = readConfig(root);
     this.loaded = load(root);
     this.actor = resolveActor(root, this.config);
+    this.catalogue = catalogueOf(this.config, this.loaded.products);
   }
 
   file(kind: Kind, item: AnyItem) {
     return this.loaded.paths.get(item.id) ?? newPath(kind, item.id, item.title);
   }
 
-  areaLabel = (id: string | undefined) => this.config.productAreas.find((a) => a.id === id)?.label ?? "";
+  areaLabel = (id: string | undefined) => this.catalogue.areas.find((a) => a.id === id)?.label ?? "";
 
   /** Accept an area's id or label; undefined stays undefined. */
   area(value: string | undefined): string | undefined {
     if (!value) return undefined;
-    const a = this.config.productAreas.find((x) => x.id === value || x.label.toLowerCase() === value.trim().toLowerCase());
+    const a = findArea(this.catalogue, value);
     if (!a) {
-      const known = this.config.productAreas.map((x) => x.label).join(", ") || "none defined";
-      throw new UserError(`Unknown product area "${value}". Areas in groundwork/config.yml: ${known}. Add it with add_product_areas, or leave it out.`);
+      const known = this.catalogue.areas.map((x) => x.label).join(", ") || "none defined";
+      const where = this.catalogue.products.length ? "Areas of the products in groundwork/products/" : "Areas in groundwork/config.yml";
+      throw new UserError(`Unknown product area "${value}". ${where}: ${known}. Add it with add_product_areas, or leave it out.`);
     }
     return a.id;
+  }
+
+  /** A requirement's product as stored: the product id with product files, the config spelling for legacy projects. */
+  product(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    if (this.catalogue.products.length) {
+      const p = findProduct(this.catalogue, value);
+      if (!p) {
+        throw new UserError(`Unknown product "${value}". Products: ${this.catalogue.productNames.join(", ")}. Add it with add_products, or leave it out.`);
+      }
+      return p.id;
+    }
+    const names = this.catalogue.productNames;
+    const hit = names.find((p) => p.toLowerCase() === value.trim().toLowerCase());
+    if (names.length && !hit) {
+      throw new UserError(`Unknown product "${value}". Products in groundwork/config.yml: ${names.join(", ")}. Add it with add_products, or leave it out.`);
+    }
+    return hit ?? value;
   }
 
   /** Every id must be an item of this kind. */
@@ -298,8 +320,12 @@ export function buildServer({ root }: ServerOptions): McpServer {
         initialized: isInitialized(root),
         ...(s.config.migrated ? { migratedTo: s.config.migrated, readOnly: true } : {}),
         you: { id: s.actor.id, name: s.actor.person?.name, role: s.actor.person?.role ?? "editor" },
-        productAreas: s.config.productAreas,
-        products: s.config.products,
+        catalogue: s.catalogue.legacy ? "legacy" : "files",
+        ...(s.catalogue.legacy ? { migrate: "Run groundwork migrate to move products into groundwork/products/ and add versions." } : {}),
+        products: s.catalogue.products.length
+          ? s.catalogue.products.map(({ id, title, areas, versions }) => ({ id, title, areas, versions }))
+          : s.catalogue.productNames.map((title) => ({ title, areas: [], versions: [] })),
+        productAreas: s.catalogue.areas,
         members: s.config.people.map(({ id, name, role }) => ({ id, name, role })),
         counts: Object.fromEntries(KIND.options.map((k) => [k, items[COLLECTIONS[k]].length])),
         problems: {
@@ -476,10 +502,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, r.stakeholderIds);
-        const product = r.product && s.config.products.find((p) => p.toLowerCase() === r.product!.toLowerCase());
-        if (r.product && s.config.products.length && !product) {
-          throw new UserError(`Unknown product "${r.product}". Products in groundwork/config.yml: ${s.config.products.join(", ")}. Add it with add_products, or leave it out.`);
-        }
+        const product = s.product(r.product);
         const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
         if (r.findingIds.length) {
           derived.push(base);
@@ -558,6 +581,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const p = parsed.data as Record<string, unknown> & { productArea?: string };
       if (!Object.keys(p).length) throw new UserError("The patch has no fields to change.");
       if ("productArea" in p) p.productArea = s.area(p.productArea);
+      if (hit.kind === "requirement" && typeof p.product === "string") p.product = s.product(p.product);
       const warnings: string[] = [];
       let change: ops.Change;
       switch (hit.kind) {

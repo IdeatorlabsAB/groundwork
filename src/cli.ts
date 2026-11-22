@@ -159,6 +159,7 @@ async function cmdImport(to: string | undefined, token: string | undefined, dryR
   const root = findRoot();
   const already = readConfig(root).migrated;
   if (already && !dryRun) console.log(dim(`This folder was imported before (${already}). Items already there are ${overwrite ? "replaced" : "skipped"}.`));
+  if (load(root).products.some((p) => p.versions.length)) console.log(yellow("Product versions aren't imported yet."));
   try {
     const r = await runImport({ root, to, token, dryRun, overwrite });
     console.log(`${dryRun ? bold("Dry run, nothing saved. ") : ""}${r.workspace}: ${r.created} new, ${r.updated} replaced, ${r.skipped} already there.`);

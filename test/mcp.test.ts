@@ -8,6 +8,7 @@ import { buildServer } from "../src/mcp/server";
 import { readConfig, writeConfig } from "../src/store/config";
 import { load } from "../src/store/files";
 import { validate } from "../src/store/validate";
+import { writeProduct } from "../src/store/products";
 
 let root: string;
 
@@ -584,5 +585,38 @@ describe("approval on someone's behalf", () => {
 
   it("without approvedBy, a draft still needs submitting first and points at approvedBy", async () => {
     expect((await call(c, "approve_requirement", { id })).error).toMatch(/approvedBy/);
+  });
+});
+
+describe("product files", () => {
+  let c: Client;
+  beforeEach(async () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 2, productAreas: [], products: [] });
+    writeProduct(root, { id: "PRD-0001", title: "Clinicare Web Application", areas: [{ id: "scheduling", label: "Scheduling" }], versions: [] });
+    c = await connect();
+  });
+
+  it("stores a requirement's product as the product id", async () => {
+    const need = await call(c, "add_requirements", {
+      requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }],
+    });
+    const { data, error } = await call(c, "add_requirements", {
+      requirements: [
+        { kind: "solution", title: "Slots", story: "The system shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need.data.created[0].id], product: "clinicare web application" },
+      ],
+    });
+    expect(error).toBeUndefined();
+    expect(load(root).items.requirements.find((r) => r.id === data.created[0].id)?.product).toBe("PRD-0001");
+  });
+
+  it("resolves an area label from a product file", async () => {
+    await call(c, "add_insights", { insights: [{ title: "X", quote: "q", source: "survey", persona: "p", productArea: "Scheduling" }] });
+    expect(load(root).items.insights[0].productArea).toBe("scheduling");
+  });
+
+  it("get_workspace shows the catalogue", async () => {
+    const { data } = await call(c, "get_workspace");
+    expect(data.catalogue).toBe("files");
+    expect(data.products).toEqual([expect.objectContaining({ id: "PRD-0001", title: "Clinicare Web Application", areas: [{ id: "scheduling", label: "Scheduling" }] })]);
   });
 });

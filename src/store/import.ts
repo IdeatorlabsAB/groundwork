@@ -1,6 +1,7 @@
 import { readConfig, writeConfig } from "./config";
 import { load } from "./files";
 import { validate, type Problem } from "./validate";
+import { catalogueOf } from "./catalogue";
 
 /**
  * Moving a project into the Groundwork web app: send every item to its /api/import endpoint, then mark the folder
@@ -43,7 +44,11 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
   return {
     format: BUNDLE_FORMAT,
     schemaVersion: 1,
-    config: { name: config.name, productAreas: config.productAreas, products: config.products, people: config.people },
+    config: (() => {
+      // The web app takes flat lists, so the catalogue is flattened: areas across products, product titles.
+      const c = catalogueOf(config, loaded.products);
+      return { name: config.name, productAreas: c.areas.map(({ id, label }) => ({ id, label })), products: c.productNames, people: config.people };
+    })(),
     items,
     dryRun: Boolean(opts.dryRun),
     overwrite: Boolean(opts.overwrite),
