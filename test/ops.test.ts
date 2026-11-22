@@ -3,7 +3,7 @@ import { diffCollections } from "../src/core/collections";
 import * as ops from "../src/core/ops";
 import { localSchemas } from "../src/core/schemas";
 const { PATCHES, insightInput } = localSchemas;
-import { AREA, ctx, ID, USER, workspace } from "./fixtures";
+import { AREA, ctx, ID, OTHER_USER, USER, workspace } from "./fixtures";
 
 const apply = <R>(s: ReturnType<typeof workspace>, ch: ops.Change<R>) => ({ ...s, ...ch.next });
 
@@ -100,6 +100,24 @@ describe("requirement status rules", () => {
   it("approves and records who approved", () => {
     const s = apply(workspace(), ops.approveRequirement(workspace(), ctx(), ID.solutionReq));
     expect(s.requirements.find((r) => r.id === ID.solutionReq)).toMatchObject({ status: "approved", approvedBy: USER });
+  });
+
+  it("records an approval given by someone else", () => {
+    const s = apply(workspace(), ops.approveRequirement(workspace(), ctx(), ID.stakeholderReq, { approvedBy: OTHER_USER, note: "Verbal, sprint planning" }));
+    expect(s.requirements.find((r) => r.id === ID.stakeholderReq)).toMatchObject({
+      status: "approved",
+      approvedBy: OTHER_USER,
+      recordedBy: USER,
+      approvalNote: "Verbal, sprint planning",
+      approver: OTHER_USER,
+    });
+  });
+
+  it("doesn't store recordedBy when you approve yourself", () => {
+    const s = apply(workspace(), ops.approveRequirement(workspace(), ctx(), ID.solutionReq, { approvedBy: USER }));
+    const r = s.requirements.find((x) => x.id === ID.solutionReq)!;
+    expect(r.approvedBy).toBe(USER);
+    expect(r.recordedBy).toBeUndefined();
   });
 
   it("only approved requirements can be made obsolete", () => {

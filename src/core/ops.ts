@@ -327,13 +327,25 @@ export function submitRequirement(s: Collections, c: Ctx, id: string, approver: 
   };
 }
 
-export function approveRequirement(s: Collections, c: Ctx, id: string): Change<boolean> {
+/** Approve a requirement. `by` records an approval someone else gave outside Groundwork, e.g. verbally. */
+export function approveRequirement(s: Collections, c: Ctx, id: string, by?: { approvedBy: string; note?: string }): Change<boolean> {
   const r = s.requirements.find((x) => x.id === id);
   if (!r || r.status === "approved" || r.status === "in-delivery" || r.status === "obsolete") return nothing(false);
+  const approvedBy = by?.approvedBy ?? c.actor;
+  const onBehalf = approvedBy !== c.actor;
+  const approved: Requirement = {
+    ...r,
+    status: "approved",
+    approvedBy,
+    approvedAt: c.now,
+    approver: r.approver ?? approvedBy,
+    ...(onBehalf ? { recordedBy: c.actor } : {}),
+    ...(by?.note ? { approvalNote: by.note } : {}),
+  };
   return {
     next: {
-      requirements: s.requirements.map((x) => (x.id === id ? { ...x, status: "approved", approvedBy: c.actor, approvedAt: c.now } : x)),
-      activity: [log(c, "requirement", `approved "${r.title}"`, id), ...s.activity],
+      requirements: s.requirements.map((x) => (x.id === id ? approved : x)),
+      activity: [log(c, "requirement", onBehalf ? `approved "${r.title}" for ${approvedBy}` : `approved "${r.title}"`, id), ...s.activity],
     },
     result: true,
   };

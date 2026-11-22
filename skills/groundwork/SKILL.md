@@ -20,6 +20,7 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 | Proposing a feature or bet | Look for supporting insights (`search_items`), then offer to draft a hypothesis linked to them (`add_hypotheses`) |
 | Planning a test, pilot or A/B test | `add_experiment` for that hypothesis, with a primary metric, baseline and target |
 | Sharing results | `record_experiment_results`, then offer a finding (`add_findings`) linked to the experiment and hypothesis |
+| Planning a task (plan mode, a written plan, an autonomous workflow) | Classify it as new need, change or fix, and state that in the plan; for a new need or change, record requirements before code (see "When you plan work") |
 | Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below). Search existing requirements and findings first, and link findings when there are any |
 | Asking "what do we know about X?" or "why are we building Y?" | `search_items` and `get_item`, and answer with the item ids and files |
 
@@ -32,6 +33,26 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 
 Add the stakeholder requirements first, then the solution requirements in a second `add_requirements` call that references their ids. One stakeholder requirement is usually fulfilled by several solution requirements. If a tool returns `warnings` about wording, rewrite the story with `update_item`. Before you start building, check that every stakeholder requirement is fulfilled: `get_item` shows `fulfilledBy`, and `groundwork validate` lists the gaps.
 
+## When you plan work
+
+Before you plan a task, decide what kind it is. If you're unsure, search for related requirements first.
+
+- **New need:** something users can't do today. "Let's add a feature to book appointments."
+- **Change:** existing behaviour that should work differently. "Booking slots should be 15 minutes, not 30."
+- **Fix:** restores intended behaviour. "This path is broken, fix it." Refactors and dependency bumps count as fixes.
+
+State your call in one line of the plan, so the user can overrule it:
+*"New need: adds 2 stakeholder and 4 solution requirements"*, or *"Bug fix under REQ-0007; no requirement changes"*.
+
+- **New need:** the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before any code.
+- **Change:** update the requirement if it's a draft. If it's approved, add a new one; once it's agreed, make the old one obsolete with `obsolete_requirement` and `replacedBy`.
+- **Fix:** don't write requirements. Name the requirement the fix restores when you can tell.
+- **No person reviewing the plan** (an autonomous workflow): follow your own call. The one-line call stays in the plan as the record.
+
+Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
+
+When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement.
+
 ## Rules
 
 - Call `get_workspace` once per session for product areas, products and people. If it reports file problems, mention them. If an area or product you need is missing, check for a close match first, then add it with `add_product_areas` or `add_products`.
@@ -41,4 +62,5 @@ Add the stakeholder requirements first, then the solution requirements in a seco
 - Quotes are evidence: keep them verbatim. Use a role ("Finance manager") and an optional ref like P07, never full names, emails or other personal details. These files usually end up in git.
 - Show the user what you're about to log, as a short list, and log it once they agree. Logging something they've explicitly asked for needs no extra check.
 - Never delete items or approve requirements unless the user asks for that specific action.
+- When the user says someone approved a requirement outside Groundwork (e.g. verbally), record it with `approve_requirement`, passing `approvedBy` and a `note`. Only do this when the user names the approver.
 - After writing, tell the user the ids and files you created (e.g. `REQ-0004`, `groundwork/requirements/REQ-0004-…md`). Suggest committing them.

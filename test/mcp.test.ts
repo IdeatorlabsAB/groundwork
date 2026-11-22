@@ -147,6 +147,31 @@ describe("local MCP server", () => {
     expect(c.getInstructions()).toContain("insight -> hypothesis -> experiment -> finding -> requirement");
   });
 
+  it("tells agents how to plan work with requirements", async () => {
+    const text = (await connect()).getInstructions()!;
+    for (const phrase of ["When you plan work", "New need", "Change", "Fix", "before writing code", "REQ ids", "approvedBy"]) {
+      expect(text).toContain(phrase);
+    }
+  });
+
+  it("tells agents that recording evidence directly isn't planning work", async () => {
+    const text = (await connect()).getInstructions()!;
+    expect(text).toContain("isn't planning work");
+  });
+
+  it("lets a product manager run discovery and requirements end to end", async () => {
+    writeConfig(root, { ...readConfig(root), people: [...readConfig(root).people, { id: "pia", name: "Pia", role: "editor" }] });
+    process.env.GROUNDWORK_USER = "pia";
+    const c = await connect();
+    const { f, sr, r } = await chain(c);
+    expect((await call(c, "submit_requirement_for_approval", { id: sr, approverId: "pia" })).error).toBeUndefined();
+    expect((await call(c, "approve_requirement", { id: sr })).data.approved.status).toBe("approved");
+    const req = load(root).items.requirements.find((x) => x.id === r)!;
+    expect(req).toMatchObject({ kind: "solution", findingIds: [f], stakeholderIds: [sr] });
+    expect(req.recordedBy).toBeUndefined();
+    expect(validate(load(root), readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
+  });
+
   it("builds a whole evidence chain as readable, linked files", async () => {
     const c = await connect();
     const ids = await chain(c);
@@ -501,5 +526,63 @@ describe("two-layer requirements", () => {
     // Obsolete requirements are left alone.
     writeFileSync(file, readFileSync(file, "utf8").replace("status: draft", "status: obsolete"));
     expect(validate(load(root), readConfig(root)).filter((p) => p.level === "error")).toEqual([]);
+  });
+});
+
+describe("approval on someone's behalf", () => {
+  let c: Client;
+  let id: string;
+  beforeEach(async () => {
+    const config = readConfig(root);
+    writeConfig(root, { ...config, people: [...config.people, { id: "vic", name: "Vic", role: "viewer" }] });
+    c = await connect();
+    const { data } = await call(c, "add_requirements", {
+      requirements: [
+        {
+          kind: "stakeholder",
+          title: "Book appointments quickly",
+          story: "As a medical secretary I want to see free slots so that I can book appointments quickly.",
+          acceptanceCriteria: ["Free slots are visible"],
+        },
+      ],
+    });
+    id = data.created[0].id;
+  });
+
+  it("records a verbal approval of a draft", async () => {
+    const { data } = await call(c, "approve_requirement", { id, approvedBy: "alex", note: "Approved by Alex in sprint planning" });
+    expect(data.approved.status).toBe("approved");
+    expect(load(root).items.requirements[0]).toMatchObject({ approvedBy: "alex", recordedBy: "sam", approvalNote: "Approved by Alex in sprint planning" });
+  });
+
+  it("refuses an approver who isn't in config.yml", async () => {
+    expect((await call(c, "approve_requirement", { id, approvedBy: "nobody" })).error).toMatch(/isn't in groundwork\/config.yml/);
+  });
+
+  it("refuses a viewer as approver", async () => {
+    expect((await call(c, "approve_requirement", { id, approvedBy: "vic" })).error).toMatch(/Vic is a viewer/);
+  });
+
+  it("refuses a requirement that's already approved", async () => {
+    await call(c, "approve_requirement", { id, approvedBy: "alex" });
+    expect((await call(c, "approve_requirement", { id, approvedBy: "alex" })).error).toMatch(/is approved/);
+  });
+
+  it("naming yourself as approvedBy doesn't skip the approver check", async () => {
+    await call(c, "submit_requirement_for_approval", { id, approverId: "alex" });
+    expect((await call(c, "approve_requirement", { id, approvedBy: "sam" })).error).toMatch(/waiting for Alex/);
+    expect(load(root).items.requirements[0].status).toBe("awaiting-approval");
+  });
+
+  it("refuses recording an approval from someone other than the person asked", async () => {
+    const config = readConfig(root);
+    writeConfig(root, { ...config, people: [...config.people, { id: "pat", name: "Pat", role: "editor" }] });
+    await call(c, "submit_requirement_for_approval", { id, approverId: "alex" });
+    expect((await call(c, "approve_requirement", { id, approvedBy: "pat" })).error).toMatch(/waiting for Alex/);
+    expect((await call(c, "approve_requirement", { id, approvedBy: "alex" })).data.approved.status).toBe("approved");
+  });
+
+  it("without approvedBy, a draft still needs submitting first and points at approvedBy", async () => {
+    expect((await call(c, "approve_requirement", { id })).error).toMatch(/approvedBy/);
   });
 });

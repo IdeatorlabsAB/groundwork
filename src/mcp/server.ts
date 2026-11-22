@@ -35,7 +35,22 @@ How to work:
 3. Always link evidence: hypotheses to insights, experiments to a hypothesis, findings to experiments/hypotheses/insights, solution requirements to the stakeholder requirements they fulfil, and requirements to findings when there are any.
 4. Ask the user before deleting items or approving requirements, unless they already told you to.
 5. Use these tools rather than editing the files directly: they keep ids unique and links valid. Each result includes the item's file: mention it so the user can open it.
-6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.`;
+6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.
+
+When you plan work (a plan, plan mode, or a step in an autonomous workflow):
+1. Classify the task first. If unsure, search_items for related requirements.
+   - New need: something users can't do today, e.g. "Let's add a feature to book appointments".
+   - Change: existing behaviour that should work differently.
+   - Fix: restores intended behaviour, e.g. "This path is broken, fix it". Refactors and dependency bumps count as fixes.
+2. State the call in one line of the plan, e.g. "New need: adds 2 stakeholder and 4 solution requirements" or "Bug fix under REQ-0007; no requirement changes".
+3. New need: the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before writing code.
+4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one, and once that's agreed make the old one obsolete with obsolete_requirement and replacedBy.
+5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
+6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
+7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
+8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
+
+Recording evidence or requirements directly isn't planning work. A product manager logging interview notes, drafting hypotheses, recording experiment results or writing requirements gets no new need / change / fix call: record what they ask for with the tools above.`;
 
 type State = Collections;
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -719,13 +734,42 @@ export function buildServer({ root }: ServerOptions): McpServer {
     "approve_requirement",
     {
       title: "Approve requirement",
-      description: "Sign off a requirement that is awaiting your approval. Only the named approver can approve.",
-      inputSchema: { id: itemId },
+      description:
+        "Sign off a requirement that is awaiting your approval. Only the named approver can approve. If the approver signed off outside Groundwork (e.g. verbally), pass approvedBy and a note. Groundwork records who entered it.",
+      inputSchema: {
+        id: itemId,
+        approvedBy: z
+          .string()
+          .max(40)
+          .optional()
+          .describe("Who approved it, when they did so outside Groundwork, e.g. verbally. A person id from get_workspace."),
+        note: z.string().trim().max(300).optional().describe('How or where it was approved, e.g. "Approved by Maria in sprint planning".'),
+      },
       annotations: { destructiveHint: false },
     },
-    write((s, state, c, { id }: { id: string }) => {
+    write((s, state, c, { id, approvedBy, note }: { id: string; approvedBy?: string; note?: string }) => {
       const r = requirementOf(state, id);
-      if (r.status !== "awaiting-approval") throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.`);
+      // Naming yourself isn't recording someone else's approval: the normal approver check applies.
+      if (approvedBy && approvedBy !== s.actor.id) {
+        const person = s.config.people.find((m) => m.id === approvedBy);
+        if (!person) throw new UserError(`${approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
+        if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+        if (r.status !== "draft" && r.status !== "awaiting-approval") {
+          throw new UserError(`"${r.title}" is ${r.status}; only drafts and requirements awaiting approval can be approved.`);
+        }
+        if (r.approver && r.approver !== approvedBy) {
+          const asked = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver;
+          throw new UserError(
+            `"${r.title}" is waiting for ${asked}, not ${person.name}. Record ${asked}'s approval, or ask ${asked} to send it back so it can be submitted to ${person.name}.`,
+          );
+        }
+        const [next] = apply(state, ops.approveRequirement(state, c, id, { approvedBy, note }));
+        return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)) } };
+      }
+      if (r.status !== "awaiting-approval") {
+        const hint = r.status === "draft" ? " If someone approved it outside Groundwork, record it with approvedBy." : "";
+        throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.${hint}`);
+      }
       if (r.approver !== s.actor.id) {
         const name = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver ?? "someone else";
         throw new UserError(`"${r.title}" is waiting for ${name}, not you (${s.actor.id}). Set GROUNDWORK_USER or your email in config.yml people if that's wrong.`);

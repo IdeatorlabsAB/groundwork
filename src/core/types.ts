@@ -215,6 +215,10 @@ export interface Requirement {
   approver?: string;
   approvedBy?: string;
   approvedAt?: string;
+  /** Set when someone recorded an approval given by another person, e.g. verbally: who entered it. */
+  recordedBy?: string;
+  /** How or where it was approved, e.g. "Approved by Maria in sprint planning". */
+  approvalNote?: string;
   findingIds: ID[];
   /** Set when the requirement was created directly: decided, not validated by an experiment. */
   origin?: RequirementOrigin;
