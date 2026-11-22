@@ -62,6 +62,8 @@ requirement to implementation, tests and risks. This design builds the foundatio
 ## Constraints
 
 - Plain files in git, reviewable in pull requests. No server and no account.
+- Everyone works from their own clone of the repo: developers and product managers alike. Groundwork data moves
+  between people only through git (branches, pull requests, merges), never through a shared server or the web app.
 - `Collections` (`src/core/collections.ts`) and the core ops are shared with the hosted web app. New collections
   and fields must follow the same patterns, and stay additive and optional, so the web app can adopt them later.
 - Existing projects keep loading. A `config.yml` with flat `productAreas` and `products` lists, and requirements
@@ -291,6 +293,10 @@ The skill (`skills/groundwork/SKILL.md`) and the server `INSTRUCTIONS` get a "Wh
 
 ### Added after the developer review
 
+- **Everyone works from their own clone (user decision).** Product managers record insights, hypotheses,
+  experiments, results and requirements on their own clone, just as developers write requirements on theirs. No
+  web-app sync is needed. As a result, many people add items on separate branches at the same time, so the next
+  point is **essential, not optional**: without it, id clashes are a normal, everyday event.
 - **Ids stay safe across branches.**
   - The problem: new items are numbered "highest + 1", so two branches can both create `REQ-0012`, and it only
     shows at merge.
