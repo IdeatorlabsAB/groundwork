@@ -107,6 +107,7 @@ npx -p groundwork-mcp groundwork init        # create groundwork/config.yml
 npx -p groundwork-mcp groundwork validate    # check every item and link; exits 1 on errors
 npx -p groundwork-mcp groundwork validate --against origin/main   # also catch ids that clash with main
 npx -p groundwork-mcp groundwork renumber --against origin/main   # fix those clashes on this branch
+npx -p groundwork-mcp groundwork migrate --dry-run   # move products and areas from config.yml into product files
 npx -p groundwork-mcp groundwork trace REQ-0002
 npx -p groundwork-mcp groundwork list hypothesis
 npx -p groundwork-mcp groundwork import --to <web app>   # see "Groundwork for teams"
@@ -144,16 +145,38 @@ jobs:
 
 ## Setup
 
-`groundwork/config.yml` holds your product areas, products and people (for approvals). The first write creates it if it's missing. Fill it in so agents can tag items by area and send requirements for sign-off. Agents can also add product areas and products themselves, with `add_product_areas` and `add_products`; people are always added by hand:
+`groundwork/config.yml` holds the project's name and its people (for approvals). The first write creates it if it's missing. People are always added by hand:
 
 ```yaml
-name: Acme
-productAreas:
-  - { id: onboarding, label: Onboarding }
-products: [Acme app]
+schemaVersion: 2
+name: Clinicare
 people:
-  - { id: sam, name: Sam, role: owner, email: sam@acme.example }
+  - { id: maria, name: Maria, role: owner, email: maria@clinicare.example }
 ```
+
+### Products, areas and versions
+
+Each product is a file in `groundwork/products/`, with its areas and versions, kept in the repo next to your code:
+
+```yaml
+# groundwork/products/PRD-0001-clinicare-web-application.md
+---
+id: PRD-0001
+title: Clinicare Web Application
+areas:
+  - { id: settings-and-configuration, label: Settings and configuration }
+  - { id: scheduling, label: Scheduling }
+  - { id: prescriptions, label: Prescriptions }
+  - { id: medical-records, label: Medical Records }
+  - { id: patient-data-protection, label: Patient Data Protection }
+versions:
+  - { version: "1.0", status: planned }
+---
+```
+
+Ask your agent: *"Set up Groundwork for Clinicare Web Application, with areas Settings and configuration, Scheduling, Prescriptions, Medical Records and Patient Data Protection, and a first version 1.0."* It uses `add_products`, `add_product_areas` and `add_product_versions`. Insights, hypotheses, findings and requirements are tagged with an area, and solution requirements name their product (`product: PRD-0001`). Area ids are unique across products, so an area always points to one product.
+
+**Projects from before 0.6** keep their areas and products as lists in `config.yml`, and keep working as they are. To give products versions, run `npx -p groundwork-mcp groundwork migrate --dry-run` to see what would change, then `groundwork migrate`. It creates the product files, points requirements at product ids and updates `config.yml`. After migrating, everyone needs Groundwork 0.6 or later: older versions refuse the folder and say to update.
 
 Groundwork finds the project by looking for `groundwork/config.yml` in the current folder and the folders above it. Set `GROUNDWORK_DIR` to point somewhere else, and `GROUNDWORK_USER` to choose who you're acting as.
 
@@ -170,7 +193,7 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 | | `add_requirements` | `send_back_requirement` |
 | | `update_item`, `link_items` | `obsolete_requirement` |
 | | `delete_item` | |
-| | `add_product_areas`, `add_products` | |
+| | `add_products`, `add_product_areas`, `add_product_versions` | |
 
 ## Privacy
 

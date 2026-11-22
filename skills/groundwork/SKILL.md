@@ -55,7 +55,7 @@ When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues o
 
 ## Rules
 
-- Call `get_workspace` once per session for product areas, products and people. If it reports file problems, mention them. If an area or product you need is missing, check for a close match first, then add it with `add_product_areas` or `add_products`.
+- Call `get_workspace` once per session for the products (with their areas and versions) and people. If it reports file problems, mention them. If an area, product or version you need is missing, check for a close match first, then add it with `add_product_areas`, `add_products` or `add_product_versions`. If it says `catalogue: legacy`, products still live in `config.yml`: suggest the user runs `npx -p groundwork-mcp groundwork migrate --dry-run`, then `groundwork migrate`, before adding versions.
 - Search before you create. Link to existing items rather than adding near-duplicates.
 - Always link evidence: hypothesis → insights, experiment → hypothesis, finding → experiments, hypotheses or insights, solution requirement → the stakeholder requirements it fulfils, and requirement → findings when there are any.
 - If `groundwork validate` reports that an id is also used on the base branch, run `npx -p groundwork-mcp groundwork renumber --against <base>` (e.g. `origin/main`). Tell the user which ids changed, and mention any notes it flags as still naming the old id.

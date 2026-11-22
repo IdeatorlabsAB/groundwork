@@ -1,10 +1,11 @@
-# Groundwork file format, version 1
+# Groundwork file format, version 2
 
 This is the contract between your files, the `groundwork` tools and anything else that reads them, including the Groundwork web app's importer. Everything lives in one folder, `groundwork/`, at the root of your project.
 
 ```
 groundwork/
   config.yml
+  products/PRD-0001-clinicare-web-application.md
   insights/INS-0001-setup-takes-too-long.md
   hypotheses/HYP-0001-guided-import.md
   experiments/EXP-0001-guided-import-pilot.md
@@ -91,16 +92,31 @@ These rules live in the core library, so every Groundwork tool applies them the 
 - Requirements go from `draft` to `awaiting-approval` (with an `approver`) to `approved`. The approver can send one back to `draft`. Only `approved` requirements can become `obsolete`.
 - Deleting an item removes links to it. Deleting a hypothesis also deletes its experiments.
 
+## Products
+
+Each product is a file in `products/`, prefix `PRD`, following the same file rules as items (frontmatter, the id never changes, the slug is fixed at creation, the body is yours).
+
+```yaml
+id: PRD-0001
+title: Clinicare Web Application
+areas:
+  - { id: scheduling, label: Scheduling }
+versions:
+  - { version: "1.0", status: planned, plannedFor: 2027-03-01 }
+createdAt: 2026-11-22T10:00:00.000Z
+```
+
+- **`areas`**: `id` (lowercase letters, digits and dashes) and `label`. Area ids are unique across all products in the folder, so an item's `productArea` points to exactly one product.
+- **`versions`**: in release order (the list order; no semver rules). `version` is unique within its product, and `(product id, version)` is its permanent key, so a version string isn't renamed once anything refers to it. `status` is `planned` or `released`. `plannedFor` is an optional target date. `releasedAt` and `releasedBy` are set when the version is released.
+- A solution requirement's `product` is a product id (`PRD-0001`).
+
+`add_products` creates product files. `add_product_areas` and `add_product_versions` add to one; they need the product when there's more than one. All three are add-only: they skip entries already there and never rename, reorder or remove anything. Rename or remove by editing the file.
+
 ## config.yml
 
 ```yaml
-schemaVersion: 1
-name: Acme
-productAreas:
-  - id: onboarding
-    label: Onboarding
-products:
-  - Acme app
+schemaVersion: 2
+name: Clinicare
 people:
   - id: sam            # used in createdBy, owner, approver
     name: Sam
@@ -109,10 +125,10 @@ people:
 migrated: https://…    # set by the web app importer; local writes stop
 ```
 
-`add_product_areas` and `add_products` append to `productAreas` and `products`. They skip entries already there (matched by label or name, ignoring case) and never rename, reorder or remove anything. Area ids are made from the label unless given. Rename or remove by editing the file.
+**Version 1 folders** keep areas and products as flat lists in `config.yml` (`productAreas: [{ id, label }]`, `products: [names]`), and a requirement's `product` is a name. Tools keep reading and writing them that way. `groundwork migrate` moves them to product files: each product name becomes a product, all areas go to the first one (it says so when there are several), requirements get product ids, and the lists are removed from `config.yml`, which gets `schemaVersion: 2`. Nothing migrates implicitly; the first product file in a folder without lists also sets `schemaVersion: 2`. If lists are left in a version 2 `config.yml`, they're ignored and `validate` warns.
 
 The person acting is `$GROUNDWORK_USER` (a person id). Otherwise it's the person whose `email` matches git's, or the only person listed. If none of those apply, it's `me`.
 
 ## Versioning
 
-`schemaVersion` changes only for changes that would break older readers. Tools refuse to write a version newer than they understand. Adding optional fields doesn't change the version.
+`schemaVersion` changes only for changes that would break older readers. Version 2 moved products into `products/`. Tools refuse to write a version newer than they understand. Adding optional fields doesn't change the version.
