@@ -35,7 +35,20 @@ How to work:
 3. Always link evidence: hypotheses to insights, experiments to a hypothesis, findings to experiments/hypotheses/insights, solution requirements to the stakeholder requirements they fulfil, and requirements to findings when there are any.
 4. Ask the user before deleting items or approving requirements, unless they already told you to.
 5. Use these tools rather than editing the files directly: they keep ids unique and links valid. Each result includes the item's file: mention it so the user can open it.
-6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.`;
+6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.
+
+When you plan work (a plan, plan mode, or a step in an autonomous workflow):
+1. Classify the task first. If unsure, search_items for related requirements.
+   - New need: something users can't do today, e.g. "Let's add a feature to book appointments".
+   - Change: existing behaviour that should work differently.
+   - Fix: restores intended behaviour, e.g. "This path is broken, fix it". Refactors and dependency bumps count as fixes.
+2. State the call in one line of the plan, e.g. "New need: adds 2 stakeholder and 4 solution requirements" or "Bug fix under REQ-0007; no requirement changes".
+3. New need: the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before writing code.
+4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one, and once that's agreed make the old one obsolete with obsolete_requirement and replacedBy.
+5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
+6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
+7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
+8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.`;
 
 type State = Collections;
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };

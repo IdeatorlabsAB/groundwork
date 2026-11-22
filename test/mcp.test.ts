@@ -147,6 +147,13 @@ describe("local MCP server", () => {
     expect(c.getInstructions()).toContain("insight -> hypothesis -> experiment -> finding -> requirement");
   });
 
+  it("tells agents how to plan work with requirements", async () => {
+    const text = (await connect()).getInstructions()!;
+    for (const phrase of ["When you plan work", "New need", "Change", "Fix", "before writing code", "REQ ids", "approvedBy"]) {
+      expect(text).toContain(phrase);
+    }
+  });
+
   it("builds a whole evidence chain as readable, linked files", async () => {
     const c = await connect();
     const ids = await chain(c);

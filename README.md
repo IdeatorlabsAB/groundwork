@@ -78,6 +78,10 @@ Write requirements before you build, and keep them in two linked layers:
 
 Every solution requirement fulfils at least one stakeholder requirement, and Groundwork refuses one that doesn't. `groundwork validate` warns about stakeholder requirements that no solution requirement fulfils yet, and about stories that don't fit their layer. Linking findings is optional, so you can write requirements before there's any experiment behind them.
 
+### Planning with Groundwork
+
+When your agent plans a task, it first decides what kind of task it is. "Let's add a feature to book appointments" is a new need. "This path is broken, fix it" is a fix. It states the call in one line of the plan, such as *"New need: adds 2 stakeholder and 4 solution requirements"* or *"Bug fix under REQ-0007; no requirement changes"*. For a new need or a change, the plan records the requirements before any code. Tickets the workflow creates carry the REQ ids they implement. When a PM approves a requirement verbally, tell the agent and it records the approval on their behalf, noting who entered it.
+
 ## The CLI
 
 ```sh
