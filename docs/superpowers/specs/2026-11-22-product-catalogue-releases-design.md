@@ -289,10 +289,40 @@ The skill (`skills/groundwork/SKILL.md`) and the server `INSTRUCTIONS` get a "Wh
   product, and those items don't get a product field. With one product, `add_product_areas` doesn't need a
   product argument.
 
+### Added after the developer review
+
+- **Ids stay safe across branches.**
+  - The problem: new items are numbered "highest + 1", so two branches can both create `REQ-0012`, and it only
+    shows at merge.
+  - The fix keeps readable ids, which compliance documents need, and resolves clashes on the branch, before merge:
+    - `groundwork validate --against <base>` (e.g. `origin/main`) errors when an id the branch adds is also used
+      by a different item on the base branch.
+    - `groundwork renumber --against <base>` gives the branch's clashing new items the next free ids. It renames
+      their files and rewrites every reference to them in files the branch added or changed.
+  - The CI example in the README runs `validate --against origin/${{ github.base_ref }}`, and its error message
+    says to run `renumber`. The skill tells agents to run `renumber` when they see that error.
+  - Ids that already exist on the base branch are never renumbered.
+- **Approvals recorded on someone's behalf. Decided: no pull-request-backed sign-off.**
+  - Approval often happens verbally: a PM approves, and the developer records it. Today `approve_requirement`
+    refuses unless the acting person is the named approver.
+  - `approve_requirement` gets an optional `approvedBy` (a person in `config.yml`) and `note` (e.g. "Approved by
+    Maria in sprint planning, 2026-11-20").
+  - When the person recording isn't the approver, Groundwork stores `approvedBy` (the approver), `recordedBy` (who
+    entered it) and `approvalNote`. The record stays honest without a heavier approval process.
+  - Viewers still can't record approvals.
+- **Build order: agent guidance first.** It's cheap and mostly works with what exists today, and it shows early
+  whether agents judge "new need / change / fix" well.
+
 ## Left to the builder
 
 - Exact tool input shapes, error wording, and how `get_release` and the report are formatted.
-- Splitting the work into PRs. Suggested order: catalogue and migration; versions on requirements and the
-  obsolete-at-release change; release tools, report and CLI; tickets; agent guidance. Guidance can ship early,
-  limited to the parts that exist.
+- Splitting the work into PRs. Order:
+  1. agent guidance, using the features that exist, including approval on someone's behalf;
+  2. branch-safe ids;
+  3. catalogue and migration;
+  4. versions on requirements and the obsolete-at-release change;
+  5. release tools, report and CLI;
+  6. tickets.
+
+  The guidance gains version, release and ticket wording as each later part lands.
 - Whether trace output (`groundwork trace`) shows versions and tickets.
