@@ -63,5 +63,6 @@ When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues o
 - Quotes are evidence: keep them verbatim. Use a role ("Finance manager") and an optional ref like P07, never full names, emails or other personal details. These files usually end up in git.
 - Show the user what you're about to log, as a short list, and log it once they agree. Logging something they've explicitly asked for needs no extra check.
 - Never delete items or approve requirements unless the user asks for that specific action.
+- When approving a solution requirement whose product has planned versions, pass `plannedFor`. Ask the user which version, unless there's only one planned version or they already said. If the plan for a version changes, use `plan_requirements`.
 - When the user says someone approved a requirement outside Groundwork (e.g. verbally), record it with `approve_requirement`, passing `approvedBy` and a `note`. Only do this when the user names the approver.
 - After writing, tell the user the ids and files you created (e.g. `REQ-0004`, `groundwork/requirements/REQ-0004-…md`). Suggest committing them.

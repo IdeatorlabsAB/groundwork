@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Versions on requirements.** Approving a solution requirement plans it for a planned version of its product: `approve_requirement` takes `plannedFor`, which is required once the product has planned versions. `plan_requirements` moves approved requirements to another planned version.
+- **Replacements wait for the release.** A requirement can name what it `replaces`. When it's approved for a version, the old requirements stay valid, with `obsoletePlannedFor` set to that version, and move with it if it's re-planned. Without versions, the old ones become obsolete on approval, as before.
+- `obsolete_requirement` takes `inVersion`, to remove a requirement in a planned version. A requirement that has shipped needs it.
+- `validate` checks version references against the product: unknown versions, `releasedIn` on an unreleased version, approved solution requirements with no planned version, and versions on stakeholder requirements.
+- New optional requirement fields: `replaces`, `plannedFor`, `obsoletePlannedFor`, and `releasedIn`, `releasedAt`, `releasedBy` and `obsoletedIn` (for releasing, coming next). None of them can be changed with `update_item`.
+
 ## 0.6.0
 
 - **Product catalogue.** Each product is a file in `groundwork/products/` (`PRD-0001-…md`) holding its areas and versions, kept in the repo next to the code. Area ids are unique across products. A solution requirement's `product` is the product id.

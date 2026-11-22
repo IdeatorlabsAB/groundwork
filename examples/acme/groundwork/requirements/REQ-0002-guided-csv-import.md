@@ -20,4 +20,5 @@ status: approved
 approver: sam
 approvedBy: sam
 approvedAt: 2026-11-18T08:31:25.146Z
+plannedFor: "1.0"
 ---

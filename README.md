@@ -178,6 +178,8 @@ Ask your agent: *"Set up Groundwork for Clinicare Web Application, with areas Se
 
 **Projects from before 0.6** keep their areas and products as lists in `config.yml`, and keep working as they are. To give products versions, run `npx -p groundwork-mcp groundwork migrate --dry-run` to see what would change, then `groundwork migrate`. It creates the product files, points requirements at product ids and updates `config.yml`. After migrating, everyone needs Groundwork 0.6 or later: older versions refuse the folder and say to update.
 
+**Planning requirements for a version.** When a solution requirement is approved, it's planned for one of its product's planned versions, e.g. *"Approve REQ-0012 for 1.1"*. If work slips, `plan_requirements` moves it to 1.2. To change an approved requirement, the agent adds a new one that `replaces` it. The old one stays valid until the version the new one ships in, so Groundwork never says "obsolete" while the released product still behaves the old way.
+
 Groundwork finds the project by looking for `groundwork/config.yml` in the current folder and the folders above it. Set `GROUNDWORK_DIR` to point somewhere else, and `GROUNDWORK_USER` to choose who you're acting as.
 
 The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examples/acme](examples/acme) for a sample project.
