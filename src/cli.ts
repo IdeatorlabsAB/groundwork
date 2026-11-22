@@ -6,7 +6,7 @@ import { kindOf } from "./core/requirements";
 import { ConfigError, DIR, findRoot, isInitialized, readConfig, writeConfig } from "./store/config";
 import { COLLECTIONS, load, type Loaded } from "./store/files";
 import { validate } from "./store/validate";
-import { clashProblems, GitError } from "./store/branches";
+import { clashProblems, GitError, renumber } from "./store/branches";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
 import { ImportError, runImport } from "./store/import";
@@ -21,6 +21,9 @@ Usage:
   groundwork validate [--json] [--against <base>]
                                        Check every item and link; with --against, also ids that
                                        clash with <base>. Exits 1 on errors (use it in CI)
+  groundwork renumber --against <base>
+                                       Give this branch's items that clash with <base> new ids,
+                                       and fix links
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -84,6 +87,22 @@ function cmdValidate(json: boolean, against?: string) {
     console.log(errors.length ? red(counts) : green(problems.length ? counts : "All items and links are valid."));
   }
   return errors.length ? 1 : 0;
+}
+
+function cmdRenumber(against?: string) {
+  if (!against) {
+    console.error("Usage: groundwork renumber --against <base branch>, e.g. --against origin/main");
+    return 1;
+  }
+  const { renumbered, rewritten, mentions } = renumber(findRoot(), against);
+  if (!renumbered.length) {
+    console.log(green(`Nothing to renumber: no ids clash with ${against}.`));
+    return 0;
+  }
+  for (const r of renumbered) console.log(`${bold(r.from)} → ${bold(r.to)}  ${r.newPath}`);
+  if (rewritten.length) console.log(dim(`Updated links in: ${rewritten.join(", ")}`));
+  for (const m of mentions) console.log(`${yellow("warning")} ${m.file}: mentions ${m.id} in its notes; update that by hand`);
+  return 0;
 }
 
 function cmdTrace(id: string) {
@@ -187,6 +206,8 @@ async function main(): Promise<number> {
       return cmdInit(values.name);
     case "validate":
       return cmdValidate(Boolean(values.json), values.against);
+    case "renumber":
+      return cmdRenumber(values.against);
     case "trace":
       if (!arg) return console.error("Usage: groundwork trace <ID>"), 1;
       return cmdTrace(arg.toUpperCase());

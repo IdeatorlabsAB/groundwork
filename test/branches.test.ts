@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { clashProblems, findClashes } from "../src/store/branches";
-import { writeConfig } from "../src/store/config";
-import { renderItem } from "../src/store/files";
+import { clashProblems, findClashes, renumber } from "../src/store/branches";
+import { readConfig, writeConfig } from "../src/store/config";
+import { load, parseItem, renderItem } from "../src/store/files";
+import { validate } from "../src/store/validate";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -122,5 +123,53 @@ describe("id clashes against a base branch", () => {
       file: `${R}/REQ-0002-from-feature.md`,
       message: expect.stringMatching(/groundwork renumber --against main/),
     });
+  });
+});
+
+describe("renumber", () => {
+  it("gives the branch's clashing item the next free id and fixes links to it", () => {
+    const r = scenario();
+    const out = renumber(r.root, "main");
+    expect(out.renumbered).toEqual([
+      { from: "REQ-0002", to: "REQ-0004", oldPath: `${R}/REQ-0002-from-feature.md`, newPath: `${R}/REQ-0004-from-feature.md` },
+    ]);
+    const sol = parseItem(readFileSync(join(r.root, `${R}/REQ-0003-feature-solution.md`), "utf8"));
+    expect(sol.data.stakeholderIds).toEqual(["REQ-0004"]);
+    expect(findClashes(r.root, "main")).toEqual([]);
+  });
+
+  it("after merging the base, keeps the base's item and its links untouched", () => {
+    const r = scenario();
+    r.git("merge", "-q", "--no-edit", "main");
+    renumber(r.root, "main");
+    const fromMain = readFileSync(join(r.root, `${R}/REQ-0002-from-main.md`), "utf8");
+    expect(fromMain).toBe(r.git("show", `main:${R}/REQ-0002-from-main.md`));
+    expect(validate(load(r.root), readConfig(r.root)).filter((p) => p.level === "error")).toEqual([]);
+  });
+
+  it("reports, but doesn't rewrite, the old id in notes", () => {
+    const r = scenario({ featureNotes: "Split out of REQ-0002 after review." });
+    const out = renumber(r.root, "main");
+    expect(out.mentions).toEqual([{ file: `${R}/REQ-0004-from-feature.md`, id: "REQ-0002" }]);
+    expect(readFileSync(join(r.root, out.renumbered[0].newPath), "utf8")).toContain("Split out of REQ-0002 after review.");
+  });
+
+  it("keeps hand formatting of the frontmatter", () => {
+    const r = scenario({ featureComment: "# drafted with Maria" });
+    renumber(r.root, "main");
+    expect(readFileSync(join(r.root, `${R}/REQ-0004-from-feature.md`), "utf8")).toContain("# drafted with Maria");
+  });
+
+  it("does nothing the second time", () => {
+    const r = scenario();
+    renumber(r.root, "main");
+    expect(renumber(r.root, "main")).toEqual({ renumbered: [], rewritten: [], mentions: [] });
+  });
+
+  it("numbers several clashes of one kind without new clashes", () => {
+    const r = scenarioWithTwoClashes();
+    const out = renumber(r.root, "main");
+    expect(out.renumbered.map((x) => x.to)).toEqual(["REQ-0004", "REQ-0005"]);
+    expect(findClashes(r.root, "main")).toEqual([]);
   });
 });
