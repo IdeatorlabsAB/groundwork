@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `groundwork validate --against <base>` also reports ids that the branch shares with a different item on the base branch. Everyone numbers new items on their own clone, so two branches can both create `REQ-0012`.
+- `groundwork renumber --against <base>` fixes this on the branch. The branch's items get the next free ids, their files are renamed, and links to them are rewritten in the files the branch changed. Ids on the base never change. Notes that mention an old id are reported, not rewritten.
+- The duplicate-id error points at `renumber`. The README's CI example checks against the base branch.
+
 ## 0.4.0
 
 - Requirements in two layers. Stakeholder requirements are user stories ("As a … I want … so that …"). Solution requirements are "shall" statements, and each must fulfil at least one stakeholder requirement through `stakeholderIds`. The tools refuse a solution requirement without one, and won't delete the only stakeholder requirement a solution requirement fulfils.

@@ -2,7 +2,7 @@
 
 **Your product evidence, in your repo, written by your own agent.**
 
-Groundwork lets Claude Code (or any MCP agent) keep customer insights, hypotheses, experiments, findings and requirements as linked Markdown files in a `groundwork/` folder. Every requirement traces back to the findings, experiments and customer quotes behind it.
+Groundwork lets Claude Code (or any MCP agent) keep customer insights, hypotheses, experiments, findings and requirements as linked Markdown files in a `groundwork/` folder, next to your code. It's where your team keeps the *why*: who needs what, what the solution shall do, and the evidence behind it. Your agent writes requirements before it builds, and every requirement traces back to the stakeholder needs, findings and customer quotes behind it.
 
 ```
 insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ requirement
@@ -14,6 +14,7 @@ insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ re
 - **No account, no API keys, no server.** Your agent does the thinking. Groundwork checks the data, keeps links valid and computes experiment verdicts.
 - **Plain files.** Read them, diff them, review them in pull requests, and keep them as long as you like.
 - **Traceability.** Ask "why are we building this?" and get the full evidence chain, or check it in CI with `groundwork validate`.
+- **Works with your branches.** Everyone works on their own clone, and Groundwork catches and fixes id clashes before you merge.
 
 ## Quickstart (2 minutes)
 
@@ -66,6 +67,10 @@ Talk to your agent as you normally would:
 > The pilot finished: activation went from 38% to 61%, support tickets stayed at 11 a week. Record it and write up the finding.
 >
 > Why are we building the guided import?
+>
+> Let's add a feature to book appointments. *(In plan mode, the agent writes the requirements first.)*
+>
+> Maria approved REQ-0004 in sprint planning. Record it.
 
 Groundwork writes files like `groundwork/insights/INS-0001-setup-takes-too-long.md`. Commit them like any other file.
 
@@ -82,11 +87,26 @@ Every solution requirement fulfils at least one stakeholder requirement, and Gro
 
 When your agent plans a task, it first decides what kind of task it is. "Let's add a feature to book appointments" is a new need. "This path is broken, fix it" is a fix. It states the call in one line of the plan, such as *"New need: adds 2 stakeholder and 4 solution requirements"* or *"Bug fix under REQ-0007; no requirement changes"*. For a new need or a change, the plan records the requirements before any code. Tickets the workflow creates carry the REQ ids they implement. When a PM approves a requirement verbally, tell the agent and it records the approval on their behalf, noting who entered it.
 
+## Working on branches
+
+Everyone works on their own clone of the repo: developers writing requirements while they plan, and product managers logging insights and results. Groundwork numbers new items on each clone as one more than the highest id it can see. So two branches can both create `REQ-0012`, each meaning something different.
+
+Groundwork catches this before you merge:
+
+```sh
+npx -p groundwork-mcp groundwork validate --against origin/main   # error: REQ-0012 is also used by … on origin/main
+npx -p groundwork-mcp groundwork renumber --against origin/main   # REQ-0012 → REQ-0015, links updated
+```
+
+`renumber` gives the branch's clashing items the next free ids and renames their files. It also updates links to them in the files your branch added or changed. Ids already on `main` never change, so links and documents that cite them stay valid. Your notes (the Markdown under an item's frontmatter) are never rewritten: if they mention an old id, `renumber` tells you, so you can fix it by hand. Agents run it for you when `validate` reports a clash.
+
 ## The CLI
 
 ```sh
 npx -p groundwork-mcp groundwork init        # create groundwork/config.yml
 npx -p groundwork-mcp groundwork validate    # check every item and link; exits 1 on errors
+npx -p groundwork-mcp groundwork validate --against origin/main   # also catch ids that clash with main
+npx -p groundwork-mcp groundwork renumber --against origin/main   # fix those clashes on this branch
 npx -p groundwork-mcp groundwork trace REQ-0002
 npx -p groundwork-mcp groundwork list hypothesis
 npx -p groundwork-mcp groundwork import --to <web app>   # see "Groundwork for teams"
@@ -107,7 +127,7 @@ REQ-0002 Guided CSV import (solution, approved)
    └─ finding FND-0001 Guided import lifts activation (shown above)
 ```
 
-Run `validate` in CI to block pull requests with broken links:
+Run `validate` in CI to block pull requests with broken links or ids that clash with the branch they merge into:
 
 ```yaml
 # .github/workflows/groundwork.yml
@@ -117,7 +137,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npx -y -p groundwork-mcp groundwork validate
+        with:
+          fetch-depth: 0 # so the base branch is there to compare with
+      - run: npx -y -p groundwork-mcp groundwork validate --against origin/${{ github.base_ref }}
 ```
 
 ## Setup
