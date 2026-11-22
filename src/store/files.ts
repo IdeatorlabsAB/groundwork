@@ -103,7 +103,7 @@ export function load(root: string): Loaded {
         if (typeof id !== "string" || !LOCAL_ID.test(id)) throw new Error(`id must look like ${prefix}-0001, not ${JSON.stringify(id)}`);
         if (!id.startsWith(`${prefix}-`)) throw new Error(`${id} is in ${key}/, but ${key} ids start with ${prefix}-`);
         if (paths.has(id)) {
-          problems.push({ file, message: `duplicate id ${id}, also used by ${paths.get(id)}. Give one of them a new id.` });
+          problems.push({ file, message: `duplicate id ${id}, also used by ${paths.get(id)}. Give one of them a new id. If they come from different branches, run: groundwork renumber --against <base branch>` });
           continue;
         }
         paths.set(id, file);
@@ -134,7 +134,7 @@ export function idAllocator(items: Collections) {
   };
 }
 
-const LINK_FIELDS = ["insightIds", "hypothesisIds", "experimentIds", "findingIds", "stakeholderIds", "obsoletedBy"] as const;
+export const LINK_FIELDS = ["insightIds", "hypothesisIds", "experimentIds", "findingIds", "stakeholderIds", "obsoletedBy"] as const;
 
 /**
  * The operations make new items with temporary ids. Give each a readable id (INS-0008…) in creation order, and
