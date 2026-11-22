@@ -58,6 +58,7 @@ When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues o
 - Call `get_workspace` once per session for product areas, products and people. If it reports file problems, mention them. If an area or product you need is missing, check for a close match first, then add it with `add_product_areas` or `add_products`.
 - Search before you create. Link to existing items rather than adding near-duplicates.
 - Always link evidence: hypothesis → insights, experiment → hypothesis, finding → experiments, hypotheses or insights, solution requirement → the stakeholder requirements it fulfils, and requirement → findings when there are any.
+- If `groundwork validate` reports that an id is also used on the base branch, run `npx -p groundwork-mcp groundwork renumber --against <base>` (e.g. `origin/main`). Tell the user which ids changed, and mention any notes it flags as still naming the old id.
 - Write through the tools, not by editing the files: the tools keep ids unique and links valid. The Markdown body under an item's frontmatter is the user's notes; read it, never overwrite it.
 - Quotes are evidence: keep them verbatim. Use a role ("Finance manager") and an optional ref like P07, never full names, emails or other personal details. These files usually end up in git.
 - Show the user what you're about to log, as a short list, and log it once they agree. Logging something they've explicitly asked for needs no extra check.

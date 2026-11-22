@@ -34,7 +34,7 @@ createdBy: sam
 Anything you write here is yours. Groundwork reads it as the item's `notes` and never rewrites it.
 ```
 
-- **Ids** are a kind prefix and a number of at least four digits: `INS`, `HYP`, `EXP`, `FND`, `REQ`. They never change, and an id is never reused within its kind. New items get one more than the highest id of their kind.
+- **Ids** are a kind prefix and a number of at least four digits: `INS`, `HYP`, `EXP`, `FND`, `REQ`. They never change, and an id is never reused within its kind. New items get one more than the highest id of their kind. Two branches can therefore give the same id to different items. The same id at a different file path is a different item. `groundwork validate --against <base>` reports this, and `groundwork renumber --against <base>` fixes it on the branch: the branch's item gets the next free id, its file is renamed (the slug stays), and links to it are rewritten in the files the branch added or changed. Ids on the base never change, and Markdown bodies are never rewritten.
 - **File names** are `<id>-<slug>.md`. Only the id matters; the slug comes from the title at creation and stays when the title changes, so links to the file don't break. A file has to be in the folder for its kind.
 - **Links** are lists of ids in fields such as `insightIds`. They point from an item to the evidence it builds on.
 - **Unknown fields** are kept. Tools may add fields in later versions.
