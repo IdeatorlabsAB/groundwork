@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Keep customer insights, hypotheses, experiments, findings and requirements as linked Markdown files in your repo, with traceability from every requirement back to the evidence behind it.",
   "author": {
     "name": "The Groundwork Authors",

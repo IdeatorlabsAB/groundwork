@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 - **Tickets, linked both ways.** Solution requirements record the tickets that implement them, in any tracker: `link_tickets`, `unlink_tickets`, and `update_tickets` to refresh status. Agents link the tickets they create from requirements, and fix tickets to the requirement they restore. `search_items` finds requirements by ticket key. The web app's single Linear issue (`delivery`) is shown as a ticket.
 - **Release readiness from tickets.** `get_release` sorts planned requirements into `ready` (all tickets done), `notReady` and `noTickets`. Agents propose `ready` as shipped and ask about the rest.
