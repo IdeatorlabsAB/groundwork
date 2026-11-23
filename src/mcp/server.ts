@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
-import { canBeReplaced, fulfilledBy, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
+import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
@@ -138,7 +138,8 @@ function textOf(kind: Kind, item: AnyItem): string {
     }
     case "requirement": {
       const r = item as Requirement;
-      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), notes].join(" ");
+      const tickets = ticketsOf(r).map((t) => `${t.key} ${t.title ?? ""}`);
+      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, notes].join(" ");
     }
   }
 }
@@ -313,6 +314,11 @@ class Session {
   }
 
   full(kind: Kind, item: AnyItem) {
+    if (kind === "requirement") {
+      const r = item as Requirement;
+      const tickets = ticketsOf(r);
+      if (tickets.length) item = { ...r, tickets };
+    }
     const area = this.areaLabel((item as { productArea?: string }).productArea) || undefined;
     return { kind, ...item, ...(area ? { areaLabel: area } : {}), file: this.file(kind, item) };
   }
@@ -1054,6 +1060,81 @@ export function buildServer({ root }: ServerOptions): McpServer {
         if (last && last !== o.obsoletePlannedFor) next = apply(next, ops.planObsolescence(next, c, [o.id], last))[0];
       }
       return { state: next, result: { planned: ids.map((id) => s.summary("requirement", requirementOf(next, id))), version } };
+    }),
+  );
+
+  // -------------------------------------------------------------------------------------------
+  // Tickets
+  // -------------------------------------------------------------------------------------------
+
+  const ticketRef = { tracker: z.string().trim().min(1).max(40).describe('e.g. "linear", "jira", "github"'), key: z.string().trim().min(1).max(100).describe('The tracker\'s id, e.g. "CLN-142" or "#57"') };
+  const solutionReqs = (state: State, ids: string[]) =>
+    ids.map((id) => {
+      const r = requirementOf(state, id);
+      if (kindOf(r) !== "solution") throw new UserError(`"${r.title}" is a stakeholder requirement. Tickets implement solution requirements: link the solution requirements that fulfil it.`);
+      return r;
+    });
+
+  server.registerTool(
+    "link_tickets",
+    {
+      title: "Link tickets",
+      description:
+        "Record a ticket (Linear, Jira, GitHub issue, …) that implements one or more solution requirements. Call it after creating a ticket from requirements, with the REQ ids also written in the ticket. A fix ticket under an existing requirement is linked to that requirement too. Already linked: its details are refreshed.",
+      inputSchema: {
+        requirementIds: z.array(localId).min(1).max(50),
+        ticket: z.object({
+          ...ticketRef,
+          url: z.string().trim().max(500).optional(),
+          title: z.string().trim().max(200).optional(),
+          state: z.string().trim().max(60).optional().describe("The tracker's own status, e.g. \"In Review\"."),
+          done: z.boolean().optional().describe("Whether the ticket is finished (done, closed, merged)."),
+        }),
+      },
+    },
+    write((s, state, c, { requirementIds, ticket }: { requirementIds: string[]; ticket: { tracker: string; key: string; url?: string; title?: string; state?: string; done?: boolean } }) => {
+      solutionReqs(state, requirementIds);
+      const [next] = apply(state, ops.linkTickets(state, c, requirementIds, ticket));
+      return { state: next, result: { linked: `${ticket.tracker.toLowerCase()} ${ticket.key}`, requirements: requirementIds.map((id) => s.summary("requirement", requirementOf(next, id))) } };
+    }),
+  );
+
+  server.registerTool(
+    "unlink_tickets",
+    {
+      title: "Unlink tickets",
+      description: "Remove a ticket linked by mistake. A ticket linked before its requirement shipped is part of that release's record and stays.",
+      inputSchema: { requirementIds: z.array(localId).min(1).max(50), ticket: z.object(ticketRef) },
+    },
+    write((s, state, c, { requirementIds, ticket }: { requirementIds: string[]; ticket: { tracker: string; key: string } }) => {
+      for (const r of solutionReqs(state, requirementIds)) {
+        const t = (r.tickets ?? []).find((x) => x.tracker.toLowerCase() === ticket.tracker.toLowerCase() && x.key.toLowerCase() === ticket.key.toLowerCase());
+        if (!t) throw new UserError(`${ticket.key} isn't linked to "${r.title}".`);
+        if (r.releasedIn && r.releasedAt && t.linkedAt <= r.releasedAt) {
+          throw new UserError(`${t.key} was linked when "${r.title}" shipped in ${r.releasedIn}, so it's part of that release's record.`);
+        }
+      }
+      const [next] = apply(state, ops.unlinkTickets(state, c, requirementIds, ticket));
+      return { state: next, result: { unlinked: ticket.key, requirements: requirementIds.map((id) => s.summary("requirement", requirementOf(next, id))) } };
+    }),
+  );
+
+  server.registerTool(
+    "update_tickets",
+    {
+      title: "Update tickets",
+      description:
+        "Refresh ticket status from the tracker, on every requirement that has the ticket. Use it before releasing, after checking the tickets with the tracker's own tool. Tickets that aren't linked to any requirement are listed in notLinked.",
+      inputSchema: {
+        tickets: z
+          .array(z.object({ ...ticketRef, state: z.string().trim().max(60).optional(), done: z.boolean().optional(), title: z.string().trim().max(200).optional() }))
+          .min(1)
+          .max(200),
+      },
+    },
+    write((_s, state, c, { tickets }: { tickets: { tracker: string; key: string; state?: string; done?: boolean; title?: string }[] }) => {
+      const [next, out] = apply(state, ops.updateTickets(state, c, tickets));
+      return { state: next, result: out };
     }),
   );
 

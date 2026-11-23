@@ -1,4 +1,4 @@
-import type { ID, Requirement, RequirementKind } from "./types";
+import type { ID, Requirement, RequirementKind, Ticket } from "./types";
 
 /** Requirements saved before the stakeholder / solution split are solution requirements. */
 export function kindOf(r: Pick<Requirement, "kind">): RequirementKind {
@@ -55,4 +55,27 @@ export interface RequirementChanges {
   create: Requirement[];
   update: { id: ID; patch: Partial<Requirement> }[];
   obsolete: { id: ID; by: ID }[];
+}
+
+export const sameTicket = (a: Pick<Ticket, "tracker" | "key">, b: Pick<Ticket, "tracker" | "key">) =>
+  a.tracker.toLowerCase() === b.tracker.toLowerCase() && a.key.toLowerCase() === b.key.toLowerCase();
+
+/** A requirement's tickets, including the web app's single Linear issue (`delivery`), shown as a ticket. */
+export function ticketsOf(r: Requirement): Ticket[] {
+  const list = r.tickets ?? [];
+  const d = r.delivery;
+  if (!d || list.some((t) => sameTicket(t, { tracker: "linear", key: d.identifier }))) return list;
+  return [
+    ...list,
+    {
+      tracker: "linear",
+      key: d.identifier,
+      ...(d.url ? { url: d.url } : {}),
+      state: d.state.name,
+      done: d.state.type === "completed",
+      linkedAt: d.sentAt,
+      linkedBy: "linear",
+      syncedAt: d.syncedAt,
+    },
+  ];
 }
