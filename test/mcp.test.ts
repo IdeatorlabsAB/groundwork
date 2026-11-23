@@ -139,6 +139,7 @@ describe("local MCP server", () => {
         "link_items",
         "correct_release",
         "get_release",
+        "link_tickets",
         "obsolete_requirement",
         "plan_requirements",
         "release_requirements",
@@ -148,7 +149,9 @@ describe("local MCP server", () => {
         "send_back_requirement",
         "start_experiment",
         "submit_requirement_for_approval",
+        "unlink_tickets",
         "update_item",
+        "update_tickets",
       ].sort(),
     );
     expect(c.getInstructions()).toContain("insight -> hypothesis -> experiment -> finding -> requirement");
@@ -156,7 +159,7 @@ describe("local MCP server", () => {
 
   it("tells agents how to plan work with requirements", async () => {
     const text = (await connect()).getInstructions()!;
-    for (const phrase of ["When you plan work", "New need", "Change", "Fix", "before writing code", "REQ ids", "approvedBy"]) {
+    for (const phrase of ["When you plan work", "New need", "Change", "Fix", "before writing code", "REQ ids", "approvedBy", "link_tickets", "won't do"]) {
       expect(text).toContain(phrase);
     }
   });
@@ -909,6 +912,17 @@ describe("releasing", () => {
     expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/viewer/);
   });
 
+  it("sorts planned requirements by ticket status, and keeps tickets linked before the release", async () => {
+    await call(c, "link_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-1", done: true } });
+    const { data } = await call(c, "get_release", { version: "1.0" });
+    expect(data.ready.map((x: { id: string }) => x.id)).toEqual([a]);
+    expect(data.noTickets.map((x: { id: string }) => x.id)).toEqual([b]);
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect((await call(c, "unlink_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-1" } })).error).toMatch(/part of that release's record/);
+    await call(c, "link_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-77" } });
+    expect((await call(c, "unlink_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-77" } })).error).toBeUndefined();
+  });
+
   it("refuses someone who isn't in config.yml", async () => {
     process.env.GROUNDWORK_USER = "mallory";
     expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/config.yml people/);
@@ -921,5 +935,34 @@ describe("releasing", () => {
     const need = stored(a).stakeholderIds![0];
     expect((await call(c, "delete_item", { id: need })).error).toMatch(/released/);
     expect((await call(c, "update_item", { id: b, patch: { title: "Still a plan" } })).error).toBeUndefined();
+  });
+});
+
+describe("tickets over MCP", () => {
+  let c: Client;
+  let need: string;
+  let sol: string;
+  beforeEach(async () => {
+    c = await connect();
+    need = (await call(c, "add_requirements", { requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }] })).data.created[0].id;
+    sol = (await call(c, "add_requirements", { requirements: [{ kind: "solution", title: "Slots", story: "The view shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need] }] })).data.created[0].id;
+  });
+
+  it("links tickets to solution requirements only, and finds requirements by ticket key", async () => {
+    expect((await call(c, "link_tickets", { requirementIds: [need], ticket: { tracker: "linear", key: "CLN-142" } })).error).toMatch(/solution requirement/);
+    expect((await call(c, "link_tickets", { requirementIds: [sol], ticket: { tracker: "linear", key: "CLN-142", url: "https://linear.app/c/CLN-142" } })).error).toBeUndefined();
+    const { data } = await call(c, "search_items", { query: "CLN-142" });
+    expect(data.items.map((x: { id: string }) => x.id)).toContain(sol);
+    expect((await call(c, "get_item", { id: sol })).data.item.tickets).toEqual([expect.objectContaining({ key: "CLN-142" })]);
+  });
+
+  it("doesn't let update_item change tickets", async () => {
+    expect((await call(c, "update_item", { id: sol, patch: { tickets: [] } })).error).toBeDefined();
+  });
+
+  it("reports ticket updates", async () => {
+    await call(c, "link_tickets", { requirementIds: [sol], ticket: { tracker: "linear", key: "CLN-142" } });
+    const { data } = await call(c, "update_tickets", { tickets: [{ tracker: "linear", key: "CLN-142", state: "Done", done: true }, { tracker: "linear", key: "CLN-999", done: true }] });
+    expect(data).toMatchObject({ updated: 1, notLinked: [{ tracker: "linear", key: "CLN-999" }] });
   });
 });

@@ -20,6 +20,7 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 | Proposing a feature or bet | Look for supporting insights (`search_items`), then offer to draft a hypothesis linked to them (`add_hypotheses`) |
 | Planning a test, pilot or A/B test | `add_experiment` for that hypothesis, with a primary metric, baseline and target |
 | Sharing results | `record_experiment_results`, then offer a finding (`add_findings`) linked to the experiment and hypothesis |
+| Creating tickets or user stories from requirements, or asking which requirement a ticket implements | Put the REQ ids in the ticket, then `link_tickets`; `search_items` with a ticket key finds its requirements |
 | Releasing a version, or asking what a version contains ("Release Clinicare 1.1", "what's in 1.0?") | `get_release`, then `release_version` once the user agrees on what shipped (see "Releasing") |
 | Planning a task (plan mode, a written plan, an autonomous workflow) | Classify it as new need, change or fix, and state that in the plan; for a new need or change, record requirements before code (see "When you plan work") |
 | Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below). Search existing requirements and findings first, and link findings when there are any |
@@ -52,14 +53,14 @@ State your call in one line of the plan, so the user can overrule it:
 
 Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
 
-When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement.
+When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement. Then record each ticket in Groundwork with `link_tickets` (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement is linked to that requirement too. That's how a fix traces back to what it restores.
 
 ## Releasing
 
 Only solution requirements belong to releases. Stakeholder needs count as met through the solution requirements that fulfil them.
 
 1. `get_release` for the version shows what's planned to ship and what's planned to become obsolete.
-2. Work out what actually shipped. If you have a tracker tool (Linear, Jira, GitHub), check each planned requirement's tickets and propose the ones whose tickets are all done. Otherwise ask the user.
+2. Work out what actually shipped. If you have a tracker tool (Linear, Jira, GitHub), check the planned requirements' tickets there, record their status with `update_tickets`, and call `get_release` again. Propose its `ready` list (all tickets done) as shipped, and ask the user about `notReady` and `noTickets`: never ship those on ticket status alone. A ticket counts as done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user.
 3. Show the user what ships, what becomes obsolete, and which planned version the rest moves to. Call `release_version` only once they agree. Groundwork records who released it and when.
 4. A requirement that shipped later in an already released version goes in with `release_requirements`.
 5. A mistake in a released version is fixed with `correct_release`, with the user's reason. Never edit release fields in the files. The correction shows in the release report.

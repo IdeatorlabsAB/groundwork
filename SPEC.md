@@ -58,7 +58,7 @@ Required fields are in bold.
 **`title`**, **`summary`**, `experimentIds`, `hypothesisIds`, `insightIds`, `confidence` (`low` | `medium` | `high`), `productArea`, `createdAt`.
 
 **Requirement** (`requirements/`, `REQ-`): what is needed before building, in two layers.
-**`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need`) and `originNote`, `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `replaces` (approved requirements this one replaces), `plannedFor`, `releasedIn`, `releasedAt`, `releasedBy`, `obsoletePlannedFor`, `obsoletedIn` (solution requirements only, versions of its product; see below), `obsoletedBy`, `obsoletedAt`, `madeObsoleteBy` (the person who made it obsolete), `productArea`, `createdAt`, `updatedAt`.
+**`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need`) and `originNote`, `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `replaces` (approved requirements this one replaces), `plannedFor`, `releasedIn`, `releasedAt`, `releasedBy`, `obsoletePlannedFor`, `obsoletedIn` (solution requirements only, versions of its product; see below), `obsoletedBy`, `obsoletedAt`, `madeObsoleteBy` (the person who made it obsolete), `tickets` (solution requirements; see below), `productArea`, `createdAt`, `updatedAt`.
 
 The two layers:
 
@@ -108,6 +108,12 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - Requirements that shipped later can be added to a released version.
   - Any other change to a released version is a correction: it needs a reason, changes only what it lists, and is recorded on the version.
   - The release report lists what a version introduced, what it made obsolete, how far each stakeholder requirement is met as of that version, and its corrections.
+- **Tickets.** A solution requirement's `tickets` lists the tickets that implement it, in any tracker: `{ tracker, key, url?, title?, state?, done?, linkedAt, linkedBy, syncedAt? }`.
+  - `tracker` is lowercase (`linear`, `jira`, `github`, …). A ticket is identified by tracker and key, ignoring case.
+  - `state` is the tracker's own status name, and `done` says whether it's finished.
+  - Tickets are linked and unlinked only with `link_tickets` and `unlink_tickets`. `update_tickets` refreshes `state` and `done` everywhere a ticket is linked.
+  - A ticket linked before its requirement shipped is part of that release's record and can't be unlinked. A release report lists only the tickets linked by the time the version was released.
+  - The web app's single Linear issue (`delivery`) is read as a ticket.
 - Requirements go from `draft` to `awaiting-approval` (with an `approver`) to `approved`. The approver can send one back to `draft`. Only `approved` requirements can become `obsolete`.
 - Deleting an item removes links to it. Deleting a hypothesis also deletes its experiments.
 

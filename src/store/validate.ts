@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, REQUIREMENT_KIND, localSchemas, type Kind } from "../core/schemas";
-import type { Requirement } from "../core/types";
+import type { Requirement, Ticket } from "../core/types";
 import { catalogueOf, findProduct, plannedVersions, productOf } from "./catalogue";
 import { CONFIG_FILE, DIR, type Config } from "./config";
 import { COLLECTIONS, type Loaded } from "./files";
@@ -157,6 +157,17 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
           }
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
           checkVersions(r, err, warn);
+          const seenTickets = new Set<string>();
+          if (r.tickets !== undefined && !Array.isArray(r.tickets)) err("tickets must be a list");
+          for (const t of (Array.isArray(r.tickets) ? r.tickets : []) as Partial<Ticket>[]) {
+            if (typeof t.tracker !== "string" || typeof t.key !== "string" || !t.tracker || !t.key) {
+              err("a ticket needs a tracker and a key, as text");
+              continue;
+            }
+            const k = `${t.tracker.toLowerCase()} ${t.key.toLowerCase()}`;
+            if (seenTickets.has(k)) warn(`ticket ${t.key} is linked twice`);
+            seenTickets.add(k);
+          }
           break;
         }
       }

@@ -177,9 +177,12 @@ function rewriteFrontmatter(text: string, map: Map<string, string>, base: Record
  * links to them are rewritten in the files this branch added or changed. Ids on `ref` never change, and Markdown
  * bodies are never rewritten: mentions there are reported instead.
  */
-export function renumber(root: string, ref: string): { renumbered: Renumbered[]; rewritten: string[]; mentions: { file: string; id: string }[] } {
+export function renumber(
+  root: string,
+  ref: string,
+): { renumbered: Renumbered[]; rewritten: string[]; mentions: { file: string; id: string }[]; tickets: { from: string; to: string; tickets: string[] }[] } {
   const clashes = findClashes(root, ref);
-  if (!clashes.length) return { renumbered: [], rewritten: [], mentions: [] };
+  if (!clashes.length) return { renumbered: [], rewritten: [], mentions: [], tickets: [] };
   const base = itemsAt(root, ref);
   const work = itemsInWorkingTree(root);
 
@@ -231,5 +234,11 @@ export function renumber(root: string, ref: string): { renumbered: Renumbered[];
       for (const from of map.keys()) if (new RegExp(`\\b${from}\\b`).test(body)) mentions.push({ file: target, id: from });
     }
   }
-  return { renumbered, rewritten, mentions };
+  // Tickets in the tracker name the old id; Groundwork can't change them, so say which.
+  const tickets = renumbered.flatMap((r) => {
+    const item = work.find((x) => x.path === r.oldPath);
+    const list = Array.isArray(item?.data.tickets) ? (item!.data.tickets as { tracker?: unknown; key?: unknown }[]) : [];
+    return list.length ? [{ from: r.from, to: r.to, tickets: list.map((t) => `${String(t.tracker)} ${String(t.key)}`) }] : [];
+  });
+  return { renumbered, rewritten, mentions, tickets };
 }

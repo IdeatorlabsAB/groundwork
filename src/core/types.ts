@@ -187,6 +187,27 @@ export interface Delivery {
   syncedAt: string;
 }
 
+/**
+ * A ticket in any tracker (Linear, Jira, GitHub, …) that implements a solution requirement. Groundwork never calls
+ * the tracker: the agent reports what it created or saw.
+ */
+export interface Ticket {
+  /** Lowercase, e.g. "linear", "jira", "github". */
+  tracker: string;
+  /** The tracker's id, e.g. "CLN-142" or "#57". Compared ignoring case. */
+  key: string;
+  url?: string;
+  title?: string;
+  /** The tracker's own status name, e.g. "In Review". */
+  state?: string;
+  /** Whether its work was completed as delivered. Canceled, won't do or duplicate tickets are not done, even when closed. */
+  done?: boolean;
+  linkedAt: string;
+  linkedBy: string;
+  /** When state/done were last refreshed from the tracker. */
+  syncedAt?: string;
+}
+
 /** The Linear team approved requirements are sent to. Unset until a workspace owner connects Linear. */
 export interface DeliverySettings {
   teamId?: string;
@@ -251,6 +272,8 @@ export interface Requirement {
   aiGenerated?: boolean;
   /** Set once the requirement was sent to Linear. */
   delivery?: Delivery;
+  /** Solution requirements: the tickets that implement it, in any tracker. */
+  tickets?: Ticket[];
 }
 
 export interface Activity {

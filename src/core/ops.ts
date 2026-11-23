@@ -1,4 +1,4 @@
-import { canObsolete, kindOf, type RequirementChanges } from "./requirements";
+import { canObsolete, kindOf, sameTicket, ticketsOf, type RequirementChanges } from "./requirements";
 import type {
   Activity,
   Delivery,
@@ -10,6 +10,7 @@ import type {
   Prioritization,
   ProductArea,
   Requirement,
+  Ticket,
 } from "./types";
 import { computeVerdict, type VerdictResult } from "./verdict";
 import type { Collections } from "./collections";
@@ -473,4 +474,67 @@ export function planObsolescence(s: Collections, c: Ctx, ids: string[], version:
     },
     result: true,
   };
+}
+
+/**
+ * A requirement's own tickets, plus the web app's Linear issue (`delivery`) when `t` is that issue: then it becomes
+ * a real ticket entry, keeping its original link time, so it can be refreshed and its release record doesn't change.
+ */
+function ticketList(r: Requirement, t: Pick<Ticket, "tracker" | "key">): Ticket[] {
+  const own = Array.isArray(r.tickets) ? r.tickets : [];
+  if (r.delivery && !own.some((x) => sameTicket(x, t)) && sameTicket({ tracker: "linear", key: r.delivery.identifier }, t)) return ticketsOf(r);
+  return own;
+}
+
+/** Link a ticket to requirements. Already linked: its details are refreshed from what's given. */
+export function linkTickets(s: Collections, c: Ctx, ids: string[], ticket: Omit<Ticket, "linkedAt" | "linkedBy">): Change<boolean> {
+  const t = { ...ticket, tracker: ticket.tracker.toLowerCase() };
+  const details = Object.fromEntries(Object.entries({ url: t.url, title: t.title, state: t.state, done: t.done }).filter(([, v]) => v !== undefined));
+  return {
+    next: {
+      requirements: s.requirements.map((r) => {
+        if (!ids.includes(r.id)) return r;
+        const list = ticketList(r, t);
+        return list.some((x) => sameTicket(x, t))
+          ? { ...r, tickets: list.map((x) => (sameTicket(x, t) ? { ...x, ...details } : x)) }
+          : { ...r, tickets: [...list, { ...t, linkedAt: c.now, linkedBy: c.actor }] };
+      }),
+      activity: [log(c, "requirement", `linked ${t.tracker} ${t.key}`, ids[0]), ...s.activity],
+    },
+    result: true,
+  };
+}
+
+export function unlinkTickets(s: Collections, c: Ctx, ids: string[], ticket: Pick<Ticket, "tracker" | "key">): Change<boolean> {
+  return {
+    next: {
+      requirements: s.requirements.map((r) => (ids.includes(r.id) && r.tickets?.some((x) => sameTicket(x, ticket)) ? { ...r, tickets: r.tickets.filter((x) => !sameTicket(x, ticket)) } : r)),
+      activity: [log(c, "requirement", `unlinked ${ticket.tracker} ${ticket.key}`, ids[0]), ...s.activity],
+    },
+    result: true,
+  };
+}
+
+/** Refresh ticket states from the tracker, on every requirement that has the ticket. */
+export function updateTickets(
+  s: Collections,
+  c: Ctx,
+  updates: { tracker: string; key: string; state?: string; done?: boolean; title?: string }[],
+): Change<{ updated: number; notLinked: { tracker: string; key: string }[] }> {
+  let updated = 0;
+  const notLinked: { tracker: string; key: string }[] = [];
+  let requirements = s.requirements;
+  for (const u of updates) {
+    let hit = false;
+    const patch = Object.fromEntries(Object.entries({ state: u.state, done: u.done, title: u.title }).filter(([, v]) => v !== undefined));
+    requirements = requirements.map((r) => {
+      const list = ticketList(r, u);
+      if (!list.some((x) => sameTicket(x, u))) return r;
+      hit = true;
+      updated++;
+      return { ...r, tickets: list.map((x) => (sameTicket(x, u) ? { ...x, ...patch, syncedAt: c.now } : x)) };
+    });
+    if (!hit) notLinked.push({ tracker: u.tracker.toLowerCase(), key: u.key });
+  }
+  return { next: { requirements }, result: { updated, notLinked } };
 }

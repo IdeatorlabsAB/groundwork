@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
-import { canBeReplaced, fulfilledBy, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
+import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
@@ -50,12 +50,12 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one with replaces: [the old id]. When the new one is approved, the old one becomes obsolete in the version the new one ships in (or straight away if the product has no versions).
 5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
 6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
-7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement.
+7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement. Then record each ticket with link_tickets (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement ("Bug fix under REQ-0007") is linked to that requirement too.
 8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
 
 Releasing a version ("Release Clinicare 1.1"):
 1. Call get_release for the version.
-2. If the workflow has a tracker tool, check each planned requirement's tickets and propose as shipped the ones whose tickets are all done. Without a tracker, ask the user which requirements shipped.
+2. If the workflow has a tracker tool, check the planned requirements' tickets there, record their status with update_tickets, and call get_release again. Propose "ready" (all tickets done) as shipped, and ask the user about "notReady" and "noTickets": never ship those on ticket status alone. A ticket is done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user which requirements shipped.
 3. Show the user what ships, what becomes obsolete, and where the rest will move. Call release_version only once they agree.
 4. A mistake in a released version is fixed with correct_release and the user's reason, never by editing files. Requirements that shipped later go in with release_requirements.
 
@@ -138,7 +138,8 @@ function textOf(kind: Kind, item: AnyItem): string {
     }
     case "requirement": {
       const r = item as Requirement;
-      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), notes].join(" ");
+      const tickets = ticketsOf(r).map((t) => `${t.key} ${t.title ?? ""}`);
+      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, notes].join(" ");
     }
   }
 }
@@ -313,6 +314,11 @@ class Session {
   }
 
   full(kind: Kind, item: AnyItem) {
+    if (kind === "requirement") {
+      const r = item as Requirement;
+      const tickets = ticketsOf(r);
+      if (tickets.length) item = { ...r, tickets };
+    }
     const area = this.areaLabel((item as { productArea?: string }).productArea) || undefined;
     return { kind, ...item, ...(area ? { areaLabel: area } : {}), file: this.file(kind, item) };
   }
@@ -1058,6 +1064,88 @@ export function buildServer({ root }: ServerOptions): McpServer {
   );
 
   // -------------------------------------------------------------------------------------------
+  // Tickets
+  // -------------------------------------------------------------------------------------------
+
+  const ticketRef = { tracker: z.string().trim().min(1).max(40).describe('e.g. "linear", "jira", "github"'), key: z.string().trim().min(1).max(100).describe('The tracker\'s id, e.g. "CLN-142" or "#57"') };
+  const solutionReqs = (state: State, ids: string[]) =>
+    ids.map((id) => {
+      const r = requirementOf(state, id);
+      if (kindOf(r) !== "solution") throw new UserError(`"${r.title}" is a stakeholder requirement. Tickets implement solution requirements: link the solution requirements that fulfil it.`);
+      return r;
+    });
+
+  server.registerTool(
+    "link_tickets",
+    {
+      title: "Link tickets",
+      description:
+        "Record a ticket (Linear, Jira, GitHub issue, …) that implements one or more solution requirements. Call it after creating a ticket from requirements, with the REQ ids also written in the ticket. A fix ticket under an existing requirement is linked to that requirement too. Already linked: its details are refreshed.",
+      inputSchema: {
+        requirementIds: z.array(localId).min(1).max(50),
+        ticket: z.object({
+          ...ticketRef,
+          url: z.string().trim().max(500).optional(),
+          title: z.string().trim().max(200).optional(),
+          state: z.string().trim().max(60).optional().describe("The tracker's own status, e.g. \"In Review\"."),
+          done: z.boolean().optional().describe("Whether the work was completed as delivered. Canceled, won't do or duplicate tickets are not done, even when closed."),
+        }),
+      },
+    },
+    write((s, state, c, { requirementIds, ticket }: { requirementIds: string[]; ticket: { tracker: string; key: string; url?: string; title?: string; state?: string; done?: boolean } }) => {
+      solutionReqs(state, requirementIds);
+      const [next] = apply(state, ops.linkTickets(state, c, requirementIds, ticket));
+      return { state: next, result: { linked: `${ticket.tracker.toLowerCase()} ${ticket.key}`, requirements: requirementIds.map((id) => s.summary("requirement", requirementOf(next, id))) } };
+    }),
+  );
+
+  server.registerTool(
+    "unlink_tickets",
+    {
+      title: "Unlink tickets",
+      description: "Remove a ticket linked by mistake. A ticket linked before its requirement shipped is part of that release's record and stays.",
+      inputSchema: { requirementIds: z.array(localId).min(1).max(50), ticket: z.object(ticketRef) },
+    },
+    write((s, state, c, { requirementIds, ticket }: { requirementIds: string[]; ticket: { tracker: string; key: string } }) => {
+      for (const r of solutionReqs(state, requirementIds)) {
+        const t = (r.tickets ?? []).find((x) => x.tracker.toLowerCase() === ticket.tracker.toLowerCase() && x.key.toLowerCase() === ticket.key.toLowerCase());
+        if (!t) throw new UserError(`${ticket.key} isn't linked to "${r.title}".`);
+        if (r.releasedIn && r.releasedAt && t.linkedAt <= r.releasedAt) {
+          throw new UserError(`${t.key} was linked when "${r.title}" shipped in ${r.releasedIn}, so it's part of that release's record.`);
+        }
+      }
+      const [next] = apply(state, ops.unlinkTickets(state, c, requirementIds, ticket));
+      return { state: next, result: { unlinked: ticket.key, requirements: requirementIds.map((id) => s.summary("requirement", requirementOf(next, id))) } };
+    }),
+  );
+
+  server.registerTool(
+    "update_tickets",
+    {
+      title: "Update tickets",
+      description:
+        "Refresh ticket status from the tracker, on every requirement that has the ticket. Use it before releasing, after checking the tickets with the tracker's own tool. Tickets that aren't linked to any requirement are listed in notLinked.",
+      inputSchema: {
+        tickets: z
+          .array(
+            z.object({
+              ...ticketRef,
+              state: z.string().trim().max(60).optional(),
+              done: z.boolean().optional().describe("Completed as delivered. Canceled, won't do or duplicate are not done."),
+              title: z.string().trim().max(200).optional(),
+            }),
+          )
+          .min(1)
+          .max(200),
+      },
+    },
+    write((_s, state, c, { tickets }: { tickets: { tracker: string; key: string; state?: string; done?: boolean; title?: string }[] }) => {
+      const [next, out] = apply(state, ops.updateTickets(state, c, tickets));
+      return { state: next, result: out };
+    }),
+  );
+
+  // -------------------------------------------------------------------------------------------
   // Releasing
   // -------------------------------------------------------------------------------------------
 
@@ -1088,7 +1176,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         product: p.id,
         version,
         status: "planned",
-        planned: pending.planned.map((r) => ({ ...s.summary("requirement", r), tickets: (r as { tickets?: unknown[] }).tickets ?? [] })),
+        planned: pending.planned.map((r) => s.summary("requirement", r)),
+        // From ticket status: propose `ready` as shipped; ask the user about the others.
+        ready: pending.ready.map((r) => ({ ...s.summary("requirement", r), tickets: ticketsOf(r) })),
+        notReady: pending.notReady.map((r) => ({ ...s.summary("requirement", r), tickets: ticketsOf(r) })),
+        noTickets: pending.noTickets.map((r) => s.summary("requirement", r)),
         obsoleteWhenReleased: {
           replaced: pending.replacedBy.map((r) => ({ ...s.summary("requirement", r), replacedBy: (r.obsoletedBy ?? []).map(ref) })),
           removals: pending.removals.map((r) => s.summary("requirement", r)),

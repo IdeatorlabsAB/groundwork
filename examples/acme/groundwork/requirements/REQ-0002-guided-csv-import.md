@@ -24,4 +24,13 @@ plannedFor: "1.0"
 releasedIn: "1.0"
 releasedAt: 2026-11-22T22:33:24.310Z
 releasedBy: sam
+tickets:
+  - tracker: linear
+    key: ACME-12
+    url: https://linear.app/acme/issue/ACME-12
+    title: Guided CSV import wizard
+    state: Done
+    done: true
+    linkedAt: 2026-11-20T09:00:00.000Z
+    linkedBy: sam
 ---
