@@ -912,6 +912,17 @@ describe("releasing", () => {
     expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/viewer/);
   });
 
+  it("sorts planned requirements by ticket status, and keeps tickets linked before the release", async () => {
+    await call(c, "link_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-1", done: true } });
+    const { data } = await call(c, "get_release", { version: "1.0" });
+    expect(data.ready.map((x: { id: string }) => x.id)).toEqual([a]);
+    expect(data.noTickets.map((x: { id: string }) => x.id)).toEqual([b]);
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect((await call(c, "unlink_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-1" } })).error).toMatch(/part of that release's record/);
+    await call(c, "link_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-77" } });
+    expect((await call(c, "unlink_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-77" } })).error).toBeUndefined();
+  });
+
   it("refuses someone who isn't in config.yml", async () => {
     process.env.GROUNDWORK_USER = "mallory";
     expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/config.yml people/);

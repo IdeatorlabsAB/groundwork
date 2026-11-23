@@ -3,7 +3,7 @@ import type { Requirement } from "../src/core/types";
 import { catalogueOf } from "../src/store/catalogue";
 import { configSchema } from "../src/store/config";
 import type { Product } from "../src/store/products";
-import { correctRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, renderReleaseReport, stakeholderProgress } from "../src/store/release";
+import { correctRelease, pendingRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, renderReleaseReport, stakeholderProgress } from "../src/store/release";
 
 const NOW = "2026-12-15T10:00:00.000Z";
 const product = (versions: Product["versions"] = ["1.0", "1.1", "1.2"].map((version) => ({ version, status: "planned" as const }))): Product => ({
@@ -180,5 +180,37 @@ describe("release record integrity", () => {
     const { requirements, product: p } = released();
     const later = releaseRequirements(requirements, cat(p), { product: p, version: "1.0", ids: ["B"], actor: "alex", now: "2027-01-05T00:00:00.000Z" });
     expect(renderReleaseReport(releaseReport(later, cat(p), p, "1.0"))).toContain("added 2027-01-05 by alex");
+  });
+});
+
+describe("tickets and releases", () => {
+  const t = (key: string, done: boolean, linkedAt = "2026-11-01T00:00:00.000Z") => ({ tracker: "linear", key, done, linkedAt, linkedBy: "sam" });
+
+  it("sorts planned requirements by ticket status", () => {
+    const p = product();
+    const rs = [
+      req("A", { plannedFor: "1.0", tickets: [t("CLN-1", true), t("CLN-2", true)] }),
+      req("B", { plannedFor: "1.0", tickets: [t("CLN-3", true), t("CLN-4", false)] }),
+      req("C", { plannedFor: "1.0" }),
+      req("D", {
+        plannedFor: "1.0",
+        delivery: { tracker: "linear", issueId: "x", identifier: "MER-1", state: { name: "Done", type: "completed" }, sentAt: "2026-11-01T00:00:00.000Z", syncedAt: "2026-11-01T00:00:00.000Z" },
+      }),
+    ];
+    const pending = pendingRelease(rs, p, "1.0", cat(p));
+    expect(pending.ready.map((r) => r.id)).toEqual(["A", "D"]);
+    expect(pending.notReady.map((r) => r.id)).toEqual(["B"]);
+    expect(pending.noTickets.map((r) => r.id)).toEqual(["C"]);
+  });
+
+  it("lists in a report only the tickets linked by the release", () => {
+    const p = product();
+    const out = release([req("A", { plannedFor: "1.0", tickets: [t("CLN-1", true)] })], p, { version: "1.0", shipped: ["A"] });
+    const later = out.requirements.map((r) => ({ ...r, tickets: [...(r.tickets ?? []), t("CLN-9", false, "2027-01-01T00:00:00.000Z")] }));
+    const rep = releaseReport(later, cat(out.product), out.product, "1.0");
+    expect(rep.introduced[0].tickets.map((x) => (x as { key: string }).key)).toEqual(["CLN-1"]);
+    const md = renderReleaseReport(rep);
+    expect(md).toContain("  - Tickets: linear CLN-1");
+    expect(md).not.toContain("CLN-9");
   });
 });

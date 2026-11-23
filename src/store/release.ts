@@ -1,4 +1,4 @@
-import { kindOf } from "../core/requirements";
+import { kindOf, ticketsOf } from "../core/requirements";
 import type { Requirement } from "../core/types";
 import { plannedVersions, productOf, type Catalogue } from "./catalogue";
 import type { Product, ProductVersion } from "./products";
@@ -58,7 +58,11 @@ export function pendingRelease(requirements: Requirement[], product: Product, ve
   const mine = requirements.filter(inProduct(catalogue, product));
   const planned = mine.filter((r) => isActive(r) && r.plannedFor === version && !r.releasedIn);
   const obsoleting = mine.filter((r) => isActive(r) && r.obsoletePlannedFor === version && !r.obsoletedIn);
-  return { planned, replacedBy: obsoleting.filter((r) => r.obsoletedBy?.length), removals: obsoleting.filter((r) => !r.obsoletedBy?.length) };
+  // Readiness from ticket status: ready only when it has tickets and all are done. No tickets is never "ready".
+  const noTickets = planned.filter((r) => !ticketsOf(r).length);
+  const ready = planned.filter((r) => ticketsOf(r).length && ticketsOf(r).every((t) => t.done));
+  const notReady = planned.filter((r) => ticketsOf(r).length && !ticketsOf(r).every((t) => t.done));
+  return { planned, ready, notReady, noTickets, replacedBy: obsoleting.filter((r) => r.obsoletedBy?.length), removals: obsoleting.filter((r) => !r.obsoletedBy?.length) };
 }
 
 /**
@@ -282,7 +286,8 @@ export function releaseReport(requirements: Requirement[], catalogue: Catalogue,
       id: r.id,
       title: r.title,
       story: r.story,
-      tickets: ((r as { tickets?: unknown[] }).tickets ?? []) as unknown[],
+      // The tickets as they were when the version was released; later links (e.g. a fix) aren't part of it.
+      tickets: ticketsOf(r).filter((t) => !v.releasedAt || t.linkedAt <= v.releasedAt) as unknown[],
       stakeholders: (r.stakeholderIds ?? []).map(ref),
       ...(r.releasedAt ? { releasedAt: r.releasedAt } : {}),
       ...(r.releasedBy ? { releasedBy: r.releasedBy } : {}),
@@ -310,6 +315,12 @@ export function renderReleaseReport(r: ReleaseReport): string {
     const late = x.releasedAt && r.version.releasedAt && x.releasedAt > r.version.releasedAt ? ` (added ${day(x.releasedAt)} by ${x.releasedBy ?? "unknown"})` : "";
     lines.push(`- **${x.id}** ${x.title}${late}: ${x.story}`);
     if (x.stakeholders.length) lines.push(`  - Meets: ${x.stakeholders.map((s) => `${s.id} ${s.title}`).join("; ")}`);
+    const tickets = x.tickets as { tracker: string; key: string }[];
+    if (tickets.length) {
+      const byTracker = new Map<string, string[]>();
+      for (const t of tickets) byTracker.set(t.tracker, [...(byTracker.get(t.tracker) ?? []), t.key]);
+      lines.push(`  - Tickets: ${[...byTracker].map(([tracker, keys]) => `${tracker} ${keys.join(", ")}`).join("; ")}`);
+    }
   }
   lines.push("", "## Made obsolete", "");
   if (!r.madeObsolete.length) lines.push("Nothing.");

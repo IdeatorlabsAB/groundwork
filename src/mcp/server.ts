@@ -55,7 +55,7 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 
 Releasing a version ("Release Clinicare 1.1"):
 1. Call get_release for the version.
-2. If the workflow has a tracker tool, check each planned requirement's tickets and propose as shipped the ones whose tickets are all done. Without a tracker, ask the user which requirements shipped.
+2. If the workflow has a tracker tool, check the planned requirements' tickets there, record their status with update_tickets, and call get_release again. Propose "ready" (all tickets done) as shipped, and ask the user about "notReady" and "noTickets": never ship those on ticket status alone. Without a tracker, ask the user which requirements shipped.
 3. Show the user what ships, what becomes obsolete, and where the rest will move. Call release_version only once they agree.
 4. A mistake in a released version is fixed with correct_release and the user's reason, never by editing files. Requirements that shipped later go in with release_requirements.
 
@@ -1169,7 +1169,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         product: p.id,
         version,
         status: "planned",
-        planned: pending.planned.map((r) => ({ ...s.summary("requirement", r), tickets: (r as { tickets?: unknown[] }).tickets ?? [] })),
+        planned: pending.planned.map((r) => s.summary("requirement", r)),
+        // From ticket status: propose `ready` as shipped; ask the user about the others.
+        ready: pending.ready.map((r) => ({ ...s.summary("requirement", r), tickets: ticketsOf(r) })),
+        notReady: pending.notReady.map((r) => ({ ...s.summary("requirement", r), tickets: ticketsOf(r) })),
+        noTickets: pending.noTickets.map((r) => s.summary("requirement", r)),
         obsoleteWhenReleased: {
           replaced: pending.replacedBy.map((r) => ({ ...s.summary("requirement", r), replacedBy: (r.obsoletedBy ?? []).map(ref) })),
           removals: pending.removals.map((r) => s.summary("requirement", r)),
