@@ -137,8 +137,12 @@ describe("local MCP server", () => {
         "get_item",
         "get_workspace",
         "link_items",
+        "correct_release",
+        "get_release",
         "obsolete_requirement",
         "plan_requirements",
+        "release_requirements",
+        "release_version",
         "record_experiment_results",
         "search_items",
         "send_back_requirement",
@@ -830,5 +834,92 @@ describe("replacing requirements without versions", () => {
     const text = (await connect()).getInstructions()!;
     expect(text).toContain("replaces");
     expect(text).not.toContain("obsolete_requirement and replacedBy");
+  });
+});
+
+describe("stakeholder progress in get_item", () => {
+  it("shows how many of a need's solution requirements are released", async () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 2, productAreas: [], products: [] });
+    writeProduct(root, { id: "PRD-0001", title: "Clinicare Web Application", areas: [], versions: [{ version: "1.0", status: "planned" }] });
+    const c = await connect();
+    const need = (await call(c, "add_requirements", { requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }] })).data.created[0].id;
+    await call(c, "add_requirements", { requirements: [{ kind: "solution", title: "Slots", story: "The view shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need] }] });
+    const { data } = await call(c, "get_item", { id: need });
+    expect(data.progress).toMatchObject({ released: 0, total: 1 });
+  });
+});
+
+describe("releasing", () => {
+  let c: Client;
+  let a: string;
+  let b: string;
+  const PRODUCT = "groundwork/products/PRD-0001-clinicare-web-application.md";
+  beforeEach(async () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 2, productAreas: [], products: [] });
+    writeProduct(root, { id: "PRD-0001", title: "Clinicare Web Application", areas: [], versions: [{ version: "1.0", status: "planned" }, { version: "1.1", status: "planned" }] });
+    c = await connect();
+    const need = (await call(c, "add_requirements", { requirements: [{ kind: "stakeholder", title: "Book", story: "As a secretary I want slots so that I can book.", acceptanceCriteria: ["a"] }] })).data.created[0].id;
+    const add = async (title: string) =>
+      (await call(c, "add_requirements", { requirements: [{ kind: "solution", title, story: "The view shall show slots.", acceptanceCriteria: ["a"], stakeholderIds: [need] }] })).data.created[0].id;
+    a = await add("Slots");
+    b = await add("Filters");
+    for (const id of [a, b]) {
+      await call(c, "submit_requirement_for_approval", { id, approverId: "sam" });
+      await call(c, "approve_requirement", { id, plannedFor: "1.0" });
+    }
+  });
+  const stored = (id: string) => load(root).items.requirements.find((r) => r.id === id)!;
+
+  it("lists what's planned for a version", async () => {
+    const { data } = await call(c, "get_release", { version: "1.0" });
+    expect(data.status).toBe("planned");
+    expect(data.planned.map((x: { id: string }) => x.id).sort()).toEqual([a, b].sort());
+  });
+
+  it("releases what shipped and moves the rest", async () => {
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a] })).error).toMatch(new RegExp(`${b}.*moveTo`, "s"));
+    const { data, error } = await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect(error).toBeUndefined();
+    expect(data.report.introduced.map((x: { id: string }) => x.id)).toEqual([a]);
+    expect(load(root).products[0].versions[0]).toMatchObject({ version: "1.0", status: "released", releasedBy: "sam" });
+    expect(stored(b).plannedFor).toBe("1.1");
+    expect((await call(c, "get_release", { version: "1.0" })).data.status).toBe("released");
+    expect((await call(c, "release_version", { version: "1.0", shipped: [] })).error).toMatch(/correct_release/);
+  });
+
+  it("corrects a released version only with a reason, and records it", async () => {
+    await call(c, "release_version", { version: "1.0", shipped: [a, b] });
+    expect((await call(c, "correct_release", { version: "1.0", removeShipped: [b], moveTo: "1.1" })).error).toBeDefined();
+    const { error } = await call(c, "correct_release", { version: "1.0", reason: "Filters were behind a flag", removeShipped: [b], moveTo: "1.1" });
+    expect(error).toBeUndefined();
+    expect(load(root).products[0].versions[0].corrections?.[0]).toMatchObject({ by: "sam", reason: "Filters were behind a flag" });
+    expect(readFileSync(join(root, PRODUCT), "utf8")).toContain("Filters were behind a flag");
+  });
+
+  it("adds a requirement shipped later to a released version", async () => {
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect((await call(c, "release_requirements", { version: "1.0", ids: [b] })).error).toBeUndefined();
+    expect(stored(b).releasedIn).toBe("1.0");
+  });
+
+  it("refuses a viewer", async () => {
+    const config = readConfig(root);
+    writeConfig(root, { ...config, people: [...config.people, { id: "vic", name: "Vic", role: "viewer" }] });
+    process.env.GROUNDWORK_USER = "vic";
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/viewer/);
+  });
+
+  it("refuses someone who isn't in config.yml", async () => {
+    process.env.GROUNDWORK_USER = "mallory";
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/config.yml people/);
+  });
+
+  it("protects released requirements, and the needs they meet, from edits and deletes", async () => {
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect((await call(c, "update_item", { id: a, patch: { title: "Rewritten" } })).error).toMatch(/shipped in 1.0/);
+    expect((await call(c, "delete_item", { id: a })).error).toMatch(/shipped in 1.0/);
+    const need = stored(a).stakeholderIds![0];
+    expect((await call(c, "delete_item", { id: need })).error).toMatch(/released/);
+    expect((await call(c, "update_item", { id: b, patch: { title: "Still a plan" } })).error).toBeUndefined();
   });
 });

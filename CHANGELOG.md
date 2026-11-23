@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Releasing.**
+  - `release_version` (and `groundwork release <version> --shipped …`) releases a planned version and records who and when. Planned requirements that didn't ship move to a version you name. Replaced requirements become obsolete once all their replacements have shipped, and planned removals are confirmed.
+  - `get_release` shows what's planned for a version, or its report once released.
+  - `release_requirements` adds requirements that shipped later to a released version.
+  - `correct_release` (and `groundwork release <version> --correct --reason …`) corrects a released version, with the reason recorded on the version.
+- **Release report.** `groundwork report release <version>` prints, as Markdown, what a version introduced, what it made obsolete, how far each stakeholder need is met, and any corrections. Use it in release documentation, e.g. EU MDR technical documentation.
+- `get_item` on a stakeholder requirement shows its progress: how many of its solution requirements are released, and the version it was fully met in.
+- New fields: `madeObsoleteBy` on requirements (who made it obsolete; `obsoletedBy` still holds the replacing requirements), and `corrections` on product versions.
+- The acme example releases 1.0.
+
 - **Versions on requirements.** Approving a solution requirement plans it for a planned version of its product: `approve_requirement` takes `plannedFor`, which is required once the product has planned versions. `plan_requirements` moves approved requirements to another planned version.
 - **Replacements wait for the release.** A requirement can name what it `replaces`. When it's approved for a version, the old requirements stay valid, with `obsoletePlannedFor` set to that version, and move with it if it's re-planned. Without versions, the old ones become obsolete on approval, as before.
 - `obsolete_requirement` takes `inVersion`, to remove a requirement in a planned version. A requirement that has shipped needs it.

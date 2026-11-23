@@ -72,6 +72,16 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
     }
     const status = (v: string | undefined) => p.versions.find((x) => x.version === v)?.status;
     if (r.releasedIn && status(r.releasedIn) === "planned") err(`releasedIn "${r.releasedIn}" isn't released yet`);
+    if (r.obsoletedIn && status(r.obsoletedIn) === "planned") err(`obsoletedIn "${r.obsoletedIn}" isn't released yet`);
+    if (r.releasedIn && (!r.releasedAt || !r.releasedBy)) warn(`released in ${r.releasedIn} without releasedAt and releasedBy`);
+    if (r.obsoletedIn) {
+      for (const id of r.obsoletedBy ?? []) {
+        const by = s.requirements.find((x) => x.id === id);
+        if (by && !by.releasedIn) warn(`obsolete in ${r.obsoletedIn}, but ${id} that replaces it hasn't shipped`);
+      }
+    }
+    if (!isActive(r)) return;
+    if (r.obsoletePlannedFor && status(r.obsoletePlannedFor) === "released") warn(`planned to become obsolete in ${r.obsoletePlannedFor}, which is already released`);
     const approved = r.status === "approved" || r.status === "in-delivery";
     if (approved && !r.plannedFor && !r.releasedIn && plannedVersions(p).length) {
       err(`approved but not planned for a version of ${p.title}: plan it with plan_requirements`);
@@ -146,7 +156,7 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
             warn(`product "${r.product}" isn't in config.yml products`);
           }
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
-          if (isActive(r)) checkVersions(r, err, warn);
+          checkVersions(r, err, warn);
           break;
         }
       }

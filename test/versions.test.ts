@@ -101,3 +101,26 @@ describe("validate requirement versions", () => {
     expect(messages().filter((m) => m.startsWith("error"))).toEqual([]);
   });
 });
+
+describe("validate obsolete and released requirements", () => {
+  it("errors on obsoletedIn naming a version that isn't released", () => {
+    solution({ status: "obsolete", obsoletedIn: "1.1" });
+    expect(messages()).toContain('error: obsoletedIn "1.1" isn\'t released yet');
+  });
+
+  it("warns when a requirement was made obsolete but its replacement hasn't shipped", () => {
+    solution({ status: "obsolete", obsoletedIn: "1.0", obsoletedBy: ["REQ-0003"] });
+    write("REQ-0003-new.md", { id: "REQ-0003", title: "New", kind: "solution", story: "The view shall x.", stakeholderIds: ["REQ-0001"], product: "PRD-0001", status: "approved", plannedFor: "1.1", ...base });
+    expect(messages()).toContain("warning: obsolete in 1.0, but REQ-0003 that replaces it hasn't shipped");
+  });
+
+  it("warns when obsolescence is planned for a version that's already released", () => {
+    solution({ status: "approved", releasedIn: "1.0", releasedAt: "x", releasedBy: "sam", obsoletePlannedFor: "1.0" });
+    expect(messages()).toContain("warning: planned to become obsolete in 1.0, which is already released");
+  });
+
+  it("warns when a release is missing who and when", () => {
+    solution({ status: "approved", releasedIn: "1.0" });
+    expect(messages()).toContain("warning: released in 1.0 without releasedAt and releasedBy");
+  });
+});

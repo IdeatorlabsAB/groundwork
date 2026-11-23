@@ -243,6 +243,8 @@ export interface Requirement {
   obsoletePlannedFor?: string;
   /** The version that made it obsolete. Set by the release step. */
   obsoletedIn?: string;
+  /** Who made it obsolete (a person id). `obsoletedBy` holds the requirements that replaced it. */
+  madeObsoleteBy?: string;
   createdAt: string;
   /** Last time an existing requirement was rewritten, e.g. a draft updated from a new finding. */
   updatedAt?: string;
