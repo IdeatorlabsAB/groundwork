@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Tickets, linked both ways.** Solution requirements record the tickets that implement them, in any tracker: `link_tickets`, `unlink_tickets`, and `update_tickets` to refresh status. Agents link the tickets they create from requirements, and fix tickets to the requirement they restore. `search_items` finds requirements by ticket key. The web app's single Linear issue (`delivery`) is shown as a ticket.
+- **Release readiness from tickets.** `get_release` sorts planned requirements into `ready` (all tickets done), `notReady` and `noTickets`. Agents propose `ready` as shipped and ask about the rest.
+- The release report lists each introduced requirement's tickets, as linked when the version was released. A ticket linked before its requirement shipped can't be unlinked.
+
 - **Releasing.**
   - `release_version` (and `groundwork release <version> --shipped …`) releases a planned version and records who and when. Planned requirements that didn't ship move to a version you name. Replaced requirements become obsolete once all their replacements have shipped, and planned removals are confirmed.
   - `get_release` shows what's planned for a version, or its report once released.

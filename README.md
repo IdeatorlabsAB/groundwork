@@ -87,9 +87,11 @@ Every solution requirement fulfils at least one stakeholder requirement, and Gro
 
 When your agent plans a task, it first decides what kind of task it is. "Let's add a feature to book appointments" is a new need. "This path is broken, fix it" is a fix. It states the call in one line of the plan, such as *"New need: adds 2 stakeholder and 4 solution requirements"* or *"Bug fix under REQ-0007; no requirement changes"*. For a new need or a change, the plan records the requirements before any code. Tickets the workflow creates carry the REQ ids they implement. When a PM approves a requirement verbally, tell the agent and it records the approval on their behalf, noting who entered it.
 
+**Tickets, linked both ways.** When the workflow creates tickets or user stories in Linear, Jira, GitHub Issues or any other board, each ticket names the REQ ids it implements. The agent records the ticket on those requirements with `link_tickets`. Groundwork never calls your tracker; the agent uses the tracker tool your workflow already has. A bug fix under an existing requirement is linked to it too, so the fix traces back to what it restores. Ask *"which requirement is CLN-142?"* and the agent finds it.
+
 ## Releasing
 
-When a version goes out, record it: tell your agent *"Release Clinicare 1.1"*, or use the CLI. Groundwork lists what was planned for 1.1. The agent checks the tickets if your workflow has a tracker; otherwise it asks you what shipped. Planned requirements that didn't make it move to the next version you name, so nothing is dropped. A replaced requirement becomes obsolete once all its replacements have shipped. Groundwork records who released the version and when.
+When a version goes out, record it: tell your agent *"Release Clinicare 1.1"*, or use the CLI. Groundwork lists what was planned for 1.1. If your workflow has a tracker, the agent refreshes the tickets' status (`update_tickets`) and proposes the requirements whose tickets are all done. It asks you about the rest; requirements without tickets are never shipped on ticket status alone. Without a tracker, it asks you what shipped. Planned requirements that didn't make it move to the next version you name, so nothing is dropped. A replaced requirement becomes obsolete once all its replacements have shipped. Groundwork records who released the version and when.
 
 ```sh
 npx -p groundwork-mcp groundwork release 1.1 --shipped REQ-0012,REQ-0014 --move-rest 1.2
@@ -107,6 +109,7 @@ Released 2026-11-22 by sam. Product PRD-0001.
 
 - **REQ-0002** Guided CSV import: The CSV import shall guide the user step by step through uploading a file, …
   - Meets: REQ-0001 Get set up without help
+  - Tickets: linear ACME-12
 
 ## Made obsolete
 
@@ -229,6 +232,7 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 | | `add_requirements` | `send_back_requirement` |
 | | `update_item`, `link_items` | `obsolete_requirement` |
 | | `delete_item` | |
+| | `link_tickets`, `unlink_tickets`, `update_tickets` | |
 | `get_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release` |
 
 ## Privacy
