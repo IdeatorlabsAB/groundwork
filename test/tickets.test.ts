@@ -50,3 +50,28 @@ describe("tickets on requirements", () => {
     expect(ticketsOf(r)).toEqual([expect.objectContaining({ tracker: "linear", key: "MER-1", state: "Done", done: true, linkedAt: "2026-11-01T00:00:00.000Z" })]);
   });
 });
+
+describe("the web app's Linear issue as a ticket", () => {
+  const withDelivery = () => {
+    const s = workspace();
+    s.requirements = s.requirements.map((r) =>
+      r.id === ID.approvedReq
+        ? ({ ...r, delivery: { tracker: "linear", issueId: "x", identifier: "MER-1", state: { name: "In Progress", type: "started" }, sentAt: "2026-11-01T00:00:00.000Z", syncedAt: "2026-11-01T00:00:00.000Z" } } as typeof r)
+        : r,
+    );
+    return s;
+  };
+
+  it("can be refreshed with update_tickets", () => {
+    const s = withDelivery();
+    const change = ops.updateTickets(s, ctx(), [{ tracker: "linear", key: "MER-1", state: "Done", done: true }]);
+    expect(change.result).toEqual({ updated: 1, notLinked: [] });
+    expect(ticketsOf(apply(s, change).requirements.find((r) => r.id === ID.approvedReq)!)[0]).toMatchObject({ key: "MER-1", done: true });
+  });
+
+  it("keeps its original link time when linked again", () => {
+    const s = withDelivery();
+    const after = apply(s, ops.linkTickets(s, ctx(), [ID.approvedReq], { tracker: "linear", key: "MER-1", title: "Import" }));
+    expect(after.requirements.find((r) => r.id === ID.approvedReq)!.tickets).toEqual([expect.objectContaining({ key: "MER-1", linkedAt: "2026-11-01T00:00:00.000Z", title: "Import" })]);
+  });
+});

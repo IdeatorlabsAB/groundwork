@@ -105,7 +105,7 @@ function cmdRenumber(against?: string) {
     console.error("Usage: groundwork renumber --against <base branch>, e.g. --against origin/main");
     return 1;
   }
-  const { renumbered, rewritten, mentions } = renumber(findRoot(), against);
+  const { renumbered, rewritten, mentions, tickets } = renumber(findRoot(), against);
   if (!renumbered.length) {
     console.log(green(`Nothing to renumber: no ids clash with ${against}.`));
     return 0;
@@ -113,6 +113,7 @@ function cmdRenumber(against?: string) {
   for (const r of renumbered) console.log(`${bold(r.from)} → ${bold(r.to)}  ${r.newPath}`);
   if (rewritten.length) console.log(dim(`Updated links in: ${rewritten.join(", ")}`));
   for (const m of mentions) console.log(`${yellow("warning")} ${m.file}: mentions ${m.id} in its notes; update that by hand`);
+  for (const t of tickets) console.log(`${yellow("warning")} ${t.from} → ${t.to} has tickets ${t.tickets.join(", ")}: update the REQ id there`);
   return 0;
 }
 

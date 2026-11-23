@@ -286,8 +286,14 @@ export function releaseReport(requirements: Requirement[], catalogue: Catalogue,
       id: r.id,
       title: r.title,
       story: r.story,
-      // The tickets as they were when the version was released; later links (e.g. a fix) aren't part of it.
-      tickets: ticketsOf(r).filter((t) => !v.releasedAt || t.linkedAt <= v.releasedAt) as unknown[],
+      // The tickets linked when it shipped (its own release time: it may have been added to the version later). Later
+      // links, e.g. a fix, aren't part of it. Only fixed details: live status would change a filed report.
+      tickets: ticketsOf(r)
+        .filter((t) => {
+          const cutoff = r.releasedAt ?? v.releasedAt;
+          return !cutoff || t.linkedAt <= cutoff;
+        })
+        .map((t) => ({ tracker: t.tracker, key: t.key, ...(t.url ? { url: t.url } : {}) })) as unknown[],
       stakeholders: (r.stakeholderIds ?? []).map(ref),
       ...(r.releasedAt ? { releasedAt: r.releasedAt } : {}),
       ...(r.releasedBy ? { releasedBy: r.releasedBy } : {}),

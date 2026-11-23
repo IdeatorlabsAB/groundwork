@@ -158,9 +158,10 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
           checkVersions(r, err, warn);
           const seenTickets = new Set<string>();
-          for (const t of (r.tickets ?? []) as Partial<Ticket>[]) {
-            if (!t.tracker || !t.key) {
-              err("a ticket needs a tracker and a key");
+          if (r.tickets !== undefined && !Array.isArray(r.tickets)) err("tickets must be a list");
+          for (const t of (Array.isArray(r.tickets) ? r.tickets : []) as Partial<Ticket>[]) {
+            if (typeof t.tracker !== "string" || typeof t.key !== "string" || !t.tracker || !t.key) {
+              err("a ticket needs a tracker and a key, as text");
               continue;
             }
             const k = `${t.tracker.toLowerCase()} ${t.key.toLowerCase()}`;

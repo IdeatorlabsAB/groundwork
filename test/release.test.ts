@@ -214,3 +214,22 @@ describe("tickets and releases", () => {
     expect(md).not.toContain("CLN-9");
   });
 });
+
+describe("tickets in reports stay as filed", () => {
+  const t = (key: string, linkedAt: string) => ({ tracker: "linear", key, done: true, linkedAt, linkedBy: "sam", state: "Done", title: "x", url: `https://l/${key}` });
+
+  it("lists the tickets of a requirement added to the release later", () => {
+    const p = product();
+    const out = release([req("A", { plannedFor: "1.0" }), req("B", { plannedFor: "1.1", tickets: [] })], p, { version: "1.0", shipped: ["A"] });
+    const withTicket = out.requirements.map((r) => (r.id === "B" ? { ...r, tickets: [t("CLN-5", "2027-01-01T00:00:00.000Z")] } : r));
+    const later = releaseRequirements(withTicket, cat(out.product), { product: out.product, version: "1.0", ids: ["B"], actor: "sam", now: "2027-01-02T00:00:00.000Z" });
+    const rep = releaseReport(later, cat(out.product), out.product, "1.0");
+    expect(rep.introduced.find((x) => x.id === "B")!.tickets).toEqual([{ tracker: "linear", key: "CLN-5", url: "https://l/CLN-5" }]);
+  });
+
+  it("shows only fixed ticket details, not live status", () => {
+    const p = product();
+    const out = release([req("A", { plannedFor: "1.0", tickets: [t("CLN-1", "2026-11-01T00:00:00.000Z")] })], p, { version: "1.0", shipped: ["A"] });
+    expect(releaseReport(out.requirements, cat(out.product), out.product, "1.0").introduced[0].tickets).toEqual([{ tracker: "linear", key: "CLN-1", url: "https://l/CLN-1" }]);
+  });
+});

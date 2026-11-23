@@ -159,7 +159,7 @@ describe("local MCP server", () => {
 
   it("tells agents how to plan work with requirements", async () => {
     const text = (await connect()).getInstructions()!;
-    for (const phrase of ["When you plan work", "New need", "Change", "Fix", "before writing code", "REQ ids", "approvedBy", "link_tickets"]) {
+    for (const phrase of ["When you plan work", "New need", "Change", "Fix", "before writing code", "REQ ids", "approvedBy", "link_tickets", "won't do"]) {
       expect(text).toContain(phrase);
     }
   });

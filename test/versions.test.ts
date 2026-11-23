@@ -124,3 +124,15 @@ describe("validate obsolete and released requirements", () => {
     expect(messages()).toContain("warning: released in 1.0 without releasedAt and releasedBy");
   });
 });
+
+describe("validate tickets from hand edits", () => {
+  it("reports a ticket whose key isn't text, instead of breaking", () => {
+    solution({ tickets: [{ tracker: "github", key: 57, linkedAt: "x", linkedBy: "sam" }] });
+    expect(messages()).toContain("error: a ticket needs a tracker and a key, as text");
+  });
+
+  it("reports tickets that aren't a list", () => {
+    solution({ tickets: { tracker: "github", key: "57" } });
+    expect(messages()).toContain("error: tickets must be a list");
+  });
+});

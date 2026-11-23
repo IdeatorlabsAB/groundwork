@@ -200,7 +200,7 @@ export interface Ticket {
   title?: string;
   /** The tracker's own status name, e.g. "In Review". */
   state?: string;
-  /** Whether the ticket is finished (done, closed, merged). */
+  /** Whether its work was completed as delivered. Canceled, won't do or duplicate tickets are not done, even when closed. */
   done?: boolean;
   linkedAt: string;
   linkedBy: string;

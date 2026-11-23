@@ -1,4 +1,4 @@
-import { canObsolete, kindOf, sameTicket, type RequirementChanges } from "./requirements";
+import { canObsolete, kindOf, sameTicket, ticketsOf, type RequirementChanges } from "./requirements";
 import type {
   Activity,
   Delivery,
@@ -476,6 +476,16 @@ export function planObsolescence(s: Collections, c: Ctx, ids: string[], version:
   };
 }
 
+/**
+ * A requirement's own tickets, plus the web app's Linear issue (`delivery`) when `t` is that issue: then it becomes
+ * a real ticket entry, keeping its original link time, so it can be refreshed and its release record doesn't change.
+ */
+function ticketList(r: Requirement, t: Pick<Ticket, "tracker" | "key">): Ticket[] {
+  const own = Array.isArray(r.tickets) ? r.tickets : [];
+  if (r.delivery && !own.some((x) => sameTicket(x, t)) && sameTicket({ tracker: "linear", key: r.delivery.identifier }, t)) return ticketsOf(r);
+  return own;
+}
+
 /** Link a ticket to requirements. Already linked: its details are refreshed from what's given. */
 export function linkTickets(s: Collections, c: Ctx, ids: string[], ticket: Omit<Ticket, "linkedAt" | "linkedBy">): Change<boolean> {
   const t = { ...ticket, tracker: ticket.tracker.toLowerCase() };
@@ -484,7 +494,7 @@ export function linkTickets(s: Collections, c: Ctx, ids: string[], ticket: Omit<
     next: {
       requirements: s.requirements.map((r) => {
         if (!ids.includes(r.id)) return r;
-        const list = r.tickets ?? [];
+        const list = ticketList(r, t);
         return list.some((x) => sameTicket(x, t))
           ? { ...r, tickets: list.map((x) => (sameTicket(x, t) ? { ...x, ...details } : x)) }
           : { ...r, tickets: [...list, { ...t, linkedAt: c.now, linkedBy: c.actor }] };
@@ -518,10 +528,11 @@ export function updateTickets(
     let hit = false;
     const patch = Object.fromEntries(Object.entries({ state: u.state, done: u.done, title: u.title }).filter(([, v]) => v !== undefined));
     requirements = requirements.map((r) => {
-      if (!r.tickets?.some((x) => sameTicket(x, u))) return r;
+      const list = ticketList(r, u);
+      if (!list.some((x) => sameTicket(x, u))) return r;
       hit = true;
       updated++;
-      return { ...r, tickets: r.tickets.map((x) => (sameTicket(x, u) ? { ...x, ...patch, syncedAt: c.now } : x)) };
+      return { ...r, tickets: list.map((x) => (sameTicket(x, u) ? { ...x, ...patch, syncedAt: c.now } : x)) };
     });
     if (!hit) notLinked.push({ tracker: u.tracker.toLowerCase(), key: u.key });
   }

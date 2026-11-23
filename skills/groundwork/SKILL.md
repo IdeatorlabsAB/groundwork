@@ -60,7 +60,7 @@ When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues o
 Only solution requirements belong to releases. Stakeholder needs count as met through the solution requirements that fulfil them.
 
 1. `get_release` for the version shows what's planned to ship and what's planned to become obsolete.
-2. Work out what actually shipped. If you have a tracker tool (Linear, Jira, GitHub), check the planned requirements' tickets there, record their status with `update_tickets`, and call `get_release` again. Propose its `ready` list (all tickets done) as shipped, and ask the user about `notReady` and `noTickets`: never ship those on ticket status alone. Without a tracker, ask the user.
+2. Work out what actually shipped. If you have a tracker tool (Linear, Jira, GitHub), check the planned requirements' tickets there, record their status with `update_tickets`, and call `get_release` again. Propose its `ready` list (all tickets done) as shipped, and ask the user about `notReady` and `noTickets`: never ship those on ticket status alone. A ticket counts as done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user.
 3. Show the user what ships, what becomes obsolete, and which planned version the rest moves to. Call `release_version` only once they agree. Groundwork records who released it and when.
 4. A requirement that shipped later in an already released version goes in with `release_requirements`.
 5. A mistake in a released version is fixed with `correct_release`, with the user's reason. Never edit release fields in the files. The correction shows in the release report.

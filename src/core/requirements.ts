@@ -57,12 +57,13 @@ export interface RequirementChanges {
   obsolete: { id: ID; by: ID }[];
 }
 
+// String(): a hand-edited key like `key: 57` is read from YAML as a number.
 export const sameTicket = (a: Pick<Ticket, "tracker" | "key">, b: Pick<Ticket, "tracker" | "key">) =>
-  a.tracker.toLowerCase() === b.tracker.toLowerCase() && a.key.toLowerCase() === b.key.toLowerCase();
+  String(a.tracker).toLowerCase() === String(b.tracker).toLowerCase() && String(a.key).toLowerCase() === String(b.key).toLowerCase();
 
 /** A requirement's tickets, including the web app's single Linear issue (`delivery`), shown as a ticket. */
 export function ticketsOf(r: Requirement): Ticket[] {
-  const list = r.tickets ?? [];
+  const list = Array.isArray(r.tickets) ? r.tickets : [];
   const d = r.delivery;
   if (!d || list.some((t) => sameTicket(t, { tracker: "linear", key: d.identifier }))) return list;
   return [

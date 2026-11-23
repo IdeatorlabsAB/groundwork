@@ -55,7 +55,7 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 
 Releasing a version ("Release Clinicare 1.1"):
 1. Call get_release for the version.
-2. If the workflow has a tracker tool, check the planned requirements' tickets there, record their status with update_tickets, and call get_release again. Propose "ready" (all tickets done) as shipped, and ask the user about "notReady" and "noTickets": never ship those on ticket status alone. Without a tracker, ask the user which requirements shipped.
+2. If the workflow has a tracker tool, check the planned requirements' tickets there, record their status with update_tickets, and call get_release again. Propose "ready" (all tickets done) as shipped, and ask the user about "notReady" and "noTickets": never ship those on ticket status alone. A ticket is done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user which requirements shipped.
 3. Show the user what ships, what becomes obsolete, and where the rest will move. Call release_version only once they agree.
 4. A mistake in a released version is fixed with correct_release and the user's reason, never by editing files. Requirements that shipped later go in with release_requirements.
 
@@ -1088,7 +1088,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
           url: z.string().trim().max(500).optional(),
           title: z.string().trim().max(200).optional(),
           state: z.string().trim().max(60).optional().describe("The tracker's own status, e.g. \"In Review\"."),
-          done: z.boolean().optional().describe("Whether the ticket is finished (done, closed, merged)."),
+          done: z.boolean().optional().describe("Whether the work was completed as delivered. Canceled, won't do or duplicate tickets are not done, even when closed."),
         }),
       },
     },
@@ -1127,7 +1127,14 @@ export function buildServer({ root }: ServerOptions): McpServer {
         "Refresh ticket status from the tracker, on every requirement that has the ticket. Use it before releasing, after checking the tickets with the tracker's own tool. Tickets that aren't linked to any requirement are listed in notLinked.",
       inputSchema: {
         tickets: z
-          .array(z.object({ ...ticketRef, state: z.string().trim().max(60).optional(), done: z.boolean().optional(), title: z.string().trim().max(200).optional() }))
+          .array(
+            z.object({
+              ...ticketRef,
+              state: z.string().trim().max(60).optional(),
+              done: z.boolean().optional().describe("Completed as delivered. Canceled, won't do or duplicate are not done."),
+              title: z.string().trim().max(200).optional(),
+            }),
+          )
           .min(1)
           .max(200),
       },
