@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
@@ -28,7 +30,7 @@ const STORED: Record<Kind, z.ZodType> = {
 };
 
 /** Every problem in a project: unreadable files, invalid fields, broken or wrong-kind links, unknown areas. */
-export function validate(loaded: Loaded, config: Config): Problem[] {
+export function validate(loaded: Loaded, config: Config, opts: { root?: string } = {}): Problem[] {
   const out: Problem[] = loaded.problems.map((p) => ({ level: "error", ...p }));
   const s: Collections = loaded.items;
   const kindById = new Map<string, Kind>();
@@ -109,13 +111,20 @@ export function validate(loaded: Loaded, config: Config): Problem[] {
         }
       };
 
+      if (opts.root && (kind === "requirement" || kind === "hypothesis")) {
+        for (const ref of (item.codeRefs as string[] | undefined) ?? []) {
+          const path = ref.split("#")[0].replace(/:\d+$/, "");
+          if (path && !existsSync(join(opts.root, path))) warn(`codeRefs: ${path} doesn't exist`);
+        }
+      }
+
       const area = item.productArea as string | undefined;
       if (area && !areaIds.has(area)) warn(`productArea "${area}" isn't in ${where}`);
 
       switch (kind) {
         case "hypothesis":
           link("insightIds", "insight", item.insightIds);
-          if (!(item.insightIds as unknown[] | undefined)?.length) warn("no insights linked: what evidence is this built on?");
+          if (item.origin !== "inferred" && !(item.insightIds as unknown[] | undefined)?.length) warn("no insights linked: what evidence is this built on?");
           break;
         case "experiment":
           link("hypothesisId", "hypothesis", item.hypothesisId);

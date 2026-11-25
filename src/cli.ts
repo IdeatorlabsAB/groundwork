@@ -88,7 +88,7 @@ function cmdInit(name?: string) {
 
 function cmdValidate(json: boolean, against?: string) {
   const root = findRoot();
-  const problems = [...validate(load(root), readConfig(root)), ...(against ? clashProblems(root, against) : [])];
+  const problems = [...validate(load(root), readConfig(root), { root }), ...(against ? clashProblems(root, against) : [])];
   const errors = problems.filter((p) => p.level === "error");
   if (json) {
     console.log(JSON.stringify({ ok: !errors.length, problems }, null, 2));

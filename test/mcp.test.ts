@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -1004,5 +1004,45 @@ describe("reverse-engineered items", () => {
     expect(r.codeRefs).toEqual(["src/billing/invoice.ts#applyDiscount"]);
     expect(h.origin).toBe("inferred");
     expect(h.codeRefs).toEqual(["src/billing"]);
+  });
+  it("warns about codeRefs paths that don't exist", async () => {
+    const c = await connect();
+    mkdirSync(join(root, "src/lib"), { recursive: true });
+    writeFileSync(join(root, "src/a.ts"), "export {};\n");
+    const req = (
+      await call(c, "add_requirements", {
+        requirements: [
+          {
+            kind: "stakeholder",
+            title: "Discounts apply to invoices",
+            story: "As a finance manager I want discounts applied to invoices so that totals are right.",
+            acceptanceCriteria: ["Discount shown on the invoice"],
+            origin: "existing-product",
+            codeRefs: ["src/a.ts#fn", "src/a.ts:12", "src/lib", "src/gone.ts"],
+          },
+        ],
+      })
+    ).data.created[0];
+    const problems = validate(load(root), readConfig(root), { root }).filter((p) => p.message.includes("codeRefs"));
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ level: "warning", file: req.file });
+    expect(problems[0].message).toContain("codeRefs: src/gone.ts doesn't exist");
+    expect(problems[0].message).not.toMatch(/src\/a\.ts|src\/lib/);
+    expect(validate(load(root), readConfig(root)).filter((p) => p.message.includes("codeRefs"))).toEqual([]);
+  });
+
+  it("doesn't ask for insights on an inferred hypothesis", async () => {
+    const c = await connect();
+    const h = {
+      outcome: "raise week-1 activation",
+      forWhom: "new ops leads",
+      benefit: "a working workspace in 5 minutes",
+      feature: "a guided CSV import",
+      successMetric: { name: "Week-1 activation", unit: "%", baseline: 38, target: 55, direction: "increase", timeframe: "over a 4-week pilot" },
+    };
+    await call(c, "add_hypotheses", { hypotheses: [{ title: "Inferred one", ...h, origin: "inferred" }, { title: "Plain one", ...h }] });
+    const noInsights = validate(load(root), readConfig(root)).filter((p) => p.message.includes("no insights linked"));
+    expect(noInsights).toHaveLength(1);
+    expect(noInsights[0].file).toContain("plain-one");
   });
 });

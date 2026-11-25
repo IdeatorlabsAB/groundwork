@@ -456,7 +456,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     read((s) => {
       const items = s.loaded.items;
-      const problems = validate(s.loaded, s.config);
+      const problems = validate(s.loaded, s.config, { root: s.root });
       return {
         workspace: s.config.name,
         folder: `${s.root}/groundwork`,
