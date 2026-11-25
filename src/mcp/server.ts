@@ -295,6 +295,14 @@ class Session {
     }
   }
 
+  /** A person who may approve: in config.yml people and not a viewer. */
+  approver(id: string) {
+    const person = this.config.people.find((m) => m.id === id);
+    if (!person) throw new UserError(`${id} isn't in groundwork/config.yml people. Add them there first.`);
+    if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+    return person;
+  }
+
   checkStakeholders(s: State, ids: string[] | undefined) {
     this.check(s, "requirement", ids, "stakeholderIds");
     for (const id of ids ?? []) {
@@ -960,9 +968,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     write((s, state, c, { id, approverId }: { id: string; approverId: string }) => {
       const r = requirementOf(state, id);
-      const approver = s.config.people.find((m) => m.id === approverId);
-      if (!approver) throw new UserError(`${approverId} isn't in groundwork/config.yml people. Add them there first.`);
-      if (approver.role === "viewer") throw new UserError(`${approver.name} is a viewer, so they can't approve.`);
+      const approver = s.approver(approverId);
       if (r.status !== "draft") throw new UserError(`"${r.title}" is ${r.status}; only drafts can be submitted.`);
       const [next] = apply(state, ops.submitRequirement(state, c, id, approverId));
       return { state: next, result: { submitted: s.summary("requirement", requirementOf(next, id)), approver: approver.name } };
@@ -1011,9 +1017,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       };
       // Naming yourself isn't recording someone else's approval: the normal approver check applies.
       if (approvedBy && approvedBy !== s.actor.id) {
-        const person = s.config.people.find((m) => m.id === approvedBy);
-        if (!person) throw new UserError(`${approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
-        if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+        const person = s.approver(approvedBy);
         if (r.status !== "draft" && r.status !== "awaiting-approval") {
           throw new UserError(`"${r.title}" is ${r.status}; only drafts and requirements awaiting approval can be approved.`);
         }
@@ -1260,11 +1264,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
     area: hypothesisInput.shape.productArea.describe("The product area this call documents (label or id): the default for every item without its own productArea."),
     hypotheses: z.array(hypothesisInput.extend({ key })).max(30).default([]),
     stakeholder: z
-      .array(requirementInput.omit({ kind: true, product: true, stakeholderIds: true }).extend({ key, hypothesisKeys: keys.optional() }))
+      .array(requirementInput.omit({ kind: true, product: true, stakeholderIds: true, findingIds: true }).extend({ key, hypothesisKeys: keys.optional() }).strict())
       .max(30)
       .default([]),
     solution: z
-      .array(requirementInput.omit({ kind: true, product: true }).extend({ stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() }))
+      .array(requirementInput.omit({ kind: true, product: true, findingIds: true }).extend({ stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() }).strict())
       .min(1)
       .max(60),
   };
@@ -1283,7 +1287,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       if (s.catalogue.legacy) throw new UserError('Run "groundwork migrate" first: products and their versions now live in groundwork/products/.');
       const p = s.targetProduct(a.product);
       const areaId = s.area(a.area);
-      if (!s.config.people.some((m) => m.id === a.approvedBy)) throw new UserError(`${a.approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
+      s.approver(a.approvedBy);
 
       const warnings: string[] = [];
       const hypotheses = a.hypotheses.map((h) => {
@@ -1301,14 +1305,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         const problem = layerProblem({ kind, stakeholderIds: kind === "solution" ? [...(stakeholderIds ?? []), ...links] : stakeholderIds });
         if (problem) throw new UserError(`"${r.title}": ${problem}.`);
         wordingWarnings({ kind, story: r.story }).forEach((w) => warnings.push(`"${r.title}": ${w}.`));
-        s.check(state, "finding", r.findingIds, "findingIds");
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, stakeholderIds);
         s.checkReplaces(state, r.replaces, { kind, product: p.id });
-        const { findingIds: _unused, ...rest } = r;
-        void _unused;
-        return { ...rest, productArea: s.area(r.productArea), aiGenerated: true };
+        return { ...r, productArea: s.area(r.productArea), aiGenerated: true };
       };
       const stakeholder = a.stakeholder.map((r) => requirement(r, "stakeholder"));
       const solution = a.solution.map((r) => requirement(r, "solution", r.stakeholderKeys));

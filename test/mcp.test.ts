@@ -1127,6 +1127,26 @@ describe("record_baseline", () => {
     expect(requirementFiles()).toEqual([]);
   });
 
+  it("refuses a viewer as approver", async () => {
+    productFiles();
+    const config = readConfig(root);
+    writeConfig(root, { ...config, people: [...config.people, { id: "vic", name: "Vic", role: "viewer" }] });
+    const c = await connect();
+    const { error } = await call(c, "record_baseline", { ...baseline, approvedBy: "vic" });
+    expect(error).toMatch(/Vic is a viewer, so they can't approve/);
+    expect(requirementFiles()).toEqual([]);
+  });
+
+  it("refuses findingIds on baseline requirements", async () => {
+    productFiles();
+    const c = await connect();
+    const stakeholder = await call(c, "record_baseline", { ...baseline, stakeholder: [{ ...s1, findingIds: ["FND-0001"] }] });
+    expect(stakeholder.error).toMatch(/Input validation error[\s\S]*findingIds/);
+    const solution = await call(c, "record_baseline", { ...baseline, solution: [{ ...sol, findingIds: ["FND-0001"] }] });
+    expect(solution.error).toMatch(/Input validation error[\s\S]*findingIds/);
+    expect(requirementFiles()).toEqual([]);
+  });
+
   it("refuses a legacy catalogue", async () => {
     const c = await connect();
     const { error } = await call(c, "record_baseline", baseline);
