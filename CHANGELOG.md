@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Needs Node.js 22 or newer. Node 20 reached end of life in April 2026, and CI no longer tests it.
+
 ## 0.8.0
 
 - **Reverse-engineer a baseline.** An agent can read an existing codebase and record what it does as an approved, already released baseline, so a modernization starts with a requirement repository. The skill walks through it: survey, product areas, a draft per area, a check with you, then record.
