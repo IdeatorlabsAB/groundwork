@@ -42,7 +42,7 @@ Groundwork's records are made while you work, not afterwards. Nobody should have
 - Pass context on every change: the branch, then the PR and commit once they exist.
 
 **4. Open the PR.**
-- End the PR description, and each commit message, with a trailer naming what it implements or restores: `Groundwork: REQ-0042, RSK-0007`.
+- End the PR description, and each commit message, with a trailer naming what it implements or restores: `Groundwork: REQ-0042, RSK-0007`. CI reads it: on merge, the solution requirements and risks it names are tagged to the product's collecting release.
 - After opening it, link_tickets the PR to its solution requirements: { tracker: "github", key: "owner/repo#57", url }.
 - Call check_release for the release and tell the user what still blocks it.
 
