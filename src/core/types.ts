@@ -86,6 +86,11 @@ export interface Hypothesis {
   productArea?: ProductArea;
   confidence: number; // 0-100
   insightIds: ID[];
+  /** Repo-relative paths (optionally "#symbol") where this shows up in the code. */
+  codeRefs?: string[];
+  origin?: HypothesisOrigin;
+  /** What it was inferred from. */
+  originNote?: string;
   owner: string;
   createdAt: string;
   updatedAt: string;
@@ -169,7 +174,10 @@ export type RequirementKind = "stakeholder" | "solution";
  * Why a requirement was created directly, without hypotheses or experiments: the decision to
  * build it was already made elsewhere. Unset for requirements derived from findings.
  */
-export type RequirementOrigin = "tender" | "regulation" | "contract" | "customer-need";
+export type RequirementOrigin = "tender" | "regulation" | "contract" | "customer-need" | "existing-product";
+
+/** "inferred": reverse-engineered from an existing product rather than stated by anyone. */
+export type HypothesisOrigin = "inferred";
 
 /** Linear's workflow state categories. */
 export type DeliveryStateType = "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled";
@@ -245,6 +253,8 @@ export interface Requirement {
   origin?: RequirementOrigin;
   /** Where the decision comes from, e.g. "Region North tender 2026, section 4.2". */
   originNote?: string;
+  /** Repo-relative paths (optionally "#symbol") where this shows up in the code. */
+  codeRefs?: string[];
   /** Customer evidence linked directly, not through findings. */
   insightIds?: ID[];
   /** Hypotheses this was committed from, e.g. one that landed in "Stay out of this box". */

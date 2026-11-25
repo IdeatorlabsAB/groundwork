@@ -11,6 +11,7 @@ import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../c
 import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
 import { nextProductId, writeProduct, type Product } from "../store/products";
 import { correctRelease, laterVersion, pendingRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, stakeholderProgress } from "../store/release";
+import { recordBaseline } from "../store/baseline";
 import { assignIds, COLLECTIONS, load, newPath, save, type Loaded } from "../store/files";
 import { validate } from "../store/validate";
 import { catalogueOf, findArea, findProduct, plannedVersions, productOf, type Catalogue } from "../store/catalogue";
@@ -30,7 +31,7 @@ insight -> hypothesis -> experiment -> finding -> requirement.
 - Requirement, in two layers, written before building:
   - "stakeholder": who needs what and why, as a user story: "As a <role> I want <need> so that <reason>".
   - "solution": the qualities and behaviour the solution must have, as "shall" statements: "The <system or part> shall …". Every solution requirement fulfils at least one stakeholder requirement (stakeholderIds); one stakeholder requirement is usually fulfilled by several solution requirements.
-  Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need) when there is evidence or an outside source; they're optional.
+  Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need, existing-product) when there is evidence or an outside source; they're optional.
 
 How to work:
 1. Call get_workspace first: it gives the products (with their areas and versions) and people (for approvers). If an area, product or version you need is missing, add it with add_product_areas, add_products or add_product_versions, after checking for an existing match. If it says catalogue is legacy, suggest the user runs groundwork migrate before adding versions.
@@ -58,6 +59,8 @@ Releasing a version ("Release Clinicare 1.1"):
 2. If the workflow has a tracker tool, check the planned requirements' tickets there, record their status with update_tickets, and call get_release again. Propose "ready" (all tickets done) as shipped, and ask the user about "notReady" and "noTickets": never ship those on ticket status alone. A ticket is done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user which requirements shipped.
 3. Show the user what ships, what becomes obsolete, and where the rest will move. Call release_version only once they agree.
 4. A mistake in a released version is fixed with correct_release and the user's reason, never by editing files. Requirements that shipped later go in with release_requirements.
+
+Documenting an existing product: record_baseline, one area per call (see the skill).
 
 Recording evidence or requirements directly isn't planning work. A product manager logging interview notes, drafting hypotheses, recording experiment results or writing requirements gets no new need / change / fix call: record what they ask for with the tools above.`;
 
@@ -292,6 +295,14 @@ class Session {
     }
   }
 
+  /** A person who may approve: in config.yml people and not a viewer. */
+  approver(id: string) {
+    const person = this.config.people.find((m) => m.id === id);
+    if (!person) throw new UserError(`${id} isn't in groundwork/config.yml people. Add them there first.`);
+    if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+    return person;
+  }
+
   checkStakeholders(s: State, ids: string[] | undefined) {
     this.check(s, "requirement", ids, "stakeholderIds");
     for (const id of ids ?? []) {
@@ -456,7 +467,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     read((s) => {
       const items = s.loaded.items;
-      const problems = validate(s.loaded, s.config);
+      const problems = validate(s.loaded, s.config, { root: s.root });
       return {
         workspace: s.config.name,
         folder: `${s.root}/groundwork`,
@@ -957,9 +968,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     },
     write((s, state, c, { id, approverId }: { id: string; approverId: string }) => {
       const r = requirementOf(state, id);
-      const approver = s.config.people.find((m) => m.id === approverId);
-      if (!approver) throw new UserError(`${approverId} isn't in groundwork/config.yml people. Add them there first.`);
-      if (approver.role === "viewer") throw new UserError(`${approver.name} is a viewer, so they can't approve.`);
+      const approver = s.approver(approverId);
       if (r.status !== "draft") throw new UserError(`"${r.title}" is ${r.status}; only drafts can be submitted.`);
       const [next] = apply(state, ops.submitRequirement(state, c, id, approverId));
       return { state: next, result: { submitted: s.summary("requirement", requirementOf(next, id)), approver: approver.name } };
@@ -1008,9 +1017,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       };
       // Naming yourself isn't recording someone else's approval: the normal approver check applies.
       if (approvedBy && approvedBy !== s.actor.id) {
-        const person = s.config.people.find((m) => m.id === approvedBy);
-        if (!person) throw new UserError(`${approvedBy} isn't in groundwork/config.yml people. Add them there first.`);
-        if (person.role === "viewer") throw new UserError(`${person.name} is a viewer, so they can't approve.`);
+        const person = s.approver(approvedBy);
         if (r.status !== "draft" && r.status !== "awaiting-approval") {
           throw new UserError(`"${r.title}" is ${r.status}; only drafts and requirements awaiting approval can be approved.`);
         }
@@ -1243,6 +1250,87 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const p = s.targetProduct(a.product);
       const out = correctRelease(state.requirements, s.catalogue, { ...a, product: p, actor: c.actor, now: c.now });
       return { state: { ...state, requirements: out.requirements }, products: [out.product], result: { report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version) } };
+    }),
+  );
+
+  const key = z.string().max(20);
+  const keys = z.array(key).max(30);
+  const baselineInput = {
+    product: productArg,
+    version: versionArg,
+    approvedBy: z.string().max(40),
+    note: z.string().trim().max(300).optional(),
+    sourceRef: z.string().trim().max(100).optional(),
+    area: hypothesisInput.shape.productArea.describe("The product area this call documents (label or id): the default for every item without its own productArea."),
+    hypotheses: z.array(hypothesisInput.extend({ key })).max(30).default([]),
+    stakeholder: z
+      .array(requirementInput.omit({ kind: true, product: true, stakeholderIds: true, findingIds: true, replaces: true }).extend({ key, hypothesisKeys: keys.optional() }).strict())
+      .max(30)
+      .default([]),
+    solution: z
+      .array(requirementInput.omit({ kind: true, product: true, findingIds: true, replaces: true }).extend({ stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() }).strict())
+      .min(1)
+      .max(60),
+  };
+  type BaselineArgs = z.infer<z.ZodObject<typeof baselineInput>>;
+
+  server.registerTool(
+    "record_baseline",
+    {
+      title: "Record baseline",
+      description:
+        "Record what an existing product already does as its as-is baseline: inferred hypotheses (validated), stakeholder and solution requirements (approved by approvedBy, origin existing-product), with the solution requirements released in `version`. One product area per call. Use only to document existing behaviour, after the user agreed to the list and named the approver. Link new items with keys (stakeholderKeys, hypothesisKeys) or existing ids.",
+      inputSchema: baselineInput,
+    },
+    write((s, state, c, a: BaselineArgs) => {
+      s.requireReleaser();
+      if (s.catalogue.legacy) throw new UserError('Run "groundwork migrate" first: products and their versions now live in groundwork/products/.');
+      const p = s.targetProduct(a.product);
+      const areaId = s.area(a.area);
+      s.approver(a.approvedBy);
+
+      const warnings: string[] = [];
+      const hypotheses = a.hypotheses.map((h) => {
+        s.check(state, "insight", h.insightIds, "insightIds");
+        return {
+          ...h,
+          knowWhen: composeKnowWhen({ successMetric: h.successMetric, guardrail: h.guardrail }) || h.knowWhen || "",
+          productArea: s.area(h.productArea),
+          aiGenerated: true,
+        };
+      });
+      // Keys count as stakeholder links here; recordBaseline refuses unknown ones.
+      const requirement = <R extends BaselineArgs["stakeholder"][number] | BaselineArgs["solution"][number]>(r: R, kind: "stakeholder" | "solution", links: string[] = []) => {
+        const stakeholderIds = "stakeholderIds" in r ? r.stakeholderIds : undefined;
+        const problem = layerProblem({ kind, stakeholderIds: kind === "solution" ? [...(stakeholderIds ?? []), ...links] : stakeholderIds });
+        if (problem) throw new UserError(`"${r.title}": ${problem}.`);
+        wordingWarnings({ kind, story: r.story }).forEach((w) => warnings.push(`"${r.title}": ${w}.`));
+        s.check(state, "insight", r.insightIds, "insightIds");
+        s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
+        s.checkStakeholders(state, stakeholderIds);
+        return { ...r, productArea: s.area(r.productArea), aiGenerated: true };
+      };
+      const stakeholder = a.stakeholder.map((r) => requirement(r, "stakeholder"));
+      const solution = a.solution.map((r) => requirement(r, "solution", r.stakeholderKeys));
+
+      let out;
+      try {
+        out = recordBaseline(state, s.catalogue, { product: p, version: a.version, approvedBy: a.approvedBy, note: a.note, sourceRef: a.sourceRef, area: areaId, hypotheses, stakeholder, solution }, c);
+      } catch (e) {
+        if (e instanceof ReleaseError) throw new UserError(e.message);
+        throw e;
+      }
+      warnings.push(...out.warnings);
+      return {
+        state: out.state,
+        products: [out.product],
+        result: {
+          version: a.version,
+          created: out.created,
+          ...(warnings.length ? { warnings } : {}),
+          report: releaseReport(out.state.requirements, withProduct(s, out.product), out.product, a.version),
+        },
+      };
     }),
   );
 

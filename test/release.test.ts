@@ -233,3 +233,37 @@ describe("tickets in reports stay as filed", () => {
     expect(releaseReport(out.requirements, cat(out.product), out.product, "1.0").introduced[0].tickets).toEqual([{ tracker: "linear", key: "CLN-1", url: "https://l/CLN-1" }]);
   });
 });
+
+describe("baseline release report", () => {
+  const base = (id: string, productArea?: string) => req(id, { plannedFor: "1.0", origin: "existing-product", ...(productArea ? { productArea } : {}) });
+
+  it("labels an all-baseline version and counts per area", () => {
+    const p = product();
+    const out = release([base("A", "billing"), base("B", "billing"), base("C", "auth")], p, { version: "1.0", shipped: ["A", "B", "C"] });
+    const rep = releaseReport(out.requirements, cat(out.product), out.product, "1.0");
+    expect(rep.baseline?.areas).toEqual([
+      { area: "auth", stakeholder: 1, solution: 1 },
+      { area: "billing", stakeholder: 1, solution: 2 },
+    ]);
+    const md = renderReleaseReport(rep);
+    expect(md).toContain("# Clinicare Web Application 1.0: baseline report");
+    expect(md).toContain("## Areas");
+    expect(md).toContain("- **auth**: 1 stakeholder, 1 solution requirements");
+    expect(md).toContain("- **billing**: 1 stakeholder, 2 solution requirements");
+  });
+
+  it("counts requirements without an area under (no area)", () => {
+    const p = product();
+    const out = release([base("A")], p, { version: "1.0", shipped: ["A"] });
+    expect(releaseReport(out.requirements, cat(out.product), out.product, "1.0").baseline?.areas).toEqual([{ area: "(no area)", stakeholder: 1, solution: 1 }]);
+  });
+
+  it("keeps the normal report when any requirement isn't baseline", () => {
+    const p = product();
+    const out = release([base("A", "billing"), req("B", { plannedFor: "1.0" })], p, { version: "1.0", shipped: ["A", "B"] });
+    const rep = releaseReport(out.requirements, cat(out.product), out.product, "1.0");
+    expect(rep.baseline).toBeUndefined();
+    expect(renderReleaseReport(rep)).toContain("1.0: release report");
+    expect(renderReleaseReport(rep)).not.toContain("## Areas");
+  });
+});

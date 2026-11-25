@@ -273,6 +273,8 @@ export interface ReleaseReport {
   madeObsolete: { id: string; title: string; replacedBy: { id: string; title: string }[] }[];
   stakeholders: (StakeholderProgress & { inThisVersion: "fully met" | "partly met" })[];
   corrections: Correction[];
+  /** Set when every introduced requirement documents an existing product: counts per product area. */
+  baseline?: { areas: { area: string; stakeholder: number; solution: number }[] };
 }
 
 export function releaseReport(requirements: Requirement[], catalogue: Catalogue, product: Product, version: string): ReleaseReport {
@@ -307,14 +309,29 @@ export function releaseReport(requirements: Requirement[], catalogue: Catalogue,
     const p = stakeholderProgress(requirements, id, catalogue, { product, version });
     return { ...p, inThisVersion: p.fullyMetIn === version ? ("fully met" as const) : ("partly met" as const) };
   });
-  return { product: { id: product.id, title: product.title }, version: v, introduced, madeObsolete, stakeholders, corrections: v.corrections ?? [] };
+  const released = mine.filter((r) => r.releasedIn === version);
+  let baseline: ReleaseReport["baseline"];
+  if (released.length && released.every((r) => r.origin === "existing-product")) {
+    const byArea = new Map<string, Requirement[]>();
+    for (const r of released) byArea.set(r.productArea ?? "(no area)", [...(byArea.get(r.productArea ?? "(no area)") ?? []), r]);
+    const areas = [...byArea]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([area, rs]) => ({ area, stakeholder: new Set(rs.flatMap((r) => r.stakeholderIds ?? [])).size, solution: rs.length }));
+    baseline = { areas };
+  }
+  return { product: { id: product.id, title: product.title }, version: v, introduced, madeObsolete, stakeholders, corrections: v.corrections ?? [], ...(baseline ? { baseline } : {}) };
 }
 
 /** The release report as Markdown, e.g. for technical documentation. */
 export function renderReleaseReport(r: ReleaseReport): string {
   const day = (iso?: string) => (iso ? iso.slice(0, 10) : "not released yet");
-  const lines = [`# ${r.product.title} ${r.version.version}: release report`, ""];
+  const lines = [`# ${r.product.title} ${r.version.version}: ${r.baseline ? "baseline" : "release"} report`, ""];
   lines.push(r.version.status === "released" ? `Released ${day(r.version.releasedAt)} by ${r.version.releasedBy ?? "unknown"}. Product ${r.product.id}.` : "This version isn't released yet.", "");
+  if (r.baseline) {
+    lines.push("## Areas", "");
+    for (const a of r.baseline.areas) lines.push(`- **${a.area}**: ${a.stakeholder} stakeholder, ${a.solution} solution requirements`);
+    lines.push("");
+  }
   lines.push("## Introduced", "");
   if (!r.introduced.length) lines.push("Nothing.");
   for (const x of r.introduced) {
