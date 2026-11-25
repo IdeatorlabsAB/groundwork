@@ -4,7 +4,8 @@
 //   updates one comment with the requirements and risks it names or touches, and the traceability gaps.
 // - push to the default branch: finds the merged pull request and records it, so the work it names is tagged to
 //   the product's collecting release.
-// - with `junit`: uploads the JUnit reports for the commit.
+// - with `junit`: uploads the JUnit reports for the commit. On a pull request they also go into the comment request, so
+//   it can say which named requirements' tests failed or didn't run. Only default-branch uploads count for releases.
 //
 // It never fails the job because Groundwork is unreachable or misconfigured, only on gaps with fail-on-gaps.
 
@@ -69,14 +70,32 @@ export async function run(env, fetchImpl = fetch) {
   };
   const messages = async (number) => (await pages(`/repos/${repo}/pulls/${number}/commits`, MAX_COMMITS)).map((c) => c.commit?.message ?? "");
 
+  // JUnit reports, read once: a pull request sends them with its comment request and uploads them too.
+  const patterns = input("junit").split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+  const files = [...new Set(patterns.flatMap((p) => globSync(p)))];
+  const reports = files.map((f) => readFileSync(f, "utf8"));
+  if (patterns.length && !files.length) log("warning", `Groundwork: no JUnit reports match ${patterns.join(", ")}`);
+
   let code = 0;
   let commitSha = env.GITHUB_SHA;
+  // Only runs on the default branch count for release readiness (a push, a nightly schedule, a manual run); pull
+  // requests don't. Events without the repository in their payload (schedule) look the branch up.
+  let onDefaultBranch = false;
+  if (!event.pull_request && env.GITHUB_REF?.startsWith("refs/heads/")) {
+    const defaultBranch = event.repository?.default_branch ?? (await github("GET", `/repos/${repo}`).catch(() => null))?.default_branch;
+    onDefaultBranch = !!defaultBranch && env.GITHUB_REF === `refs/heads/${defaultBranch}`;
+  }
   try {
     const pr = event.pull_request;
     if (pr) {
       commitSha = pr.head?.sha ?? commitSha;
       const changedPaths = (await pages(`/repos/${repo}/pulls/${pr.number}/files`, MAX_FILES)).map((f) => f.filename);
-      const report = await groundwork("pr", { prBody: pr.body ?? "", commitMessages: await messages(pr.number), changedPaths });
+      const request = { prBody: pr.body ?? "", commitMessages: await messages(pr.number), changedPaths };
+      // With this PR's test results the comment also covers failing tests. If Groundwork refuses them (bad or too
+      // large), the comment and the gap check still go ahead without them.
+      let report = reports.length ? await groundwork("pr", { ...request, junit: reports }) : null;
+      if (!report && reports.length) log("warning", "Groundwork: the PR check ran without this PR's test results.");
+      report ??= await groundwork("pr", request);
       if (report) {
         // Decided before any write to GitHub, so a comment that can't be posted doesn't hide the gaps.
         output("gaps", report.gaps.length);
@@ -96,7 +115,7 @@ export async function run(env, fetchImpl = fetch) {
           log("warning", `Groundwork couldn't comment on the pull request (does the workflow have pull-requests: write?): ${e.message}`);
         }
       }
-    } else if (env.GITHUB_EVENT_NAME === "push" && event.ref === `refs/heads/${event.repository?.default_branch}`) {
+    } else if (onDefaultBranch && env.GITHUB_EVENT_NAME === "push") {
       const pulls = await github("GET", `/repos/${repo}/commits/${env.GITHUB_SHA}/pulls`);
       const merged = pulls.find((p) => p.merged_at && p.merge_commit_sha === env.GITHUB_SHA) ?? pulls.find((p) => p.merged_at);
       if (!merged) log("notice", "Groundwork: this push isn't a merged pull request, so there's nothing to record.");
@@ -120,14 +139,9 @@ export async function run(env, fetchImpl = fetch) {
     log("warning", `Groundwork: ${e.message}`);
   }
 
-  const patterns = input("junit").split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
-  if (patterns.length) {
-    const files = [...new Set(patterns.flatMap((p) => globSync(p)))];
-    if (!files.length) log("warning", `Groundwork: no JUnit reports match ${patterns.join(", ")}`);
-    else {
-      const result = await groundwork("test-results", { commitSha, ref: env.GITHUB_REF, junit: files.map((f) => readFileSync(f, "utf8")) });
-      if (result) console.log(`Groundwork: recorded ${result.totals.passed} passed, ${result.totals.failed} failed, ${result.totals.skipped} skipped`);
-    }
+  if (reports.length) {
+    const result = await groundwork("test-results", { commitSha, ref: env.GITHUB_REF, defaultBranch: onDefaultBranch, junit: reports });
+    if (result) console.log(`Groundwork: recorded ${result.totals.passed} passed, ${result.totals.failed} failed, ${result.totals.skipped} skipped`);
   }
   return code;
 }
