@@ -63,6 +63,15 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
   };
 
   // Check every key before changing anything.
+  const unique = (items: { key: string }[], list: string) => {
+    const seen = new Set<string>();
+    for (const { key } of items) {
+      if (seen.has(key)) throw new ReleaseError(`Duplicate key "${key}" in ${list}.`);
+      seen.add(key);
+    }
+  };
+  unique(input.hypotheses, "hypotheses");
+  unique(input.stakeholder, "stakeholder");
   const hKeys = Object.fromEntries(input.hypotheses.map((h) => [h.key, h.key]));
   const sKeys = Object.fromEntries(input.stakeholder.map((s) => [s.key, s.key]));
   for (const s of input.stakeholder) resolve(s.hypothesisKeys, hKeys);
@@ -79,7 +88,8 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
   };
   const v = product.versions.find((x) => x.version === version)!;
   if (v.status === "planned") {
-    const other = pendingRelease(state.requirements, product, version, cat).planned;
+    const pending = pendingRelease(state.requirements, product, version, cat);
+    const other = [...pending.planned, ...pending.removals, ...pending.replacedBy];
     if (other.length) throw new ReleaseError(`${product.title} ${version} has other work planned: ${other.map((r) => r.id).join(", ")}. Record the baseline in its own version.`);
   } else {
     const other = state.requirements.filter((r) => r.releasedIn === version && kindOf(r) === "solution" && productOf(cat, r)?.id === product.id && r.origin !== "existing-product");

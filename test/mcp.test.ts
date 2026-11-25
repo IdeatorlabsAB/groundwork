@@ -1019,7 +1019,7 @@ describe("reverse-engineered items", () => {
             story: "As a finance manager I want discounts applied to invoices so that totals are right.",
             acceptanceCriteria: ["Discount shown on the invoice"],
             origin: "existing-product",
-            codeRefs: ["src/a.ts#fn", "src/a.ts:12", "src/lib", "src/gone.ts"],
+            codeRefs: ["src/a.ts#fn", "src/a.ts:12", "src/a.ts:12-20", "src/a.ts:12:5", "src/lib", "src/gone.ts"],
           },
         ],
       })
@@ -1144,6 +1144,16 @@ describe("record_baseline", () => {
     expect(stakeholder.error).toMatch(/Input validation error[\s\S]*findingIds/);
     const solution = await call(c, "record_baseline", { ...baseline, solution: [{ ...sol, findingIds: ["FND-0001"] }] });
     expect(solution.error).toMatch(/Input validation error[\s\S]*findingIds/);
+    expect(requirementFiles()).toEqual([]);
+  });
+
+  it("refuses replaces on baseline requirements", async () => {
+    productFiles();
+    const c = await connect();
+    const stakeholder = await call(c, "record_baseline", { ...baseline, stakeholder: [{ ...s1, replaces: ["REQ-0001"] }] });
+    expect(stakeholder.error).toMatch(/Input validation error[\s\S]*replaces/);
+    const solution = await call(c, "record_baseline", { ...baseline, solution: [{ ...sol, replaces: ["REQ-0001"] }] });
+    expect(solution.error).toMatch(/Input validation error[\s\S]*replaces/);
     expect(requirementFiles()).toEqual([]);
   });
 

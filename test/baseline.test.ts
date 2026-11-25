@@ -120,6 +120,19 @@ describe("recording a baseline", () => {
     expect(() => recordBaseline(state, cat(p), input(p, { version: "1.0" }), c())).toThrow(/X/);
   });
 
+  it("refuses a planned removal in the named version", () => {
+    const p = product();
+    const state = { ...emptyCollections(), requirements: [req("X", { obsoletePlannedFor: "1.0" })] };
+    expect(() => recordBaseline(state, cat(p), input(p, { version: "1.0" }), c())).toThrow(/other work planned.*X/);
+  });
+
+  it("refuses a duplicate key", () => {
+    const p = product();
+    expect(() => recordBaseline(emptyCollections(), cat(p), input(p, { hypotheses: [hypothesis("h1"), hypothesis("h1")] }), c())).toThrow(/Duplicate key "h1" in hypotheses/);
+    const dup = { ...story("bill patients"), stakeholder: "Clinic admins", key: "s1" };
+    expect(() => recordBaseline(emptyCollections(), cat(p), input(p, { stakeholder: [dup, { ...dup, title: "other" }] }), c())).toThrow(/Duplicate key "s1" in stakeholder/);
+  });
+
   it("refuses a released version with non-baseline requirements", () => {
     const p = product([{ version: "1.0", status: "released" }]);
     const state = { ...emptyCollections(), requirements: [req("X", { plannedFor: "1.0", releasedIn: "1.0" })] };

@@ -111,7 +111,7 @@ These rules live in the core library, so every Groundwork tool applies them the 
 - **Baseline.** `record_baseline` documents what an existing product already does, one product area per call.
   - It adds inferred hypotheses (`origin: inferred`, status `validated`) and stakeholder and solution requirements (`origin: existing-product`), approved by a named approver who isn't a viewer. Keys link the new items to each other.
   - The solution requirements are planned for the baseline version and released in it, in the same change. A missing version is created as the oldest one.
-  - It refuses a planned version that has other planned work, a released version holding requirements that aren't baseline, and `findingIds`. It needs product files, not a legacy catalogue.
+  - It refuses a planned version that has other planned work, a released version holding requirements that aren't baseline, `findingIds` and `replaces`. It needs product files, not a legacy catalogue.
   - It warns when a title matches a requirement already in the area.
   - A release report of a version that holds only baseline requirements is called a baseline report and counts requirements per area.
 - **Code references.** `validate` warns `codeRefs: <path> doesn't exist` when the path of a code reference isn't in the repository. Inferred hypotheses aren't asked for insights.

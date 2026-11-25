@@ -1264,11 +1264,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
     area: hypothesisInput.shape.productArea.describe("The product area this call documents (label or id): the default for every item without its own productArea."),
     hypotheses: z.array(hypothesisInput.extend({ key })).max(30).default([]),
     stakeholder: z
-      .array(requirementInput.omit({ kind: true, product: true, stakeholderIds: true, findingIds: true }).extend({ key, hypothesisKeys: keys.optional() }).strict())
+      .array(requirementInput.omit({ kind: true, product: true, stakeholderIds: true, findingIds: true, replaces: true }).extend({ key, hypothesisKeys: keys.optional() }).strict())
       .max(30)
       .default([]),
     solution: z
-      .array(requirementInput.omit({ kind: true, product: true, findingIds: true }).extend({ stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() }).strict())
+      .array(requirementInput.omit({ kind: true, product: true, findingIds: true, replaces: true }).extend({ stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() }).strict())
       .min(1)
       .max(60),
   };
@@ -1308,7 +1308,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
         s.check(state, "insight", r.insightIds, "insightIds");
         s.check(state, "hypothesis", r.hypothesisIds, "hypothesisIds");
         s.checkStakeholders(state, stakeholderIds);
-        s.checkReplaces(state, r.replaces, { kind, product: p.id });
         return { ...r, productArea: s.area(r.productArea), aiGenerated: true };
       };
       const stakeholder = a.stakeholder.map((r) => requirement(r, "stakeholder"));

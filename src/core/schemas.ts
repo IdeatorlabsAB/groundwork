@@ -48,7 +48,7 @@ export function makeSchemas(id: z.ZodString) {
     .array(z.string().trim().min(1).max(300))
     .max(50)
     .optional()
-    .describe('Where this shows up in the code: repo-relative paths, optionally with #symbol, e.g. "src/billing/invoice.ts#applyDiscount". Never absolute paths.');
+    .describe('Where this shows up in the code: repo-relative paths, optionally with #symbol or :line, e.g. "src/billing/invoice.ts#applyDiscount" or "src/a.ts:12". Never absolute paths.');
 
   const successMetric = z.object({
     name: short(100),

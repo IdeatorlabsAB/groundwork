@@ -67,7 +67,7 @@ Use this when the user wants the existing behaviour of a product written down, f
 4. Show the user the area's list. Raise suspected bugs, dead code and feature-flagged paths as questions. Don't bake them in. Ask who approves the baseline.
 5. Call `record_baseline` for the area, with the version, the approver (`approvedBy`) and keys that link the new items. Repeat for each area. The version must hold only baseline work: it refuses one with other planned work or other shipped requirements. At the end, report the ids you created and the command `npx -p groundwork-mcp groundwork report release <version>`.
 
-`record_baseline` makes the hypotheses validated and the requirements approved by the named person, and releases the solution requirements in the version. The approver must be a person who can approve, not a viewer. It takes no `findingIds`. It warns when a title matches a requirement already in the area. Without product files (`catalogue: legacy`), run `groundwork migrate` first.
+`record_baseline` makes the hypotheses validated and the requirements approved by the named person, and releases the solution requirements in the version. The approver must be a person who can approve, not a viewer. It takes no `findingIds` or `replaces`. It warns when a title matches a requirement already in the area. Without product files (`catalogue: legacy`), run `groundwork migrate` first.
 
 ## Releasing
 
