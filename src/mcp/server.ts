@@ -30,7 +30,7 @@ insight -> hypothesis -> experiment -> finding -> requirement.
 - Requirement, in two layers, written before building:
   - "stakeholder": who needs what and why, as a user story: "As a <role> I want <need> so that <reason>".
   - "solution": the qualities and behaviour the solution must have, as "shall" statements: "The <system or part> shall …". Every solution requirement fulfils at least one stakeholder requirement (stakeholderIds); one stakeholder requirement is usually fulfilled by several solution requirements.
-  Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need) when there is evidence or an outside source; they're optional.
+  Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need, existing-product) when there is evidence or an outside source; they're optional.
 
 How to work:
 1. Call get_workspace first: it gives the products (with their areas and versions) and people (for approvers). If an area, product or version you need is missing, add it with add_product_areas, add_products or add_product_versions, after checking for an existing match. If it says catalogue is legacy, suggest the user runs groundwork migrate before adding versions.

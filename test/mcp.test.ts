@@ -966,3 +966,43 @@ describe("tickets over MCP", () => {
     expect(data).toMatchObject({ updated: 1, notLinked: [{ tracker: "linear", key: "CLN-999" }] });
   });
 });
+
+describe("reverse-engineered items", () => {
+  it("stores codeRefs and the existing-product origin", async () => {
+    const c = await connect();
+    const req = await call(c, "add_requirements", {
+      requirements: [
+        {
+          kind: "stakeholder",
+          title: "Discounts apply to invoices",
+          story: "As a finance manager I want discounts applied to invoices so that totals are right.",
+          acceptanceCriteria: ["Discount shown on the invoice"],
+          origin: "existing-product",
+          codeRefs: ["src/billing/invoice.ts#applyDiscount"],
+        },
+      ],
+    });
+    expect(req.error).toBeUndefined();
+    const hyp = await call(c, "add_hypotheses", {
+      hypotheses: [
+        {
+          title: "Billing is used for volume deals",
+          outcome: "keep volume customers",
+          forWhom: "finance managers",
+          benefit: "predictable invoices",
+          feature: "discount rules",
+          origin: "inferred",
+          codeRefs: ["src/billing"],
+        },
+      ],
+    });
+    expect(hyp.error).toBeUndefined();
+    const items = load(root).items;
+    const r = items.requirements.find((x) => x.id === req.data.created[0].id)!;
+    const h = items.hypotheses.find((x) => x.id === hyp.data.created[0].id)!;
+    expect(r.origin).toBe("existing-product");
+    expect(r.codeRefs).toEqual(["src/billing/invoice.ts#applyDiscount"]);
+    expect(h.origin).toBe("inferred");
+    expect(h.codeRefs).toEqual(["src/billing"]);
+  });
+});

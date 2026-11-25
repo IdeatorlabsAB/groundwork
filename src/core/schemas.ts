@@ -23,7 +23,8 @@ export const METHOD = z.enum(["pilot", "ab-test", "prototype-test", "survey", "f
 export const EXPERIMENT_STATUS = z.enum(["planned", "running", "completed"]);
 export const PRIORITY = z.enum(["must", "should", "could"]);
 export const REQUIREMENT_KIND = z.enum(["stakeholder", "solution"]);
-export const REQUIREMENT_ORIGIN = z.enum(["tender", "regulation", "contract", "customer-need"]);
+export const REQUIREMENT_ORIGIN = z.enum(["tender", "regulation", "contract", "customer-need", "existing-product"]);
+export const HYPOTHESIS_ORIGIN = z.enum(["inferred"]);
 export const FINDING_CONFIDENCE = z.enum(["low", "medium", "high"]);
 export const KIND = z.enum(["insight", "hypothesis", "experiment", "finding", "requirement"]);
 export type Kind = z.infer<typeof KIND>;
@@ -42,6 +43,12 @@ export function makeSchemas(id: z.ZodString) {
     sentiment: SENTIMENT.default("neutral"),
     productArea: area,
   });
+
+  const codeRefs = z
+    .array(z.string().trim().min(1).max(300))
+    .max(50)
+    .optional()
+    .describe('Where this shows up in the code: repo-relative paths, optionally with #symbol, e.g. "src/billing/invoice.ts#applyDiscount". Never absolute paths.');
 
   const successMetric = z.object({
     name: short(100),
@@ -71,6 +78,9 @@ export function makeSchemas(id: z.ZodString) {
     riskiestAssumption: z.string().trim().max(600).optional(),
     confidence: z.number().int().min(0).max(100).default(50).describe("0-100, how confident the team is before testing."),
     insightIds: ids("the insights this hypothesis is built on").default([]),
+    codeRefs,
+    origin: HYPOTHESIS_ORIGIN.optional().describe('"inferred" = reverse-engineered from an existing product rather than stated by anyone. Optional.'),
+    originNote: z.string().trim().max(300).optional().describe("What it was inferred from."),
     productArea: area,
   });
 
@@ -128,9 +138,10 @@ export function makeSchemas(id: z.ZodString) {
     hypothesisIds: ids("hypotheses it was committed from").optional(),
     replaces: ids("approved requirements this one replaces; they become obsolete when this one ships").optional(),
     origin: REQUIREMENT_ORIGIN.optional().describe(
-      "Where a requirement decided outside the evidence loop comes from (tender, regulation, contract, customer-need). Optional.",
+      "Where a requirement decided outside the evidence loop comes from (tender, regulation, contract, customer-need, existing-product). Optional.",
     ),
     originNote: z.string().trim().max(300).optional().describe('Where the decision comes from, e.g. "Region North tender 2026, section 4.2".'),
+    codeRefs,
     productArea: area,
   });
 
