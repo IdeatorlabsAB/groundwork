@@ -142,6 +142,7 @@ describe("local MCP server", () => {
         "link_tickets",
         "obsolete_requirement",
         "plan_requirements",
+        "record_baseline",
         "release_requirements",
         "release_version",
         "record_experiment_results",
@@ -1067,5 +1068,87 @@ describe("reverse-engineered items", () => {
     let problems: ReturnType<typeof validate> = [];
     expect(() => (problems = validate(load(root), readConfig(root), { root }))).not.toThrow();
     expect(problems.filter((p) => /codeRefs: .* doesn't exist/.test(p.message))).toEqual([]);
+  });
+});
+
+describe("record_baseline", () => {
+  const h1 = {
+    key: "h1",
+    title: "Invoices drive renewals",
+    outcome: "keep paying customers",
+    forWhom: "finance managers",
+    benefit: "correct invoices",
+    feature: "automatic invoicing",
+  };
+  const s1 = {
+    key: "s1",
+    title: "Send invoices",
+    story: "As a finance manager I want invoices sent automatically so that customers pay on time.",
+    acceptanceCriteria: ["An invoice goes out each month"],
+    hypothesisKeys: ["h1"],
+  };
+  const sol = { title: "Monthly invoice run", story: "The billing service shall send each invoice on the 1st.", acceptanceCriteria: ["Runs on the 1st"], stakeholderKeys: ["s1"] };
+  const baseline = { version: "4.x", approvedBy: "alex", hypotheses: [h1], stakeholder: [s1], solution: [sol] };
+  const productFiles = () => {
+    writeConfig(root, { ...readConfig(root), schemaVersion: 2, productAreas: [], products: [] });
+    writeProduct(root, { id: "PRD-0001", title: "Billing", areas: [{ id: "invoicing", label: "Invoicing" }], versions: [] });
+  };
+  const requirementFiles = () => {
+    try {
+      return files("requirements");
+    } catch {
+      return [];
+    }
+  };
+
+  it("records a baseline area and its release report", async () => {
+    productFiles();
+    const c = await connect();
+    const { data, error } = await call(c, "record_baseline", { ...baseline, area: "Invoicing", sourceRef: "v4.2.0" });
+    expect(error).toBeUndefined();
+    expect(data.created.solution).toHaveLength(1);
+    expect(data.created.solution[0]).toMatch(/^REQ-\d{4}$/);
+    expect(data.created.stakeholder.s1).toMatch(/^REQ-\d{4}$/);
+    expect(data.created.hypotheses.h1).toMatch(/^HYP-\d{4}$/);
+    expect(data.report.introduced[0].id).toMatch(/^REQ-\d{4}$/);
+    expect(data.warnings).toBeUndefined();
+    const items = load(root).items;
+    const r = items.requirements.find((x) => x.id === data.created.solution[0])!;
+    expect(r).toMatchObject({ status: "approved", origin: "existing-product", approvedBy: "alex", releasedIn: "4.x", productArea: "invoicing", stakeholderIds: [data.created.stakeholder.s1] });
+    expect(items.hypotheses[0]).toMatchObject({ status: "validated", origin: "inferred" });
+    expect(validate(load(root), readConfig(root), { root }).filter((p) => p.level === "error")).toEqual([]);
+  });
+
+  it("refuses an approver who isn't in people", async () => {
+    productFiles();
+    const c = await connect();
+    const { error } = await call(c, "record_baseline", { ...baseline, approvedBy: "nobody" });
+    expect(error).toMatch(/config.yml people/);
+    expect(requirementFiles()).toEqual([]);
+  });
+
+  it("refuses a legacy catalogue", async () => {
+    const c = await connect();
+    const { error } = await call(c, "record_baseline", baseline);
+    expect(error).toMatch(/groundwork migrate/);
+  });
+
+  it("refuses a solution requirement that fulfils nothing", async () => {
+    productFiles();
+    const c = await connect();
+    const { stakeholderKeys: _unused, ...unlinked } = sol;
+    void _unused;
+    const { error } = await call(c, "record_baseline", { ...baseline, solution: [unlinked] });
+    expect(error).toMatch(/must fulfil at least one stakeholder requirement/);
+    expect(requirementFiles()).toEqual([]);
+  });
+
+  it("warns on a title already in the baseline area", async () => {
+    productFiles();
+    const c = await connect();
+    expect((await call(c, "record_baseline", { ...baseline, area: "invoicing" })).error).toBeUndefined();
+    const { data, error } = await call(c, "record_baseline", { ...baseline, area: "invoicing" });
+    expect(error).toBeUndefined();
+    expect(data.warnings.join("\n")).toMatch(/matches REQ-/);
   });
 });
