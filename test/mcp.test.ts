@@ -1045,4 +1045,27 @@ describe("reverse-engineered items", () => {
     expect(noInsights).toHaveLength(1);
     expect(noInsights[0].file).toContain("plain-one");
   });
+  it("doesn't crash or warn about codeRefs when they are malformed", async () => {
+    const c = await connect();
+    const mk = async (title: string) =>
+      (
+        await call(c, "add_requirements", {
+          requirements: [
+            {
+              kind: "stakeholder",
+              title,
+              story: "As a finance manager I want discounts applied to invoices so that totals are right.",
+              acceptanceCriteria: ["Discount shown on the invoice"],
+            },
+          ],
+        })
+      ).data.created[0].file as string;
+    const asString = join(root, await mk("String refs"));
+    const asNumber = join(root, await mk("Number refs"));
+    writeFileSync(asString, readFileSync(asString, "utf8").replace("\n---\n", "\ncodeRefs: foo\n---\n"));
+    writeFileSync(asNumber, readFileSync(asNumber, "utf8").replace("\n---\n", "\ncodeRefs:\n  - 42\n---\n"));
+    let problems: ReturnType<typeof validate> = [];
+    expect(() => (problems = validate(load(root), readConfig(root), { root }))).not.toThrow();
+    expect(problems.filter((p) => /codeRefs: .* doesn't exist/.test(p.message))).toEqual([]);
+  });
 });

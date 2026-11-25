@@ -112,7 +112,9 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
       };
 
       if (opts.root && (kind === "requirement" || kind === "hypothesis")) {
-        for (const ref of (item.codeRefs as string[] | undefined) ?? []) {
+        // Malformed values are reported by the schema check above; skip them here.
+        for (const ref of Array.isArray(item.codeRefs) ? item.codeRefs : []) {
+          if (typeof ref !== "string") continue;
           const path = ref.split("#")[0].replace(/:\d+$/, "");
           if (path && !existsSync(join(opts.root, path))) warn(`codeRefs: ${path} doesn't exist`);
         }
