@@ -53,6 +53,20 @@ Output: `gaps`, the number of gaps on the pull request.
 
 If Groundwork can't be reached, or the token is missing (for example on a pull request from a fork), the Action writes a warning and the job carries on.
 
+## Block merges with failing tests
+
+With `junit`, the pull request comment also lists the requirements the PR names whose linked tests failed or didn't run in that pull request's tests. To stop such a pull request from merging:
+
+1. Set `fail-on-gaps: true`, so the Groundwork check fails when there are gaps.
+2. In GitHub, go to **Settings → Branches** (or **Rules**) for your default branch and make the workflow's job a **required status check**.
+
+This matters most when every merge deploys: the release sign-off judges the tests on the default branch, which is after the merge.
+
+## Which test results count
+
+- **Release readiness** counts results uploaded from the default branch: on a push, a schedule or a manual run. Each linked test counts its result from the newest such run that includes it. A test that a newer run of its file no longer has (deleted or renamed) stops counting.
+- **The pull request comment** uses the results that job sent, and only reports on the test files in them. If your tests run in several jobs, run the Action once, in a job that runs after all of them (`needs:`), with every report. With one Action per job, the single comment shows whichever job finished last.
+
 ## GitLab CI and other CI
 
 The Action only wraps three HTTP calls, so any CI can make them with `curl`. Each one takes a JSON body and `Authorization: Bearer <CI token>`:
@@ -61,7 +75,9 @@ The Action only wraps three HTTP calls, so any CI can make them with `curl`. Eac
 | --- | --- | --- |
 | `POST /api/ci/pr` | `{ prBody, commitMessages[], changedPaths[] }` | `{ named, touched, unknownKeys, gaps, markdown }` |
 | `POST /api/ci/merge` | `{ prBody, commitMessages[], repo, number, title, url, mergeSha }` | `{ keys, tagged, ignored, ticketLinked, changed }` |
-| `POST /api/ci/test-results` | `{ commitSha, ref?, junit: string \| string[] }` | `{ id, totals, matched }` |
+| `POST /api/ci/test-results` | `{ commitSha, ref?, defaultBranch?, junit: string \| string[] }` | `{ id, totals, matched }` |
+
+Only test results sent with `defaultBranch: true` count towards a release being ready, so send it only from runs on the default branch. Pull-request runs show up in the pull request comment instead.
 
 For example, uploading test results and recording merged merge requests in GitLab CI:
 
@@ -76,7 +92,7 @@ groundwork:
   script:
     - |
       jq -n --arg sha "$CI_COMMIT_SHA" --arg ref "$CI_COMMIT_REF_NAME" --rawfile junit junit.xml \
-        '{commitSha: $sha, ref: $ref, junit: $junit}' |
+        '{commitSha: $sha, ref: $ref, defaultBranch: true, junit: $junit}' |
       curl -sf -X POST "https://groundwork.ideatorlabs.com/api/ci/test-results" \
         -H "Authorization: Bearer $GROUNDWORK_CI_TOKEN" -H "Content-Type: application/json" --data @- || true
     - |
