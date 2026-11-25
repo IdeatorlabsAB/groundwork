@@ -9,5 +9,12 @@
   "homepage": "https://groundwork.ideatorlabs.com",
   "repository": "https://github.com/IdeatorlabsAB/groundwork",
   "license": "Apache-2.0",
-  "keywords": ["requirements", "traceability", "risk-management", "release", "regulated"]
+  "keywords": [
+    "requirements",
+    "traceability",
+    "risk-management",
+    "release",
+    "regulated"
+  ],
+  "privacyPolicyUrl": "https://groundwork.ideatorlabs.com/privacy"
 }
