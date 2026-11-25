@@ -246,7 +246,7 @@ Insights hold what customers said, and these files usually end up in git. Ground
 
 ## Groundwork for teams
 
-The Groundwork web app adds dashboards, reports, a visual evidence graph, approvals with an audit trail and Linear sync for people who don't live in a terminal. It's a separate, paid product; this project is and stays open source.
+The Groundwork web app adds dashboards, reports, a visual evidence graph, risk registers, release sign-off and approvals with an audit trail, for people who don't live in a terminal. It's a separate, paid product; this project is and stays open source.
 
 To move a project into it, create an agent token in the web app (**Settings → Connect an agent**), then:
 
@@ -256,13 +256,28 @@ npx -p groundwork-mcp groundwork import --to https://your-groundwork-app --dry-r
 npx -p groundwork-mcp groundwork import --to https://your-groundwork-app
 ```
 
-Every item keeps its links, and its original id (`INS-0001`) is stored with it. Running the import again skips items already there (`--overwrite` replaces them). Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server. For Codex, run `codex mcp remove groundwork` and add this to `~/.codex/config.toml`:
+Every item keeps its links, and its original id (`INS-0001`) stays its key. Running the import again skips items already there (`--overwrite` replaces them). Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server. For Codex, run `codex mcp remove groundwork` and add this to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.groundwork]
 url = "https://your-groundwork-app/api/mcp"
 bearer_token_env_var = "GROUNDWORK_TOKEN"
 ```
+
+### The groundwork-cloud plugin
+
+To work against the web app from Claude Code, install the `groundwork-cloud` plugin instead of `groundwork`:
+
+```
+/plugin marketplace add IdeatorlabsAB/groundwork
+/plugin install groundwork-cloud@groundwork
+```
+
+Then put your agent token in each repository's `.claude/settings.local.json` (git ignores it): `{ "env": { "GROUNDWORK_TOKEN": "gw_…" } }`. Add `"GROUNDWORK_URL"` for anything but `https://groundwork.ideatorlabs.com`.
+
+The plugin connects the web app's MCP server, and its skills teach Claude to record requirements, risks, code references, tests, tickets and release tags while it plans, builds and opens pull requests: every plan gets a Groundwork section, and approving the plan approves it. Two hooks remind Claude of this when a session starts and after `gh pr create`. They do nothing in a repository without `GROUNDWORK_TOKEN`.
+
+The plugin's skills are generated in the web app's repository; don't edit them here.
 
 ## Contributing
 
