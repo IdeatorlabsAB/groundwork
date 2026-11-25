@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+- **Reverse-engineer a baseline.** An agent can read an existing codebase and record what it does as an approved, already released baseline, so a modernization starts with a requirement repository. The skill walks through it: survey, product areas, a draft per area, a check with you, then record.
+- `record_baseline` records one product area per call: inferred hypotheses, and stakeholder and solution requirements approved by a named person. The solution requirements are released in the baseline version, which is created if it's missing. It refuses a version with other planned or shipped work, and it needs product files.
+- New origin `existing-product` for requirements. Hypotheses take `origin: inferred` and an `originNote`. Requirements and hypotheses take `codeRefs`, links to the code (a path, with an optional `#symbol` or `:line`). `validate` warns when a path doesn't exist, and doesn't ask inferred hypotheses for insights.
+- The release report of an all-baseline version is a "baseline report" with a count per area.
+- New needs and changes in a modernization get new requirements with `replaces: [baseline id]`. Baseline items are never edited.
+
 ## 0.7.0
 
 - **Tickets, linked both ways.** Solution requirements record the tickets that implement them, in any tracker: `link_tickets`, `unlink_tickets`, and `update_tickets` to refresh status. Agents link the tickets they create from requirements, and fix tickets to the requirement they restore. `search_items` finds requirements by ticket key. The web app's single Linear issue (`delivery`) is shown as a ticket.

@@ -122,6 +122,10 @@ Nothing.
 
 Put it in your release documentation, e.g. the technical documentation for an EU MDR medical device. A released version changes only through a correction, which needs a reason and shows in the report: *"Correct 1.1: REQ-0014 didn't ship, move it to 1.2. Reason: feature flag was off in the build"*, or `groundwork release 1.1 --correct --remove REQ-0014 --move-rest 1.2 --reason "…"`. For teams that ship continuously, `release_requirements` records requirements that shipped later in an already released version.
 
+## Starting from an existing product
+
+If you are modernizing a product that already exists, tell your agent *"Reverse-engineer the requirements of this codebase into a Legacy 4.x baseline"*. It reads the code and tests one product area at a time, drafts the needs and "shall" statements with links to the code (`codeRefs`), and shows you each list. It asks you about suspected bugs and dead code, and who approves. Then it records the area with `record_baseline`: the requirements are approved and already released in that version, so you start with a requirement repository instead of a blank page. New or changed behaviour then gets new requirements with `replaces: [baseline id]`. When they ship, the baseline items become obsolete. Never edit the baseline. `groundwork report release <version>` prints it as a baseline report with a count per area.
+
 ## Working on branches
 
 Everyone works on their own clone of the repo: developers writing requirements while they plan, and product managers logging insights and results. Groundwork numbers new items on each clone as one more than the highest id it can see. So two branches can both create `REQ-0012`, each meaning something different.
@@ -233,6 +237,7 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 | | `update_item`, `link_items` | `obsolete_requirement` |
 | | `delete_item` | |
 | | `link_tickets`, `unlink_tickets`, `update_tickets` | |
+| | `record_baseline` | |
 | `get_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release` |
 
 ## Privacy

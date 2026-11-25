@@ -22,6 +22,7 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 | Sharing results | `record_experiment_results`, then offer a finding (`add_findings`) linked to the experiment and hypothesis |
 | Creating tickets or user stories from requirements, or asking which requirement a ticket implements | Put the REQ ids in the ticket, then `link_tickets`; `search_items` with a ticket key finds its requirements |
 | Releasing a version, or asking what a version contains ("Release Clinicare 1.1", "what's in 1.0?") | `get_release`, then `release_version` once the user agrees on what shipped (see "Releasing") |
+| Asking to document, reverse-engineer or baseline what an existing product does | See "Reverse-engineering an existing product" |
 | Planning a task (plan mode, a written plan, an autonomous workflow) | Classify it as new need, change or fix, and state that in the plan; for a new need or change, record requirements before code (see "When you plan work") |
 | Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below). Search existing requirements and findings first, and link findings when there are any |
 | Asking "what do we know about X?" or "why are we building Y?" | `search_items` and `get_item`, and answer with the item ids and files |
@@ -48,12 +49,25 @@ State your call in one line of the plan, so the user can overrule it:
 
 - **New need:** the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before any code.
 - **Change:** update the requirement if it's a draft. If it's approved, add a new one with `replaces: [old id]`. Once the new one is approved, the old one becomes obsolete in the version the new one ships in, or straight away if the product has no versions.
+- **Modernization:** when the product is a rewrite or modernization of an existing one, new or changed behaviour gets new solution requirements (in the new product, or the next version) with `replaces: [baseline id]`. Never edit baseline items.
 - **Fix:** don't write requirements. Name the requirement the fix restores when you can tell.
 - **No person reviewing the plan** (an autonomous workflow): follow your own call. The one-line call stays in the plan as the record.
 
 Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
 
 When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement. Then record each ticket in Groundwork with `link_tickets` (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement is linked to that requirement too. That's how a fix traces back to what it restores.
+
+## Reverse-engineering an existing product
+
+Use this when the user wants the existing behaviour of a product written down, for example before a rewrite. The result is a baseline: requirements that are already approved and already shipped, so new work can point at them with `replaces`.
+
+1. `get_workspace`. Make sure the product exists, then agree the baseline version name with the user. Default to the product's current version number, else "legacy".
+2. Survey the code: entry points, routes and screens, background jobs, integrations, the data model, permissions and roles. Propose product areas and add them with `add_product_areas`.
+3. Take one area at a time. Read its code and tests. Draft the stakeholder needs (roles come from permissions and UI copy), "shall" statements of the behaviour you can see, and acceptance criteria from validation rules and tests. Give each requirement `codeRefs` (a repo path, optionally `#symbol` or `:line`). Add one hypothesis per major feature, with `origin: "inferred"` and an `originNote` saying what you inferred it from.
+4. Show the user the area's list. Raise suspected bugs, dead code and feature-flagged paths as questions. Don't bake them in. Ask who approves the baseline.
+5. Call `record_baseline` for the area, with the version, the approver (`approvedBy`) and keys that link the new items. Repeat for each area. The version must hold only baseline work: it refuses one with other planned work or other shipped requirements. At the end, report the ids you created and the command `npx -p groundwork-mcp groundwork report release <version>`.
+
+`record_baseline` makes the hypotheses validated and the requirements approved by the named person, and releases the solution requirements in the version. The approver must be a person who can approve, not a viewer. It takes no `findingIds`. It warns when a title matches a requirement already in the area. Without product files (`catalogue: legacy`), run `groundwork migrate` first.
 
 ## Releasing
 
