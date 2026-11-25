@@ -1,11 +1,20 @@
 {
   "name": "groundwork",
-  "owner": { "name": "The Groundwork Authors", "url": "https://github.com/IdeatorlabsAB/groundwork" },
+  "owner": {
+    "name": "The Groundwork Authors",
+    "url": "https://github.com/IdeatorlabsAB/groundwork"
+  },
   "plugins": [
     {
       "name": "groundwork",
       "source": "./",
       "description": "Product evidence as linked files in your repo: insights, hypotheses, experiments, findings and requirements, written by your own agent.",
+      "category": "productivity"
+    },
+    {
+      "name": "groundwork-cloud",
+      "source": "./plugins/groundwork-cloud",
+      "description": "Connect Claude Code to the hosted Groundwork app: it records requirements, risks, code references, tests, tickets and release tags while it plans, builds and opens pull requests.",
       "category": "productivity"
     }
   ]
