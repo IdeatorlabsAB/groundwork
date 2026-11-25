@@ -1,0 +1,28 @@
+name: Groundwork
+description: Record traceability in Groundwork from CI. Comments on pull requests, tags merged work to the open release, and uploads JUnit results.
+author: IdeatorLabs
+branding:
+  icon: git-merge
+  color: green
+inputs:
+  token:
+    description: A Groundwork CI token (Groundwork → Settings → Connect CI). Store it as a secret.
+    required: true
+  url:
+    description: Your Groundwork address.
+    default: https://groundwork.ideatorlabs.com
+  junit:
+    description: JUnit XML reports to upload, as file patterns, one per line. Leave out to upload none.
+    default: ""
+  fail-on-gaps:
+    description: Fail the check when the pull request has traceability gaps.
+    default: "false"
+  github-token:
+    description: The token used to read the pull request and write its comment.
+    default: ${{ github.token }}
+outputs:
+  gaps:
+    description: The number of traceability gaps on the pull request.
+runs:
+  using: node24
+  main: main.mjs

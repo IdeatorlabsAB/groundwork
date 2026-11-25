@@ -279,6 +279,22 @@ The plugin connects the web app's MCP server, and its skills teach Claude to rec
 
 The plugin's skills are generated in the web app's repository; don't edit them here.
 
+### CI: the GitHub Action
+
+[`action/`](action/) is a GitHub Action for teams on the web app. It records what agents forget:
+
+- On each pull request, it comments with the requirements and risks the PR names or touches, and any gaps.
+- On merge, it tags the work the PR names to the product's collecting release.
+- After your tests run, it uploads the JUnit results.
+
+```yaml
+- uses: IdeatorlabsAB/groundwork/action@main
+  with:
+    token: ${{ secrets.GROUNDWORK_CI_TOKEN }}
+```
+
+A workspace owner creates the CI token in the web app (**Settings → Connect CI**). [`action/README.md`](action/README.md) has the full workflow and a GitLab CI version. Like the plugin's skills, the Action is generated in the web app's repository; don't edit it here.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
