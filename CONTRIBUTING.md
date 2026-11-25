@@ -9,7 +9,7 @@ Thanks for helping. Bug reports, ideas and pull requests are all welcome.
 
 ## Development
 
-You need Node.js 20 or newer.
+You need Node.js 22 or newer.
 
 ```sh
 npm install

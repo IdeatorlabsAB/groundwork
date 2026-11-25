@@ -6,7 +6,7 @@ const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { versio
 export default defineConfig({
   entry: { index: "src/index.ts", mcp: "src/mcp/main.ts", cli: "src/cli.ts" },
   format: ["esm"],
-  target: "node20",
+  target: "node22",
   dts: { entry: { index: "src/index.ts" } },
   define: { __VERSION__: JSON.stringify(version) },
   clean: true,
