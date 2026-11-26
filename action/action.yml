@@ -1,25 +1,35 @@
 name: Groundwork
-description: Record traceability in Groundwork from CI. Comments on pull requests, tags merged work to the open release, and uploads JUnit results.
+description: Traceability from CI. Comments on pull requests with the requirements and risks they name or touch and the gaps, and records JUnit results. With the Groundwork web app, or from the repository's own groundwork/ files (mode local).
 author: IdeatorLabs
 branding:
   icon: git-merge
   color: green
 inputs:
+  mode:
+    description: "cloud: report to the Groundwork web app (needs token). local: work from the repository's own groundwork/ files, with no account."
+    default: cloud
   token:
-    description: A Groundwork CI token (Groundwork → Settings → Connect CI). Store it as a secret.
-    required: true
+    description: "cloud mode: a Groundwork CI token (Groundwork → Settings → Connect CI). Store it as a secret."
+    required: false
+    default: ""
   url:
-    description: Your Groundwork address.
+    description: "cloud mode: your Groundwork address."
     default: https://groundwork.ideatorlabs.com
   junit:
-    description: JUnit XML reports to upload, as file patterns, one per line. Leave out to upload none.
+    description: "JUnit XML reports, as file patterns from the workspace, one per line. cloud: uploaded. local: checked on pull requests, and committed to the results branch on default-branch runs. Leave out for none."
     default: ""
   fail-on-gaps:
     description: Fail the check when the pull request has traceability gaps.
     default: "false"
   github-token:
-    description: The token used to read the pull request and write its comment.
+    description: "The token used to read the pull request and write its comment. (local mode pushes results with the credentials actions/checkout leaves, so the job needs contents: write.)"
     default: ${{ github.token }}
+  working-directory:
+    description: "local mode: the folder that holds groundwork/, relative to the repository root."
+    default: "."
+  groundwork-version:
+    description: "local mode: the groundwork-mcp version to run. Leave out to use the version this Action was released with."
+    default: ""
 outputs:
   gaps:
     description: The number of traceability gaps on the pull request.
