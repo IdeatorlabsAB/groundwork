@@ -88,3 +88,31 @@
 - **CHANGELOG:** an entry.
 - **Verify:** `npm test && npx tsc --noEmit && npm run build`.
 - **Then:** the final review (fresh reviewer: read both skills as a coding agent would, and try the import workflow on a sample spec), the fix pass, push, open the PR, watch CI.
+
+---
+
+## Revisions after the plan review (they override the tasks above)
+
+1. **Approvals in the import workflow.**
+   - **Approved by the user themselves:** `submit_requirement_for_approval` to themselves, then `approve_requirement`. `approvedBy` can't be the actor.
+   - **The product has planned versions:** ask which version, and pass `plannedFor`, or leave the requirement as a draft.
+   - **Product:** set `product` on every solution requirement when there's more than one.
+   - **Who approves:** `approvedBy` is the internal person who accepted it, and the note names the signed document.
+2. **The scope section is adapted, not copied.** "New requirements are drafts. Approving them is a person's decision. The one exception: recording an approval the user reports, with who gave it." Step 5 of the loop says the same.
+3. **`search_items` also searches `originNote`**, so an import can be resumed and source references found. It's one line in `textOf`, with the test `search_items finds a requirement by its source reference`.
+4. **Source tickets.** Only open work tickets are linked with `link_tickets`, without `done`. Done items describe existing behaviour and go to the baseline workflow (`record_baseline`, `origin: existing-product`). A ticket that becomes only a stakeholder story isn't linked; its key goes in the `originNote`.
+5. **Large sources.**
+   - Start with an inventory pass: section, a one-line summary, and need / behaviour / not a requirement. The user drops boilerplate before any rewriting.
+   - Clauses about the bidder or supplier aren't product requirements.
+   - A tender's mandatory maps to must, and evaluated to should.
+   - PDFs are read in page ranges (20 pages per read), and .docx files are converted first (`textutil` or `pandoc`).
+   - CSV exports are parsed with a small script, because their fields span lines.
+   - The table in chat shows title and statement, with criteria on request.
+6. **The guard test also checks:**
+   - bare tool-shaped words in skills;
+   - backticked camelCase words against every input-schema property, with an allow-list of result and stored fields.
+
+   The cloud-copy test's name says it runs only when the web app is checked out next to this repo.
+7. **Claims that don't hold locally are dropped:** "marks the hypothesis committed", "url", and "in the Groundwork app".
+
+**Cut:** the cloud re-copy step (done in Task 1).

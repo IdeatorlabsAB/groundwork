@@ -13,7 +13,29 @@ const WEB_APP = resolve(__dirname, "../../centropic-prototype/integrations/claud
 /** Snake-case words in the docs that aren't tools: config keys, environment variables, statuses. */
 const NOT_TOOLS = new Set(["in_progress"]);
 
-async function toolNames(): Promise<Set<string>> {
+/** Fields the docs name that aren't tool inputs: results, stored fields set by the tools, and config keys. */
+const NOT_INPUTS = new Set([
+  "ready", "notReady", "noTickets", "warnings", "fulfilledBy", "filesChanged", "signOff", "mitigated", "mitigatedBy",
+  "releasedIn", "releasedAt", "releasedBy", "obsoletedIn", "obsoletedBy", "obsoletePlannedFor", "recordedBy", "approvedAt",
+  "riskIds", "riskMatrix", "linkedAt", "codeTests", "testCases", "defaultBranch", "resultsBranch", "aiGenerated", "createdAt",
+  "knowWhen", "productAreas", "catalogue", "schemaVersion", "migrated",
+]);
+
+/** Every property name in the tools' input schemas, however deep. */
+function inputFields(schemas: unknown[]): Set<string> {
+  const out = new Set<string>();
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (!v || typeof v !== "object") return;
+    const o = v as Record<string, unknown>;
+    if (o.properties && typeof o.properties === "object") for (const k of Object.keys(o.properties)) out.add(k);
+    Object.values(o).forEach(walk);
+  };
+  walk(schemas);
+  return out;
+}
+
+async function listTools() {
   const root = mkdtempSync(join(tmpdir(), "gw-skills-"));
   try {
     const server = buildServer({ root });
@@ -21,23 +43,32 @@ async function toolNames(): Promise<Set<string>> {
     await server.connect(b);
     const client = new Client({ name: "test", version: "1" });
     await client.connect(a);
-    return new Set((await client.listTools()).tools.map((t) => t.name));
+    return (await client.listTools()).tools;
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 }
 
 const skillFiles = () => readdirSync(SKILLS).map((d) => ({ name: d, text: readFileSync(join(SKILLS, d, "SKILL.md"), "utf8") }));
-const snake = /^[a-z]+(_[a-z]+)+$/;
 
 describe("skills", () => {
   it("every tool a local skill names exists", async () => {
-    const tools = await toolNames();
+    const tools = new Set((await listTools()).map((t) => t.name));
     const unknown: string[] = [];
     for (const { name, text } of skillFiles()) {
-      for (const m of text.matchAll(/`([^`\s]+)`/g)) if (snake.test(m[1]) && !tools.has(m[1]) && !NOT_TOOLS.has(m[1])) unknown.push(`${name}: ${m[1]}`);
+      // Backticked or not: an agent reads a tool name in prose as one too.
+      for (const m of text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)) if (!tools.has(m[0]) && !NOT_TOOLS.has(m[0])) unknown.push(`${name}: ${m[0]}`);
     }
     for (const m of INSTRUCTIONS.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)) if (!tools.has(m[0]) && !NOT_TOOLS.has(m[0])) unknown.push(`INSTRUCTIONS: ${m[0]}`);
+    expect([...new Set(unknown)]).toEqual([]);
+  });
+
+  it("every field a local skill names is a tool input, or a known result or stored field", async () => {
+    const fields = inputFields((await listTools()).map((t) => t.inputSchema));
+    const unknown: string[] = [];
+    for (const { name, text } of skillFiles()) {
+      for (const m of text.matchAll(/`([a-z]+[A-Z][A-Za-z]*)`/g)) if (!fields.has(m[1]) && !NOT_INPUTS.has(m[1])) unknown.push(`${name}: ${m[1]}`);
+    }
     expect([...new Set(unknown)]).toEqual([]);
   });
 
@@ -49,7 +80,7 @@ describe("skills", () => {
     }
   });
 
-  it.skipIf(!existsSync(WEB_APP))("the cloud plugin's skills match the web app's generated files", () => {
+  it.skipIf(!existsSync(WEB_APP))("the cloud plugin's skills match the web app's generated files (runs only with ../centropic-prototype checked out)", () => {
     for (const d of readdirSync(WEB_APP)) {
       expect(readFileSync(join(CLOUD, d, "SKILL.md"), "utf8"), d).toBe(readFileSync(join(WEB_APP, d, "SKILL.md"), "utf8"));
     }

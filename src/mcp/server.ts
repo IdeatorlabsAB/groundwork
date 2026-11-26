@@ -171,7 +171,8 @@ function textOf(kind: Kind, item: AnyItem): string {
         ...objects(r.codeTests).map((t) => `${t.path ?? ""} ${t.name ?? ""}`),
         ...objects(r.testCases).map((t) => `${t.tool ?? ""} ${t.project ?? ""} ${t.id ?? ""} ${t.title ?? ""}`),
       ];
-      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, ...tests, notes].join(" ");
+      // originNote holds the source reference ("Region North tender 2026, §4.2"), so imports can be found and resumed.
+      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", r.originNote ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, ...tests, notes].join(" ");
     }
     case "risk": {
       const r = item as Risk;
