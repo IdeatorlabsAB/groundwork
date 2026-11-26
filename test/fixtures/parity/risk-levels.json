@@ -1,0 +1,27 @@
+{
+  "_about": "Shared with centropic-prototype. Both repos' tests must agree on these. Change both together.",
+  "levels": [
+    { "size": 5, "p": 1, "s": 1, "level": "low" },
+    { "size": 5, "p": 1, "s": 4, "level": "low" },
+    { "size": 5, "p": 1, "s": 5, "level": "medium" },
+    { "size": 5, "p": 3, "s": 5, "level": "high" },
+    { "size": 5, "p": 5, "s": 3, "level": "high" },
+    { "size": 5, "p": 2, "s": 2, "level": "low" },
+    { "size": 5, "p": 5, "s": 5, "level": "high" },
+    { "size": 5, "p": 3, "s": 4, "level": "medium" },
+    { "size": 5, "p": 6, "s": 1, "level": null },
+    { "size": 3, "p": 1, "s": 2, "level": "low" },
+    { "size": 3, "p": 1, "s": 3, "level": "medium" },
+    { "size": 3, "p": 2, "s": 3, "level": "high" },
+    { "size": 3, "p": 3, "s": 3, "level": "high" },
+    { "size": 3, "p": 0, "s": 1, "level": null }
+  ],
+  "mitigated": [
+    { "name": "medium risk needs no mitigation", "size": 5, "risk": { "probability": 2, "severity": 3, "mitigationIds": [] }, "requirements": [], "expected": true },
+    { "name": "high risk without residual", "size": 5, "risk": { "probability": 5, "severity": 5, "mitigationIds": ["REQ-0001"] }, "requirements": [{ "id": "REQ-0001", "status": "approved" }], "expected": false },
+    { "name": "high risk, residual medium, approved mitigation", "size": 5, "risk": { "probability": 5, "severity": 5, "residualProbability": 2, "residualSeverity": 3, "mitigationIds": ["REQ-0001"] }, "requirements": [{ "id": "REQ-0001", "status": "approved" }], "expected": true },
+    { "name": "high risk, residual medium, draft mitigation", "size": 5, "risk": { "probability": 5, "severity": 5, "residualProbability": 2, "residualSeverity": 3, "mitigationIds": ["REQ-0001"] }, "requirements": [{ "id": "REQ-0001", "status": "draft" }], "expected": false },
+    { "name": "high risk, residual still high", "size": 5, "risk": { "probability": 5, "severity": 5, "residualProbability": 4, "residualSeverity": 4, "mitigationIds": ["REQ-0001"] }, "requirements": [{ "id": "REQ-0001", "status": "approved" }], "expected": false },
+    { "name": "unscored risk", "size": 5, "risk": { "probability": 0, "severity": 3, "mitigationIds": [] }, "requirements": [], "expected": false }
+  ]
+}

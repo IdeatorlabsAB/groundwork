@@ -284,6 +284,58 @@ export interface Requirement {
   delivery?: Delivery;
   /** Solution requirements: the tickets that implement it, in any tracker. */
   tickets?: Ticket[];
+  /** The risks this requirement mitigates. Kept in step with each risk's mitigationIds. */
+  riskIds?: ID[];
+}
+
+export type RiskLevel = "low" | "medium" | "high";
+
+/** Probability × severity grid, in config.yml as riskMatrix. Same shape as the web app's. */
+export interface RiskMatrix {
+  size: 3 | 5;
+  probabilityLabels: string[];
+  severityLabels: string[];
+  /** cells[p - 1][s - 1] is the level for probability p and severity s. */
+  cells: RiskLevel[][];
+}
+
+/** security: access, data exposure, injection, auth. domain: harm in the product's own domain, named by `domain`. */
+export type RiskCategory = "security" | "domain";
+
+/**
+ * A product risk. Its level is always derived from the matrix, never stored. Residual scores are what is left once
+ * the mitigating requirements are in place. Same fields as the web app's Risk, except `versions` (its releaseIds).
+ */
+export interface Risk {
+  id: ID;
+  title: string;
+  /** What could go wrong, and why. */
+  hazard: string;
+  /** Who gets hurt, and how. */
+  harm: string;
+  probability: number;
+  severity: number;
+  residualProbability?: number;
+  residualSeverity?: number;
+  /** Requirements that control this risk. Kept in step with each requirement's riskIds. */
+  mitigationIds: ID[];
+  /** Product id (PRD-0001). */
+  product?: string;
+  /** Versions of its product this risk is introduced in or affects. */
+  versions: string[];
+  category?: RiskCategory;
+  /** For domain risks: which domain, e.g. "patient-safety" or "financial". */
+  domain?: string;
+  owner?: string;
+  codeRefs?: string[];
+  /** existing-product: recorded in a baseline of the product as it is. */
+  origin?: "existing-product";
+  originNote?: string;
+  productArea?: ProductArea;
+  aiGenerated?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  notes?: string;
 }
 
 export interface Activity {
@@ -291,7 +343,7 @@ export interface Activity {
   at: string;
   actor: string;
   text: string;
-  kind: "insight" | "hypothesis" | "experiment" | "finding" | "requirement";
+  kind: "insight" | "hypothesis" | "experiment" | "finding" | "requirement" | "risk";
   refId?: ID;
   /** Set when a coding agent made the change: the name of the token it used, e.g. "Claude Code". */
   via?: string;
