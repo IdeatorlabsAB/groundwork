@@ -117,7 +117,46 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - A replaced requirement becomes obsolete in the version where the last of its replacements ships (`status: obsolete`, `obsoletedIn`, `obsoletedAt`, `madeObsoleteBy`).
   - Requirements that shipped later can be added to a released version.
   - Any other change to a released version is a correction: it needs a reason, changes only what it lists, and is recorded on the version.
-  - The release report lists what a version introduced, what it made obsolete, how far each stakeholder requirement is met as of that version, and its corrections.
+  - The release report lists what a version introduced, what it made obsolete, how far each stakeholder requirement is met as of that version, and its corrections. It also lists each requirement's tests and results, the risks and mitigations, and the readiness blockers.
+- **Readiness.** A version's scope is its live solution requirements (planned for it, or shipped in it once released) and the risks tagged for it. It's blocked by the web app's ten blocker types:
+  - for each high risk:
+    - `missing-mitigation`: no mitigating requirement;
+    - `unapproved-mitigation`: a mitigation that isn't approved or in delivery;
+    - `unmitigated-risk`: a residual score that's still high or not scored;
+    - `untested-mitigation`: a mitigation in the version whose tests didn't pass;
+  - for any risk, `unscored-risk`: a score the matrix can't place;
+  - `unapproved-requirement`: a requirement in scope that isn't approved;
+  - for each solution requirement in scope:
+    - `missing-tests`: nothing linked;
+    - `failed-code-test`;
+    - `no-ci-run`: a code test with no default-branch CI result, or one that was skipped;
+    - `untested-requirement`: a case whose latest result in the version's runs didn't pass.
+
+  `check_release` and `groundwork check release` list them. The CLI exits 1 when there are any. Both read CI results as last fetched, and never fetch themselves.
+- **Sign-off.** Releasing a version signs it off. It's judged on what ships: requirements moved to another version don't count. Drafts planned for it move too.
+  - **With blockers,** only an owner (`role: owner` in config.yml) can release it, giving `overrideJustification`. That's a convention, not access control: the person acting is whoever `$GROUNDWORK_USER` or git's email says.
+  - **Fresh results.** The results branch is fetched first. When that fails, it's read as last fetched, and the record says so.
+  - **The record** is `groundwork/releases/<PRD-id>-<version>-<n>.json`, holding:
+    - the version's requirements, the stakeholder requirements they fulfil, and the mitigations of its risks;
+    - the risks with their levels;
+    - the matrix, the blockers, the test outcomes (with the results commit read), the release report, who signed it off, and everyone's names.
+
+    It's never rewritten, except to add a withdrawal (`withdrawnAt`, `withdrawnBy`, `withdrawReason`). The version gets `signOff: <record file>`.
+  - **A signed-off version is frozen.** `release_requirements` and `correct_release` refuse it until an owner withdraws the sign-off (`withdraw_release`). `sign_off_release` then signs it off again as record `n + 1`.
+  - **Versions with no sign-off.** `sign_off_release` also signs off a version released before sign-off records, and a baseline once its last area is recorded. A baseline's tests aren't checked, and its blockers are recorded but don't stop it.
+  - **`validate` reports:**
+    - a record that can't be read;
+    - a record for a version that isn't released, or that's misnamed;
+    - two active records for one version, e.g. from two branches;
+    - a `signOff` whose file is missing.
+  - **`renumber`** rewrites ids in records that are new on the branch.
+- **Reports.** `groundwork report release <version>` builds the report from the active record, so it never changes. A version with no record is built from the current files, with a header saying so. Formats:
+  - Markdown (the default);
+  - `--format csv`, the traceability table: key, title, kind, status, statement, fulfils, risks, versions, tasks, tests, pull requests, code;
+  - `--format csv --table risks`, the risk register;
+  - `--json`, the record.
+
+  CSV cells that a spreadsheet would run as formulas are prefixed with an apostrophe.
 - **Baseline.** `record_baseline` documents what an existing product already does, one product area per call.
   - It adds inferred hypotheses (`origin: inferred`, status `validated`) and stakeholder and solution requirements (`origin: existing-product`), approved by a named approver who isn't a viewer. Keys link the new items to each other.
   - The solution requirements are planned for the baseline version and released in it, in the same change. A missing version is created as the oldest one.

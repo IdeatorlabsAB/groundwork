@@ -67,10 +67,12 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 9. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
 
 Releasing a version ("Release Clinicare 1.1"):
-1. Call get_release for the version.
+1. Call get_release for the version, and check_release for what blocks it. Fix what you can (link tests, record results, approve or move requirements) or explain each blocker to the user.
 2. If the workflow has a tracker tool, check the planned requirements' tickets there, record their status with update_tickets, and call get_release again. Propose "ready" (all tickets done) as shipped, and ask the user about "notReady" and "noTickets": never ship those on ticket status alone. A ticket is done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user which requirements shipped.
-3. Show the user what ships, what becomes obsolete, and where the rest will move. Call release_version only once they agree.
-4. A mistake in a released version is fixed with correct_release and the user's reason, never by editing files. Requirements that shipped later go in with release_requirements.
+3. Show the user what ships, what becomes obsolete, where the rest will move, and any blockers. Call release_version only once they agree. It signs the version off: with blockers, it needs overrideJustification from an owner, in the owner's own words. Never write a justification yourself.
+4. A signed-off version is frozen. To fix a mistake, or to add requirements that shipped later, withdraw_release (an owner, with the reason), then correct_release or release_requirements, then sign_off_release. Never edit release fields or records in the files.
+5. A version released before sign-off records, or a baseline once its last area is recorded: sign_off_release.
+6. The report for documentation or an audit: npx -p groundwork-mcp groundwork report release <version> (Markdown, or --format csv).
 
 Documenting an existing product: record_baseline, one area per call (see the skill).
 

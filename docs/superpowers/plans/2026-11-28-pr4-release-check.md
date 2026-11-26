@@ -236,3 +236,42 @@ Steps:
 - **CHANGELOG.**
 - **Acme:** no record file. Acme 1.0 stays a legacy release, which the Review Focus 4 test uses.
 - **Then:** the final review (fresh reviewer, whole branch), the fix pass, push, open the PR, watch CI.
+
+---
+
+## Revisions after the plan review (these override the tasks above where they differ)
+
+1. **A signed-off version is locked**, as in the web app. While a version has an active record, `release_requirements` and `correct_release` refuse with `<Product> <v> is signed off (<file>). Withdraw the sign-off first (withdraw_release), then sign off again.`. Tests:
+   - `release_requirements on a signed-off version is refused`;
+   - `correct_release on a signed-off version is refused`.
+2. **`record_baseline` writes no record.** Baselines are recorded one area per call, so a record per call would go stale. `sign_off_release` signs a baseline off once, after the last area. The record's kind is `baseline` when every requirement in scope has `origin: existing-product`. A baseline record checks no tests (`tests` absent) and records risk blockers without refusing. Test: `two baseline areas, then sign_off_release, give one record with both`.
+3. **The version remembers its record.** `release_version` and `sign_off_release` set `signOff: <record file>` on the ProductVersion in the product file. Legacy means released with no `signOff`. `validate` reports these as errors:
+   - a `signOff` file that's missing;
+   - more than one active record for a version;
+   - a record whose product or version doesn't match its file name.
+
+   Tests:
+   - `validate reports a signOff record that's missing`;
+   - `validate reports two active records for a version`.
+4. **Scope.**
+   - Obsolete requirements stay out of scope. PR 7's import must not tag an obsolete requirement to a release; this is noted in the spec.
+   - `releaseVersion` treats every requirement planned for V that isn't shipped, drafts included, as a leftover that needs `moveTo`. A draft can no longer stay planned for a released version. Test: `release_version moves a draft planned for the version`.
+   - Add `obsolete requirement planned for the version` to the parity fixture: it's out of scope, so there's no blocker.
+5. **What the record holds.**
+   - Its requirements are the scope's requirements plus the mitigations of every risk in scope, as in the web app's `buildReleaseSnapshot`.
+   - Each keeps `plannedFor` and `releasedIn` too.
+   - Test: `record includes mitigations shipped earlier`.
+6. **Test results are fetched before signing.**
+   - `release_version` and `sign_off_release` first run `git fetch --depth=1 origin +refs/heads/<resultsBranch>:refs/remotes/origin/<resultsBranch>`, if the remote has the branch. If the fetch fails, they warn and carry on.
+   - The record's `tests` adds `fetchedAt: <now>`, `resultsCommit` (the results branch SHA that was read, or null) and `fetched: boolean`.
+   - `check_release` stays offline, but returns `results: { read, commit, fetchedAt? }` and the hint `Run git fetch origin <branch> for the latest CI results.`.
+   - Test: `release_version fetches the results branch first`.
+7. **Renumbering.** `renumber` also rewrites ids (and file names, when a product id changes) in `groundwork/releases/*.json` files that are new on the branch, using the same id map. Records on the base are never touched. Test: `renumber rewrites ids in a record that's new on the branch`.
+8. **No derived rows in the record.** `traceability` and `riskRegister` are dropped from `SignOffRecord`. Reports derive them from the record's `requirements`, `risks` and `tests` with the same pure functions, so they're still frozen. `report` stays. Test: `a record of 300 requirements stays under 600 KB`.
+9. **No half-written release.** `recordPath` picks `n` from the files that exist (`readdirSync`) and checks the path is free. `release_version` and `sign_off_release` work out the record and its path before writing anything, so a refusal writes nothing. Test: `when the record can't be written, nothing is`.
+10. **A known gap, kept for parity.** A high risk whose mitigation moved to a later version passes, as in the web app. `check_release` adds a `warnings` entry for it: `Risk "<title>": its mitigation "<req>" isn't in this version.`. Test: `check_release warns about a mitigation that isn't in the version`.
+11. **SPEC notes:**
+    - the owner check is a convention (whoever `GROUNDWORK_USER` or git's email says), not access control;
+    - two branches signing off the same version conflict at merge, and `validate` catches it.
+
+**Cut:** `traceability`/`riskRegister` in records, the baseline record from `record_baseline`, the note on `correct_release`, and the CLI `--withdraw` (the MCP tool only). `report --json` stays as it is today.

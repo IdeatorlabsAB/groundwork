@@ -117,6 +117,9 @@ When a team moves to the web app later, `groundwork import --to <web app>` carri
   - `codeTests` and `testCases` carry over as they are.
 - **Keys are guaranteed.** Today the web app keeps a local key only if it's free. That changes: the import refuses when any local key (`REQ-`, `RSK-`, …) is already taken in the workspace by a different item, and lists the clashes. Nothing is written. Re-importing the same folder (same derived UUIDs) is not a clash. This keeps old `Groundwork:` trailers valid.
 - Comparing blockers across repos compares type + key, not `refId` (UUIDs differ).
+- *(Added while planning PR 4.)*
+  - The import must not tag an obsolete requirement, or a stakeholder requirement, to a release, even if it keeps `plannedFor`. Locally neither is in a version's scope.
+  - Sign-off records map to `release_records`, with the original file kept verbatim. The bundle may need to send them separately to stay under the 4 MB cap.
 - The e2e test: `examples/acme` with risks, tests and results, imported into a web app test workspace. The web app's `check_release` blockers must equal the local `groundwork check release` ones.
 
 ### Wrap-up
