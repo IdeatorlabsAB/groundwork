@@ -1,6 +1,6 @@
 ---
 name: groundwork
-description: Use when the user shares or works with product evidence or decisions — interview notes, support tickets, survey results, analytics, experiment results, PRDs, specs or requirements — or asks what the team knows, believes or has decided, or why something is being built. Records and looks up insights, hypotheses, experiments, findings and requirements in the project's groundwork/ folder through the groundwork MCP tools (get_workspace, search_items, add_insights, …).
+description: Use when planning or building a change to a product whose requirements and risks are kept in Groundwork — a new feature, a change in behaviour, or a fix — and when the user shares or works with product evidence or decisions — interview notes, support tickets, survey results, analytics, experiment results, PRDs, specs or requirements — or asks what the team knows, believes or has decided, or why something is being built. Records and looks up insights, hypotheses, experiments, findings and requirements in the project's groundwork/ folder through the groundwork MCP tools (get_workspace, search_items, add_insights, …).
 ---
 
 # Groundwork
@@ -23,8 +23,9 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 | Creating tickets or user stories from requirements, or asking which requirement a ticket implements | Put the REQ ids in the ticket, then `link_tickets`; `search_items` with a ticket key finds its requirements |
 | Releasing a version, or asking what a version contains ("Release Clinicare 1.1", "what's in 1.0?") | `get_release`, then `release_version` once the user agrees on what shipped (see "Releasing") |
 | Asking to document, reverse-engineer or baseline what an existing product does | See "Reverse-engineering an existing product" |
-| Planning a task (plan mode, a written plan, an autonomous workflow) | Classify it as new need, change or fix, and state that in the plan; for a new need or change, record requirements before code (see "When you plan work") |
-| Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below). Search existing requirements and findings first, and link findings when there are any |
+| Planning a task (plan mode, a written plan, an autonomous workflow) | Follow "Working in code: plan → build → PR" |
+| Bringing in requirements the team already has (a tender, a spec, a spreadsheet, a Jira or Linear export) | The `groundwork-write-requirement` skill, "Bring in requirements the team already has" |
+| Planning what to build, or writing a PRD, spec or tickets | Write requirements before building, in two layers (see below, and the `groundwork-write-requirement` skill). Search existing requirements and findings first, and link findings when there are any |
 | Asking "what do we know about X?" or "why are we building Y?" | `search_items` and `get_item`, and answer with the item ids and files |
 
 ## Requirements in two layers
@@ -36,27 +37,45 @@ It's connected as the `groundwork` MCP server. If its tools are missing, tell th
 
 Add the stakeholder requirements first, then the solution requirements in a second `add_requirements` call that references their ids. One stakeholder requirement is usually fulfilled by several solution requirements. If a tool returns `warnings` about wording, rewrite the story with `update_item`. Before you start building, check that every stakeholder requirement is fulfilled: `get_item` shows `fulfilledBy`, and `groundwork validate` lists the gaps.
 
-## When you plan work
+## Working in code: plan → build → PR
 
-Before you plan a task, call `trace_code` on the files in scope: it names the requirements and risks they touch. Then decide what kind of task it is. If you're unsure, search for related requirements first.
+Groundwork's records are made while you work, not afterwards. Nobody should have to write them by hand. This is the same loop as the Groundwork web app's agents follow, so it carries over if the team moves there.
 
-- **New need:** something users can't do today. "Let's add a feature to book appointments."
-- **Change:** existing behaviour that should work differently. "Booking slots should be 15 minutes, not 30."
-- **Fix:** restores intended behaviour. "This path is broken, fix it." Refactors and dependency bumps count as fixes.
+**1. Start.** Call `get_workspace` once. Find the product this repository builds: AGENTS.md or CLAUDE.md names it ("Groundwork product: …"); otherwise ask.
 
-State your call in one line of the plan, so the user can overrule it:
-*"New need: adds 2 stakeholder and 4 solution requirements"*, or *"Bug fix under REQ-0007; no requirement changes"*.
+**2. Plan, before writing code.**
+- Classify the task:
+  - *New need*: something users can't do today. "Let's add a feature to book appointments."
+  - *Change*: existing behaviour that should work differently. "Booking slots should be 15 minutes, not 30."
+  - *Fix*: restores intended behaviour. "This path is broken, fix it." Refactors and dependency bumps count as fixes.
+- Call `trace_code` on the files in scope, and `search_items` for related requirements and risks.
+- Add a **Groundwork** section to the plan, listing what you'll record:
+  - stakeholder and solution requirements to add (stakeholder first). An approved requirement is never edited: add one that replaces it (`replaces`), and say which. A draft is updated in place.
+  - risks the change introduces or affects: hazard, harm, probability and severity on the risk matrix, the requirements that mitigate them, and the residual score (the `groundwork-risk` skill).
+  - the version they're planned for.
+  - the tests that will verify each solution requirement: tests in the repository, and cases in the team's test-management tool (Qase, TestRail, …) if it uses one.
+  - tickets to create in the team's tracker, if its tools are connected.
+  - a fix lists none of these: name the requirement it restores, by id ("Bug fix under REQ-0007; no requirement changes").
+  - in a modernization of an existing product, new or changed behaviour gets new solution requirements (in the new product, or the next version) with `replaces` naming the baseline requirement. Never edit baseline items.
+- The user approving the plan approves the Groundwork section: record it without asking again. With nobody to approve the plan (an autonomous workflow), follow your own classification and keep the section in your summary as the record.
+- Requirements written from a request in this session, with no finding or hypothesis behind them, get origin customer-need and an `originNote` saying who asked (a role, never a name).
+- Requirements the team brings from its own documents, tickets or spreadsheets: the `groundwork-write-requirement` skill, "Bring in requirements the team already has".
 
-- **New need:** the plan's first steps add the stakeholder requirements, then the solution requirements that fulfil them, before any code.
-- **Change:** update the requirement if it's a draft. If it's approved, add a new one with `replaces: [old id]`. Once the new one is approved, the old one becomes obsolete in the version the new one ships in, or straight away if the product has no versions.
-- **Modernization:** when the product is a rewrite or modernization of an existing one, new or changed behaviour gets new solution requirements (in the new product, or the next version) with `replaces: [baseline id]`. Never edit baseline items.
-- **Fix:** don't write requirements. Name the requirement the fix restores when you can tell.
-- **Risks:** for a new need or a change, check whether it introduces or affects a product risk, and record it with its mitigations (the `groundwork-risk` skill). Name affected risks in the plan.
-- **No person reviewing the plan** (an autonomous workflow): follow your own call. The one-line call stays in the plan as the record.
+**3. Build, recording as you go.**
+- `add_requirements` (stakeholder requirements first, then the solution requirements that fulfil them), `add_risks` with the `versions` they affect, and `link_items` from each risk to the requirements that mitigate it.
+- Once the code exists, set `codeRefs` on the requirements and risks it implements (`update_item`).
+- After writing tests, `link_code_tests`, with the requirement's id in each test's name (e.g. "import > REQ-0042 keeps templates").
+- In the team's own tools, when they're connected: create the tickets (by default one per solution requirement, with its id, its file path and the stakeholder story it fulfils) and `link_tickets` them, so the link goes both ways. A fix ticket is linked to the requirement it restores; write cases in the test-management tool from the verification criteria and `link_test_cases` them (tool, id, title, project, url). If a tool isn't connected, skip that step and say so. Never claim it was done.
+- If the work turns out different from the plan, propose the change to the Groundwork section in one short list before recording it.
+
+**4. Open the PR.**
+- End the PR description, and each commit message, with a trailer naming what it implements or restores: `Groundwork: REQ-0042, RSK-0007`. The Groundwork GitHub Action reads it.
+- After opening it, `link_tickets` the PR to its solution requirements: { tracker: "github", key: "owner/repo#57", url }.
+- Call `check_release` for the version and tell the user what still blocks it.
+
+**5. Never** approve requirements, accept a residual risk, or write a release justification on someone's behalf. Those are people's decisions: record them only when the user tells you who made them.
 
 Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
-
-When the workflow creates tickets or user stories (Linear, Jira, GitHub Issues or any board), use the solution requirements, and the stakeholder stories they fulfil, as a source. Put the REQ ids and the requirement's file path in each ticket. By default, one ticket per solution requirement. Then record each ticket in Groundwork with `link_tickets` (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement is linked to that requirement too. That's how a fix traces back to what it restores.
 
 ## Reverse-engineering an existing product
 
