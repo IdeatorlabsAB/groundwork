@@ -381,3 +381,44 @@ export interface Activity {
   /** Set when a coding agent made the change: the name of the token it used, e.g. "Claude Code". */
   via?: string;
 }
+
+/** A test result's status. The agent maps its tool's own statuses to these (e.g. TestRail retest -> failed, untested -> in_progress). */
+export type TestResultStatus = "passed" | "failed" | "blocked" | "skipped" | "invalid" | "in_progress";
+
+/** One result a test-management tool recorded for a case in a run. `endTime` is null while it is still in progress. */
+export interface TestResult {
+  tool: string;
+  project: string;
+  /** The case id. */
+  id: string;
+  runId: string;
+  status: TestResultStatus;
+  endTime: string | null;
+}
+
+/** A run as status and reports show it. */
+export interface TestRunInfo {
+  tool: string;
+  project?: string;
+  id: string;
+  title: string;
+  url?: string;
+  recordedAt?: string;
+  recordedBy?: string;
+  via?: string;
+}
+
+export interface CodeRunInfo {
+  id: string;
+  commitSha: string;
+  ref: string | null;
+  at: string;
+}
+
+/** A version's test results: its recorded test-tool runs, and the code tests' latest results on the default branch. */
+export interface TestResults {
+  fetchedAt: string;
+  runs: TestRunInfo[];
+  results: TestResult[];
+  code: { runs: CodeRunInfo[]; results: import("./code-runs").CodeTestEvidence[] };
+}

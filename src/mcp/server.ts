@@ -6,7 +6,7 @@ import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
 import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
 import { codeTestInput, KIND, localId, localSchemas, testCaseInput, type Kind } from "../core/schemas";
-import { caseKey } from "../core/test-links";
+import { caseKey, caseLabel } from "../core/test-links";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk, RiskMatrix } from "../core/types";
 import { initialLevel, isMitigated, residualLevel } from "../core/risk";
@@ -795,7 +795,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
     }),
   );
 
-  const caseLabel = (t: { tool: string; project?: string; id: string }) => `${t.tool} ${t.project ? `${t.project}-` : ""}${t.id}`;
   const codeLabel = (t: { path: string; name: string }) => `${t.path} "${t.name}"`;
 
   server.registerTool(
