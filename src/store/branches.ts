@@ -240,6 +240,31 @@ export function renumber(
       for (const from of map.keys()) if (new RegExp(`\\b${from}\\b`).test(body)) mentions.push({ file: target, id: from });
     }
   }
+  // Sign-off records new on this branch name the old ids too. They aren't published yet, so they're rewritten (and
+  // renamed when their product's id changed). Records on the base never change.
+  const releasesDir = join(root, DIR, "releases");
+  if (existsSync(releasesDir)) {
+    for (const name of readdirSync(releasesDir).filter((n) => n.endsWith(".json"))) {
+      const rel = `${DIR}/releases/${name}`;
+      let onBase = true;
+      try {
+        git(root, ["cat-file", "-e", `${ref}:./${rel}`]);
+      } catch {
+        onBase = false;
+      }
+      if (onBase) continue;
+      const before = readFileSync(join(releasesDir, name), "utf8");
+      let text = before;
+      for (const [from, to] of map) text = text.replace(new RegExp(`\\b${from}\\b`, "g"), to);
+      let target = name;
+      for (const [from, to] of map) if (from.startsWith("PRD-") && target.startsWith(`${from}-`)) target = to + target.slice(from.length);
+      if (text !== before || target !== name) {
+        writeFileSync(join(releasesDir, target), text);
+        if (target !== name) unlinkSync(join(releasesDir, name));
+        rewritten.push(`${DIR}/releases/${target}`);
+      }
+    }
+  }
   // Tickets in the tracker name the old id; Groundwork can't change them, so say which.
   const tickets = renumbered.flatMap((r) => {
     const item = work.find((x) => x.path === r.oldPath);
