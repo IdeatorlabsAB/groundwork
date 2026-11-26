@@ -11,12 +11,6 @@ const TOKEN = "gw_" + "a".repeat(43);
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "groundwork-import-"));
   cpSync(join(__dirname, "../examples/acme/groundwork"), join(root, "groundwork"), { recursive: true });
-  // The web app can't take risks until its import is extended (PR 7), so these tests run on acme without them.
-  rmSync(join(root, "groundwork", "risks"), { recursive: true, force: true });
-  for (const name of readdirSync(join(root, "groundwork", "requirements"))) {
-    const file = join(root, "groundwork", "requirements", name);
-    writeFileSync(file, readFileSync(file, "utf8").replace(/^riskIds:\n(  - .*\n)+/m, ""));
-  }
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -43,28 +37,44 @@ describe("groundwork import", () => {
 
   it("bundles every item, the config and the options", () => {
     const b = buildBundle(root, { dryRun: true });
-    expect(b).toMatchObject({ format: "groundwork-files", schemaVersion: 1, dryRun: true, overwrite: false, config: { name: "Acme", products: ["Acme app"] } });
-    expect(Object.fromEntries(Object.entries(b.items).map(([k, v]) => [k, v.length]))).toEqual({ insights: 3, hypotheses: 2, experiments: 1, findings: 1, requirements: 4 });
+    expect(b).toMatchObject({ format: "groundwork-files", schemaVersion: 2, dryRun: true, overwrite: false, config: { name: "Acme", products: ["Acme app"] } });
+    expect(Object.fromEntries(Object.entries(b.items).map(([k, v]) => [k, v.length]))).toEqual({ insights: 3, hypotheses: 2, experiments: 1, findings: 1, requirements: 4, risks: 1 });
     expect(b.items.insights[0]).toMatchObject({ id: "INS-0001", notes: expect.stringContaining("Interview context") });
   });
 
-  it("refuses a folder with risks rather than dropping them", () => {
-    mkdirSync(join(root, "groundwork", "risks"));
+  it("bundles risks, versions, records, CI runs and test-tool runs", () => {
+    mkdirSync(join(root, "groundwork", "results", "ci"), { recursive: true });
+    mkdirSync(join(root, "groundwork", "results", "tools"), { recursive: true });
+    mkdirSync(join(root, "groundwork", "releases"), { recursive: true });
+    const run = (id: string, source: string) => ({ id, commitSha: "abc1234def", ref: "refs/heads/main", at: "2026-11-27T10:00:00.000Z", source, defaultBranch: true, totals: { passed: 1, failed: 0, skipped: 0 }, results: [] });
+    writeFileSync(join(root, "groundwork/results/ci/20261127T100000Z-abc1234-ci.json"), JSON.stringify(run("ci-run", "ci")));
+    writeFileSync(join(root, "groundwork/results/ci/20261127T110000Z-abc1234-local.json"), JSON.stringify(run("local-run", "local")));
     writeFileSync(
-      join(root, "groundwork", "risks", "RSK-0001-wrong-user.md"),
-      "---\nid: RSK-0001\ntitle: Wrong user\nhazard: x\nharm: y\nprobability: 2\nseverity: 2\nmitigationIds: []\nversions: []\n---\n",
+      join(root, "groundwork/results/tools/testrail-_-r3-00000000.json"),
+      JSON.stringify({ source: "test-tool", tool: "testrail", project: "", id: "R3", title: "Smoke", product: "PRD-0001", version: "1.1", results: [], recordedAt: "x", recordedBy: "sam" }),
     );
-    expect(() => buildBundle(root, { dryRun: true })).toThrow(ImportError);
-    expect(() => buildBundle(root, { dryRun: true })).toThrow(/risks/);
+    writeFileSync(join(root, "groundwork/releases/PRD-0001-1-0-1.json"), JSON.stringify({ schemaVersion: 1, kind: "release", product: { id: "PRD-0001", title: "Acme app" }, version: "1.0", signedAt: "x", signedOffBy: { id: "sam", name: "Sam" }, people: {}, matrix: {}, risks: [], requirements: [], blockers: [], report: {} }));
+    const b = buildBundle(root, { dryRun: true });
+    expect(b.schemaVersion).toBe(2);
+    expect(b.items.risks.map((r) => [r.id, r.product])).toEqual([["RSK-0001", "Acme app"]]);
+    expect(b.versions).toEqual([
+      expect.objectContaining({ productId: "PRD-0001", product: "Acme app", version: "1.0", status: "released" }),
+      expect.objectContaining({ productId: "PRD-0001", product: "Acme app", version: "1.1", status: "planned" }),
+    ]);
+    expect(b.records.map((r) => r.file)).toEqual(["groundwork/releases/PRD-0001-1-0-1.json"]);
+    expect(b.testRuns.map((r) => [r.id, r.product, r.productId])).toEqual([["R3", "Acme app", "PRD-0001"]]);
+    // Runs from outside CI never count as evidence, so they aren't sent.
+    expect(b.codeRuns.map((r) => r.id)).toEqual(["ci-run"]);
   });
 
-  it("refuses a folder with test results rather than dropping them", () => {
-    mkdirSync(join(root, "groundwork", "results", "ci"), { recursive: true });
-    writeFileSync(
-      join(root, "groundwork", "results", "ci", "20261127T100000Z-abc1234-j.json"),
-      JSON.stringify({ id: "r", commitSha: "abc1234", ref: "refs/heads/main", at: "2026-11-27T10:00:00.000Z", source: "ci", defaultBranch: true, totals: { passed: 0, failed: 0, skipped: 0 }, results: [] }),
-    );
-    expect(() => buildBundle(root, { dryRun: true })).toThrow(/test results/);
+  it("sends a requirement without a product as the only product's", () => {
+    const b = buildBundle(root, { dryRun: true });
+    expect(b.items.requirements.filter((r) => r.kind === "solution").every((r) => r.product === "Acme app")).toBe(true);
+  });
+
+  it("explains a web app that doesn't take this format yet", async () => {
+    const fetch = (async () => Response.json({ error: { message: "This isn't a groundwork import: schemaVersion: Invalid input: expected 1" } }, { status: 400 })) as unknown as typeof globalThis.fetch;
+    await expect(runImport({ root, to: "https://gw.example", token: TOKEN, fetch })).rejects.toThrow("Update the Groundwork web app first: it doesn't take this folder's format yet.");
   });
 
   it("posts to /api/import with the token and marks the folder migrated", async () => {
