@@ -16,6 +16,8 @@ insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ re
 - **Traceability.** Ask "why are we building this?" and get the full evidence chain, or check it in CI with `groundwork validate`.
 - **Works with your branches.** Everyone works on their own clone, and Groundwork catches and fixes id clashes before you merge.
 
+Working in a regulated industry, or need people to review and sign off what agents record? See [Groundwork for teams](#groundwork-for-teams): the same workflow, kept in a web app with CI, risk registers and release sign-off.
+
 ## Quickstart (2 minutes)
 
 ### Claude Code
@@ -246,9 +248,18 @@ Insights hold what customers said, and these files usually end up in git. Ground
 
 ## Groundwork for teams
 
-The Groundwork web app adds dashboards, reports, a visual evidence graph, risk registers, release sign-off and approvals with an audit trail, for people who don't live in a terminal. It's a separate, paid product; this project is and stays open source.
+The [Groundwork web app](https://groundwork.ideatorlabs.com) is for teams, especially in regulated industries (medical devices, healthcare, finance), where every release has to show what shipped, why, and how it was checked. It's a separate hosted product; this project is and stays open source.
 
-To move a project into it, create an agent token in the web app (**Settings → Connect an agent**), then:
+The agent keeps the records there too, and people make the decisions:
+
+1. **Plan.** Before writing code, the agent adds a Groundwork section to its plan: the stakeholder and solution requirements, the risks with their scores and mitigations, the release, and the tests. Approving the plan approves that section.
+2. **Build.** While it works, the agent records those items, where each lives in the code, the tests that verify it, and the tickets and pull request that deliver it. The pull request ends with a trailer such as `Groundwork: REQ-0042, RSK-0007`.
+3. **CI.** The [GitHub Action](#ci-the-github-action) comments on each pull request with the requirements it touches and any gaps, tags merged work to the product's release, and uploads test results from the default branch.
+4. **People decide.** In the app, the team approves what agents recorded in a **Review** inbox grouped by pull request, and sees every change, filtered by agent, under **Activity**. A release is ready when its high risks are mitigated, its requirements approved and every linked test passed on the default branch. An owner then signs it off, which freezes a printable release report. Each product also has a **traceability report** and a **risk register**, as PDF or CSV.
+
+Agents never approve requirements, accept a residual risk or sign a release off.
+
+To move a project from these files into the web app, create an agent token in the web app (**Settings → Connect an agent**), then:
 
 ```sh
 export GROUNDWORK_TOKEN=gw_…
@@ -284,8 +295,8 @@ The plugin's skills are generated in the web app's repository; don't edit them h
 [`action/`](action/) is a GitHub Action for teams on the web app. It records what agents forget:
 
 - On each pull request, it comments with the requirements and risks the PR names or touches, and any gaps.
-- On merge, it tags the work the PR names to the product's collecting release.
-- After your tests run, it uploads the JUnit results.
+- On merge, it tags the work the PR names to the product's collecting release, and records the PR as merged, with its merge commit and time, on the requirements it delivers.
+- After your tests run, it uploads the JUnit results. Results from the default branch count towards release readiness; pull-request results show in the comment.
 
 ```yaml
 - uses: IdeatorlabsAB/groundwork/action@main
