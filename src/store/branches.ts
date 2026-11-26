@@ -180,9 +180,15 @@ function rewriteFrontmatter(text: string, map: Map<string, string>, base: Record
 export function renumber(
   root: string,
   ref: string,
-): { renumbered: Renumbered[]; rewritten: string[]; mentions: { file: string; id: string }[]; tickets: { from: string; to: string; tickets: string[] }[] } {
+): {
+  renumbered: Renumbered[];
+  rewritten: string[];
+  mentions: { file: string; id: string }[];
+  tickets: { from: string; to: string; tickets: string[] }[];
+  tests: { from: string; to: string; tests: string[] }[];
+} {
   const clashes = findClashes(root, ref);
-  if (!clashes.length) return { renumbered: [], rewritten: [], mentions: [], tickets: [] };
+  if (!clashes.length) return { renumbered: [], rewritten: [], mentions: [], tickets: [], tests: [] };
   const base = itemsAt(root, ref);
   const work = itemsInWorkingTree(root);
 
@@ -240,5 +246,16 @@ export function renumber(
     const list = Array.isArray(item?.data.tickets) ? (item!.data.tickets as { tracker?: unknown; key?: unknown }[]) : [];
     return list.length ? [{ from: r.from, to: r.to, tickets: list.map((t) => `${String(t.tracker)} ${String(t.key)}`) }] : [];
   });
-  return { renumbered, rewritten, mentions, tickets };
+  // Test names and case titles carry the requirement's id by convention; they live in code and in the test tool, so say which.
+  const tests = renumbered.flatMap((r) => {
+    const item = work.find((x) => x.path === r.oldPath);
+    const names = (list: unknown) => (Array.isArray(list) ? list : []).filter((t): t is Record<string, unknown> => !!t && typeof t === "object");
+    const re = new RegExp(`\\b${r.from}\\b`);
+    const hits = [
+      ...names(item?.data.codeTests).filter((t) => re.test(String(t.name ?? ""))).map((t) => `${String(t.path)} "${String(t.name)}"`),
+      ...names(item?.data.testCases).filter((t) => re.test(String(t.title ?? ""))).map((t) => `${String(t.tool)} ${t.project ? `${String(t.project)}-` : ""}${String(t.id)} ${String(t.title)}`),
+    ];
+    return hits.length ? [{ from: r.from, to: r.to, tests: hits }] : [];
+  });
+  return { renumbered, rewritten, mentions, tickets, tests };
 }

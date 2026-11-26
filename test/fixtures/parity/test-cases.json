@@ -1,0 +1,12 @@
+{
+  "_about": "Shared with centropic-prototype. Test case identity is tool + project + id, ignoring case. Change both repos together.",
+  "same": [
+    [{ "tool": "qase", "project": "ACME", "id": "12" }, { "tool": "QASE", "project": "acme", "id": "12" }],
+    [{ "tool": "testrail", "id": "C5" }, { "tool": "testrail", "id": "c5" }]
+  ],
+  "different": [
+    [{ "tool": "qase", "project": "ACME", "id": "12" }, { "tool": "testrail", "project": "ACME", "id": "12" }],
+    [{ "tool": "qase", "project": "ACME", "id": "12" }, { "tool": "qase", "project": "OTHER", "id": "12" }],
+    [{ "tool": "qase", "project": "ACME", "id": "12" }, { "tool": "qase", "id": "12" }]
+  ]
+}

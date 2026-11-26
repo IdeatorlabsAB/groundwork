@@ -30,6 +30,32 @@ export const RISK_CATEGORY = z.enum(["security", "domain"]);
 export const KIND = z.enum(["insight", "hypothesis", "experiment", "finding", "requirement", "risk"]);
 export type Kind = z.infer<typeof KIND>;
 
+/** An automated test in the repository. Same shape and rules as the web app's codeTest input. */
+export const codeTestInput = z.object({
+  path: z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .refine((v) => !v.startsWith("/") && !v.split(/[\\/]/).includes(".."), "a repo-relative path, without .. or a leading /")
+    .describe('The test file, relative to the repository root, e.g. "test/billing.test.ts".'),
+  name: z.string().trim().min(1).max(500).describe('The full name the test runner reports, e.g. "billing > REQ-0042 totals match lines". Put the requirement\'s key in it.'),
+});
+
+/** A case in any test-management tool. */
+export const testCaseInput = z.object({
+  tool: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9][a-z0-9-]{0,29}$/, "a lowercase tool name, e.g. qase, testrail, xray")
+    .describe('The test-management tool, lowercase: "qase", "testrail", "xray", "zephyr", …'),
+  id: z.string().trim().min(1).max(60).describe('The tool\'s case id as it shows it, e.g. "12" (Qase), "C123" (TestRail), "PROJ-T45" (Xray).'),
+  title: z.string().trim().min(1).max(300),
+  project: z.string().trim().min(1).max(40).optional().describe('The tool\'s project, e.g. the Qase project code "ACME". Give it when case ids restart per project.'),
+  url: z.string().trim().url().max(500).regex(/^https?:\/\//, "an http(s) URL").optional().describe("The case's page in the tool."),
+});
+
 /** The input shapes for one id format. `id` validates a single item id. */
 export function makeSchemas(id: z.ZodString) {
   const ids = (what: string) => z.array(id).max(100).describe(`Ids of ${what} in this workspace (from search_items or get_item).`);

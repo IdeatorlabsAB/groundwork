@@ -7,6 +7,7 @@
 - `record_baseline` records the risks an existing product carries, with the requirements that already control them.
 - `trace_code` lists the requirements and risks a set of files touches, by their `codeRefs`. Agents call it before planning a change.
 - A new `groundwork-risk` skill for spotting and scoring risks while planning, in a baseline, or in a risk analysis.
+- **Tests, linked both ways.** Solution requirements record the automated tests that verify them (`link_code_tests`, `unlink_code_tests`: a file and the test's full name) and cases in any test-management tool, such as Qase, TestRail or Xray (`link_test_cases`, `unlink_test_cases`: tool, case id, title, project, URL). `search_items` finds requirements by test name or case id. Tests linked before a requirement shipped stay part of its release record.
 - `groundwork import` refuses a folder with risks until the web app's import carries them, so nothing is dropped.
 - Needs Node.js 22 or newer. Node 20 reached end of life in April 2026, and CI no longer tests it.
 
