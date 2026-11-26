@@ -35,12 +35,18 @@ export const configSchema = z.object({
       message: "riskMatrix must have size 3 or 5, that many probabilityLabels and severityLabels, and size × size cells of low, medium or high",
     })
     .optional(),
+  /** The branch whose CI runs count as evidence. Default: main. */
+  defaultBranch: z.string().trim().min(1).max(200).optional(),
+  /** The branch CI commits result files to (groundwork results add --push). Default: groundwork-results. */
+  resultsBranch: z.string().trim().min(1).max(200).optional(),
   /** Set when this folder was imported into the Groundwork web app. Local writes stop, so the two can't drift apart. */
   migrated: z.string().url().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
 export type Person = Config["people"][number];
+
+export const branchesOf = (config: Config) => ({ defaultBranch: config.defaultBranch ?? "main", resultsBranch: config.resultsBranch ?? "groundwork-results" });
 
 /** The matrix risks are scored on: config.yml's riskMatrix, or the 5×5 default. */
 export const matrixOf = (config: Config): RiskMatrix => config.riskMatrix ?? defaultMatrix(5);
