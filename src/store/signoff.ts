@@ -85,8 +85,9 @@ export function versionScope(state: Collections, catalogue: Catalogue, product: 
   const released = product.versions.find((v) => v.version === version)?.status === "released";
   return {
     requirements: state.requirements
-      .filter((r) => kindOf(r) === "solution" && isActive(r) && productOf(catalogue, r)?.id === product.id)
-      .filter((r) => (released ? r.releasedIn === version : r.plannedFor === version && !r.releasedIn))
+      .filter((r) => kindOf(r) === "solution" && productOf(catalogue, r)?.id === product.id)
+      // What shipped stays in its version's scope even if it's obsolete since; only planned work must still be live.
+      .filter((r) => (released ? r.releasedIn === version : isActive(r) && r.plannedFor === version && !r.releasedIn))
       .sort((a, b) => a.id.localeCompare(b.id)),
     risks: state.risks.filter((r) => r.product === product.id && r.versions.includes(version)).sort((a, b) => a.id.localeCompare(b.id)),
   };
@@ -116,6 +117,7 @@ export function buildRecord(args: {
   // The version's requirements, the stakeholder requirements they fulfil, and the mitigations of its risks.
   const ids = new Set([...scope.requirements.flatMap((r) => [r.id, ...(r.stakeholderIds ?? [])]), ...scope.risks.flatMap((r) => r.mitigationIds)]);
   const people = Object.fromEntries(config.people.map((p) => [p.id, p.name]));
+  const { blockers } = releaseReadiness(m, scope, state.requirements, tests);
   return {
     schemaVersion: 1,
     kind: baseline ? "baseline" : "release",
@@ -124,14 +126,15 @@ export function buildRecord(args: {
     signedAt: now,
     signedOffBy: { id: actor, name: people[actor] ?? actor },
     people,
-    ...(args.justification ? { overrideJustification: args.justification } : {}),
+    // As in the web app's decideRelease: a justification is recorded only when there was something to justify.
+    ...(args.justification && blockers.length ? { overrideJustification: args.justification } : {}),
     matrix: m,
     risks: scope.risks.map((r) => ({ ...r, initialLevel: initialLevel(m, r), residualLevel: residualLevel(m, r), mitigated: mitigatedIn(m, r, state.requirements, scope, tests) })),
     requirements: state.requirements
       .filter((r) => ids.has(r.id))
       .sort((a, b) => a.id.localeCompare(b.id))
       .map(pick),
-    blockers: releaseReadiness(m, scope, state.requirements, tests).blockers,
+    blockers,
     ...(tests
       ? {
           tests: {

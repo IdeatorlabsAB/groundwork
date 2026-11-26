@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -113,7 +114,7 @@ describe("releasing through the gate", () => {
   it("release_version refuses a version with blockers and writes nothing", async () => {
     const client = await connect();
     const { error } = await call(client, "release_version", { version: "1.1", shipped: ["REQ-0002"] });
-    expect(error).toBe('Acme app 1.1 isn\'t ready: 1 blocker.\n- Requirement "Check totals" has no linked tests\nAn owner can release it anyway with overrideJustification.');
+    expect(error).toBe('Acme app 1.1 isn\'t ready: 1 blocker.\n- Requirement "Check totals" has no linked tests\nLink tests with link_code_tests or link_test_cases, and record their results (CI: groundwork results add; test tools: record_test_results). Or an owner can release it anyway with overrideJustification.');
     expect(records()).toEqual([]);
     expect(read(`${REQS}/REQ-0002-totals.md`)).not.toContain("releasedIn");
     expect(productText()).not.toMatch(/version: "1.1"\n\s+status: released/);
@@ -270,5 +271,73 @@ describe("check_release", () => {
     await call(client, "link_items", { id, linkTo: ["REQ-0004"] });
     const { data } = await call(client, "check_release", { version: "1.1" });
     expect(data.warnings).toEqual(['Risk "Overcharge": its mitigation "Recheck totals" isn\'t in this version.']);
+  });
+});
+
+describe("final review fixes", () => {
+  it("record_baseline refuses a signed-off baseline version", async () => {
+    const client = await connect();
+    const area = (label: string, key: string) => ({
+      version: "0.9",
+      approvedBy: "sam",
+      area: label,
+      stakeholder: [{ key, title: `Need ${label}`, story: `As a clerk I want ${label} so that work gets done.`, acceptanceCriteria: ["Done"] }],
+      solution: [{ title: `Do ${label}`, story: `The app shall do ${label}.`, acceptanceCriteria: ["Done"], stakeholderKeys: [key] }],
+    });
+    await call(client, "add_product_areas", { areas: [{ label: "Payments" }] });
+    await call(client, "record_baseline", area("billing", "s1"));
+    await call(client, "sign_off_release", { version: "0.9" });
+    expect((await call(client, "record_baseline", area("Payments", "s2"))).error).toMatch(/is signed off .* Withdraw the sign-off first/);
+  });
+
+  it("a late sign-off keeps what the version shipped, even if it's obsolete since", async () => {
+    write(`${REQS}/REQ-0003-shipped.md`, read(`${REQS}/REQ-0003-shipped.md`).replace("status: approved", "status: obsolete\nobsoletedIn: \"1.1\""));
+    const client = await connect();
+    const { error } = await call(client, "sign_off_release", { version: "1.0", overrideJustification: "Legacy." });
+    expect(error).toBeUndefined();
+    const rec = JSON.parse(read("groundwork/releases/PRD-0001-1-0-1.json"));
+    expect(rec.requirements.map((r: { id: string }) => r.id)).toContain("REQ-0003");
+    expect(Object.keys(rec.tests.requirements)).toEqual(["REQ-0003"]);
+  });
+
+  it("a justification is recorded only when there are blockers", async () => {
+    const client = await ready();
+    await call(client, "release_version", { version: "1.1", shipped: ["REQ-0002"], overrideJustification: "Not needed" });
+    expect(JSON.parse(read("groundwork/releases/PRD-0001-1-1-1.json")).overrideJustification).toBeUndefined();
+  });
+
+  it("release_version fetches the results branch first", async () => {
+    // The project is a git repository whose origin has a passing CI run that was never fetched here.
+    const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const origin = `${root}-origin.git`;
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
+    git(root, "init", "-q", "-b", "main");
+    git(root, "config", "user.name", "T");
+    git(root, "config", "user.email", "t@example.com");
+    git(root, "remote", "add", "origin", origin);
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "base");
+    const client = await connect();
+    await call(client, "add_product_versions", { versions: [{ version: "1.2" }] });
+    await call(client, "link_code_tests", { requirementId: "REQ-0002", tests: [codeTest] });
+    const other = `${root}-ci`;
+    execFileSync("git", ["clone", "-q", origin, other]);
+    git(other, "config", "user.name", "CI");
+    git(other, "config", "user.email", "ci@example.com");
+    git(other, "checkout", "-q", "--orphan", "groundwork-results");
+    mkdirSync(join(other, "groundwork/results/ci"), { recursive: true });
+    writeFileSync(
+      join(other, "groundwork/results/ci/20261127T100000Z-abc1234-j1.json"),
+      JSON.stringify({ id: "run-1", commitSha: "abc1234def", ref: "refs/heads/main", at: "2026-11-27T10:00:00.000Z", source: "ci", defaultBranch: true, totals: { passed: 1, failed: 0, skipped: 0 }, results: [{ ...codeTest, status: "passed" }] }),
+    );
+    git(other, "add", "groundwork");
+    git(other, "commit", "-q", "-m", "results");
+    git(other, "push", "-q", "origin", "groundwork-results");
+    const { error, data } = await call(client, "release_version", { version: "1.1", shipped: ["REQ-0002"] });
+    expect(error).toBeUndefined();
+    expect(data.signOff.blockers).toEqual([]);
+    expect(JSON.parse(read("groundwork/releases/PRD-0001-1-1-1.json")).tests).toMatchObject({ fetched: true, resultsCommit: expect.stringMatching(/^[0-9a-f]{40}$/) });
+    rmSync(origin, { recursive: true, force: true });
+    rmSync(other, { recursive: true, force: true });
   });
 });

@@ -9,7 +9,7 @@ import { checkRelease } from "./store/check";
 import { activeRecord, loadRecords } from "./store/signoff";
 
 /** The gate's refusal, with the CLI's way to override it. */
-const cliGate = (e: GateError) => e.message.replace("An owner can release it anyway with overrideJustification.", 'An owner can release it anyway: add --justification "…".').split("\n");
+const cliGate = (e: GateError) => e.message.replace("Or an owner can release it anyway with overrideJustification.", 'Or an owner can release it anyway: add --justification "…".').split("\n");
 
 function signOffCommand(root: string, args: ReleaseArgs, actor: ReturnType<typeof resolveActor>): Out {
   const config = readConfig(root);
@@ -181,7 +181,8 @@ export function runReportCommand(root: string, args: { product?: string; version
   if (!["traceability", "risks"].includes(table)) return { code: 1, lines: [`--table is traceability or risks, not "${table}".`] };
   if (!p.versions.some((v) => v.version === args.version)) return { code: 1, lines: [`${args.version} isn't a version of ${p.title}.`] };
   const { record, status } = reportView(root, loaded, p, args.version);
-  if (args.json) return { code: 0, lines: [JSON.stringify({ status, ...record }, null, 2)] };
+  // --json prints the release report as it always has: from the record when there is one.
+  if (args.json) return { code: 0, lines: [JSON.stringify({ ...record.report, signOff: status === "signed-off" ? record.file : null }, null, 2)] };
   if (format === "csv") {
     const csv = table === "risks" ? toCsv(RISK_COLUMNS, riskRegisterRows(record) as never) : toCsv(TRACEABILITY_COLUMNS, traceabilityRows(record) as never);
     return { code: 0, lines: csv.replace(/\r\n$/, "").split("\r\n") };

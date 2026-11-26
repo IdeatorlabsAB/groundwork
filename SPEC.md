@@ -118,7 +118,7 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - Requirements that shipped later can be added to a released version.
   - Any other change to a released version is a correction: it needs a reason, changes only what it lists, and is recorded on the version.
   - The release report lists what a version introduced, what it made obsolete, how far each stakeholder requirement is met as of that version, and its corrections. It also lists each requirement's tests and results, the risks and mitigations, and the readiness blockers.
-- **Readiness.** A version's scope is its live solution requirements (planned for it, or shipped in it once released) and the risks tagged for it. It's blocked by the web app's ten blocker types:
+- **Readiness.** A version's scope is its solution requirements (the live ones planned for it, or every one that shipped in it once it's released, even if obsolete since) and the risks tagged for it. It's blocked by the web app's ten blocker types:
   - for each high risk:
     - `missing-mitigation`: no mitigating requirement;
     - `unapproved-mitigation`: a mitigation that isn't approved or in delivery;
@@ -154,7 +154,7 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - Markdown (the default);
   - `--format csv`, the traceability table: key, title, kind, status, statement, fulfils, risks, versions, tasks, tests, pull requests, code;
   - `--format csv --table risks`, the risk register;
-  - `--json`, the record.
+  - `--json`, the release report as JSON, with `signOff` naming the record it came from.
 
   CSV cells that a spreadsheet would run as formulas are prefixed with an apostrophe.
 - **Baseline.** `record_baseline` documents what an existing product already does, one product area per call.

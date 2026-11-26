@@ -60,7 +60,7 @@ export const TRACEABILITY_COLUMNS: { key: keyof TraceabilityRow; label: string }
 
 /** The version's solution requirements: new in it (shipped in it, or planned for it while it isn't released). */
 export const inVersion = (version: string) => (r: RowsInput["requirements"][number]) =>
-  kindOf(r) === "solution" && r.status !== "obsolete" && (r.releasedIn === version || (!r.releasedIn && r.plannedFor === version));
+  kindOf(r) === "solution" && (r.releasedIn === version || (!r.releasedIn && r.status !== "obsolete" && r.plannedFor === version));
 
 /** The version's solution requirements and the stakeholder requirements they fulfil. Keys order. */
 export function traceabilityRows(input: RowsInput): TraceabilityRow[] {

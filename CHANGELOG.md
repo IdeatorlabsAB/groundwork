@@ -11,12 +11,13 @@
 - **Test results in the repository.** `groundwork results add <junit>… --push`, run in CI on the default branch, records the JUnit results of the test files your requirements link to and commits them to a `groundwork-results` branch, without touching the checked-out branch. It works in shallow single-branch checkouts and in monorepos, and retries when parallel jobs push at once. Runs from outside CI don't count as evidence.
 - `record_test_results` records a test-management run (Qase, TestRail, …) for a product version, in `groundwork/results/tools/`. `get_item` on a solution requirement shows whether its tests passed, judged as the web app does.
 - New `config.yml` keys `defaultBranch` and `resultsBranch`. New dependency: `fast-xml-parser`.
+- **Breaking: releasing now checks readiness.** A version whose requirements have no linked tests, or whose tests haven't passed, is refused until the tests are linked and their results recorded, or an owner releases it with `--justification` (MCP: `overrideJustification`). Teams that release without tests today need an owner for each release until they add them.
 - **Release readiness and sign-off.**
   - `check_release` and `groundwork check release <version>` list what blocks a version, using the web app's rules and messages: unmitigated or unscored risks, unapproved requirements, and tests that are missing, failed or haven't run. The CLI exits 1 when anything does.
   - Releasing signs the version off in a frozen record in `groundwork/releases/`. With blockers, only an owner can release, with a written justification.
   - A signed-off version can't change until an owner withdraws the sign-off (`withdraw_release`). `sign_off_release` signs off versions released before records, and baselines once all their areas are in.
   - Drafts planned for a version now move on when it's released.
-- **Traceability report.** `groundwork report release <version>` adds each requirement's tasks, tests and results, the risks and mitigations, and readiness, read from the sign-off record. `--format csv` gives the traceability table, and `--table risks` the risk register.
+- **Traceability report.** `groundwork report release <version>` (`--json` prints the same release report as before, plus `signOff`) adds each requirement's tasks, tests and results, the risks and mitigations, and readiness, read from the sign-off record. `--format csv` gives the traceability table, and `--table risks` the risk register.
 - `groundwork import` refuses a folder with risks or test results until the web app's import carries them, so nothing is dropped.
 - Needs Node.js 22 or newer. Node 20 reached end of life in April 2026, and CI no longer tests it.
 

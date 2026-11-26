@@ -71,7 +71,7 @@ describe("groundwork release through the gate", () => {
     const out = runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"] });
     expect(out.code).toBe(1);
     expect(out.lines[0]).toBe("Acme app 1.0 isn't ready: 1 blocker.");
-    expect(out.lines.at(-1)).toBe('An owner can release it anyway: add --justification "…".');
+    expect(out.lines.at(-1)).toBe('Link tests with link_code_tests or link_test_cases, and record their results (CI: groundwork results add; test tools: record_test_results). Or an owner can release it anyway: add --justification "…".');
     expect(load(root).products[0].versions[0].status).toBe("planned");
   });
 
@@ -99,6 +99,14 @@ describe("groundwork release through the gate", () => {
     const out = runReleaseCommand(root, { version: "1.0", signOff: true, justification: "Released before Groundwork checked tests." });
     expect(out.code).toBe(0);
     expect(load(root).products[0].versions[0].signOff).toBe("groundwork/releases/PRD-0001-1-0-1.json");
+  });
+});
+
+describe("report --json", () => {
+  it("prints the release report as before, without a sign-off for a version that has none", () => {
+    const out = JSON.parse(runReportCommand(root, { version: "1.0", json: true }).lines.join("\n"));
+    expect(out).toHaveProperty("introduced");
+    expect(out).not.toHaveProperty("signedAt");
   });
 });
 

@@ -1721,6 +1721,9 @@ export function buildServer({ root }: ServerOptions): McpServer {
       s.requireReleaser();
       if (s.catalogue.legacy) throw new UserError('Run "groundwork migrate" first: products and their versions now live in groundwork/products/.');
       const p = s.targetProduct(a.product);
+      // A signed-off baseline is frozen like any release: adding an area would leave it out of the record.
+      const locked = lockMessage(root, p, a.version);
+      if (locked) throw new UserError(locked);
       const areaId = s.area(a.area);
       s.approver(a.approvedBy);
 

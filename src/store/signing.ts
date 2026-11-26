@@ -97,7 +97,7 @@ export function prepareSignOff(args: {
     if (!justification) {
       const n = record.blockers.length;
       throw new GateError(
-        [`${product.title} ${version} isn't ready: ${n} blocker${n === 1 ? "" : "s"}.`, ...record.blockers.map((b) => `- ${b.message}`), "An owner can release it anyway with overrideJustification."].join("\n"),
+        [`${product.title} ${version} isn't ready: ${n} blocker${n === 1 ? "" : "s"}.`, ...record.blockers.map((b) => `- ${b.message}`), "Link tests with link_code_tests or link_test_cases, and record their results (CI: groundwork results add; test tools: record_test_results). Or an owner can release it anyway with overrideJustification."].join("\n"),
       );
     }
     if (args.actor.person?.role !== "owner") throw new GateError("Only an owner can release over blockers.");
