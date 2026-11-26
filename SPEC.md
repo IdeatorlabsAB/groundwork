@@ -180,9 +180,9 @@ Test results are JSON files under `groundwork/results/`. Their shapes match the 
 ```
 
 - `results` holds every result in the test files that a linked code test points to, so a file's newest run is its current set of tests. `totals` counts the whole report.
-- `<job>` is `<run id>-<attempt>-<job>` in GitHub Actions, otherwise random, so matrix jobs and re-runs never overwrite each other.
+- `<job>` is `<run id>-<attempt>-<job>-<random>` in GitHub Actions, otherwise random, so matrix legs and re-runs never overwrite each other.
 - `source` is `ci` when written in CI (`$CI` set), otherwise `local`. `defaultBranch` says whether `ref` was the repository's default branch when the run was written (from GitHub's event file, else `defaultBranch` in config.yml).
-- With `--push`, the file is committed only to the results branch (`resultsBranch`, default `groundwork-results`), on top of its tip and without touching the checked-out branch. A push that loses a race with another job is redone, up to 5 times. Files are created relative to the repository root, so `groundwork/` can sit in a subfolder.
+- With `--push`, the file is committed only to the results branch (`resultsBranch`, default `groundwork-results`), on top of its tip and without touching the checked-out branch. A push that loses a race with another job is redone, up to 5 times; one the server declines (a ruleset, a hook) isn't. Files are created relative to the repository root, so `groundwork/` can sit in a subfolder.
 
 **Test-tool runs** (`results/tools/<tool>-<project>-<run>-<hash>.json`), written by `record_test_results` in the working tree and committed with the work:
 
@@ -195,14 +195,14 @@ Test results are JSON files under `groundwork/results/`. Their shapes match the 
 
 The name is fixed by tool, project and run id, so recording the same run again replaces it. Statuses are `passed`, `failed`, `blocked`, `skipped`, `invalid` and `in_progress`; the agent maps its tool's own statuses to them.
 
-**Reading.** Tools read CI runs from `origin/<resultsBranch>` as last fetched (never fetching themselves) and from the working tree, the branch winning on a name clash, and test-tool runs from the working tree. Only the newest 30 CI runs are read.
+**Reading.** Tools read CI runs from `origin/<resultsBranch>` as last fetched (never fetching themselves) and from the working tree, the branch winning on a name clash, and test-tool runs from the working tree. Only the newest 30 CI runs that count (CI, default branch) are read; files that don't count don't take their place.
 
 **Judging a requirement's tests** (the web app's rules):
 - A code test counts its result in the newest CI run that has it, among runs with `source: ci` and `defaultBranch: true`. A test missing from a newer run of its file was deleted or renamed and stops counting.
 - A case counts its latest finished result (by `endTime`) across the test-tool runs recorded for the version, matched by tool, project and id.
 - A requirement passes when every linked test passed. Failed, blocked and invalid count as failed. Skipped, in progress and missing count as not run.
 
-`get_item` on a solution requirement shows this for the version it shipped in or is planned for. `validate` reports result files it can't read.
+`get_item` on a solution requirement shows this for the version it shipped in or is planned for. `validate` warns about result files it can't read.
 
 ## config.yml
 

@@ -192,13 +192,20 @@ export function loadResults(root: string, config: Config): LoadedResults {
     const name = posix.basename(p);
     if (!ci.has(name)) ci.set(name, { file: p, read: () => readFileSync(join(root, ...p.split("/")), "utf8") });
   }
-  const newest = [...ci.keys()].sort().reverse().slice(0, CODE_RUN_WINDOW);
-  const fromBranch = newest.filter((n) => ci.get(n)!.file.startsWith(`${resultsBranch}:`)).map((n) => ci.get(n)!.file.slice(resultsBranch.length + 1));
-  const blobs = fromBranch.length ? readAt(root, remote, fromBranch) : new Map<string, string | undefined>();
-  for (const n of newest) {
-    const e = ci.get(n)!;
-    const text = e.file.startsWith(`${resultsBranch}:`) ? blobs.get(e.file.slice(resultsBranch.length + 1)) : e.read();
-    take(e.file, text, codeRunOf, out.codeRuns);
+  // Newest first, until the window holds CODE_RUN_WINDOW runs that count (CI, default branch), as the web app filters
+  // before it limits: pull-request, local and broken files mustn't push main's evidence out.
+  const names = [...ci.keys()].sort().reverse();
+  const counting = () => out.codeRuns.filter((r) => r.source === "ci" && r.defaultBranch).length;
+  for (let i = 0; i < names.length && counting() < CODE_RUN_WINDOW; i += CODE_RUN_WINDOW) {
+    const batch = names.slice(i, i + CODE_RUN_WINDOW);
+    const onBranch = batch.filter((n) => ci.get(n)!.file.startsWith(`${resultsBranch}:`)).map((n) => ci.get(n)!.file.slice(resultsBranch.length + 1));
+    const blobs = onBranch.length ? readAt(root, remote, onBranch) : new Map<string, string | undefined>();
+    for (const n of batch) {
+      if (counting() >= CODE_RUN_WINDOW) break;
+      const e = ci.get(n)!;
+      const text = e.file.startsWith(`${resultsBranch}:`) ? blobs.get(e.file.slice(resultsBranch.length + 1)) : e.read();
+      take(e.file, text, codeRunOf, out.codeRuns);
+    }
   }
 
   // Test-tool runs live in the working tree, committed with the work they belong to.

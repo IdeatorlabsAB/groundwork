@@ -43,7 +43,8 @@ const STORED: Record<Kind, z.ZodType> = {
 /** Every problem in a project: unreadable files, invalid fields, broken or wrong-kind links, unknown areas. */
 export function validate(loaded: Loaded, config: Config, opts: { root?: string } = {}): Problem[] {
   const out: Problem[] = loaded.problems.map((p) => ({ level: "error", ...p }));
-  if (opts.root) for (const p of loadResults(opts.root, config).problems) out.push({ level: "error", ...p });
+  // Warnings: a bad file on the results branch can't be fixed in a pull request, so it mustn't fail validate everywhere.
+  if (opts.root) for (const p of loadResults(opts.root, config).problems) out.push({ level: "warning", ...p });
   const s: Collections = loaded.items;
   const kindById = new Map<string, Kind>();
   for (const kind of Object.keys(COLLECTIONS) as Kind[]) for (const x of s[COLLECTIONS[kind]] as { id: string }[]) kindById.set(x.id, kind);

@@ -135,6 +135,20 @@ describe("loadResults", () => {
     expect(ids).toContain("run-34");
   });
 
+  it("30 newer runs that don't count don't push the latest counting run out of the window", () => {
+    const r = repo();
+    const files: Record<string, unknown> = {};
+    const counting = ciRun({ id: "main-run", at: "2026-11-01T00:00:00.000Z" });
+    files[codeRunPath(counting, "j")] = counting;
+    for (let i = 0; i < 30; i++) {
+      const pr = ciRun({ id: `pr-${i}`, defaultBranch: false, ref: "refs/pull/7/merge", at: new Date(Date.UTC(2026, 10, 2, 0, i)).toISOString() });
+      files[codeRunPath(pr, "j")] = pr;
+    }
+    r.onBranch(files);
+    const loaded = loadResults(r.root, config(r.root));
+    expect(resultsFor(loaded, "PRD-0001", "1.1").code.runs.map((x) => x.id)).toEqual(["main-run"]);
+  });
+
   it("reads tools/ from the working tree only", () => {
     const r = repo();
     r.onBranch({ [testRunPath(toolRun({ id: "on-branch" }))]: toolRun({ id: "on-branch" }) });
@@ -150,7 +164,8 @@ describe("loadResults", () => {
     expect(out.codeRuns).toEqual([]);
     expect(out.problems.map((p) => p.file)).toEqual(["groundwork-results:groundwork/results/ci/20261101T000000Z-aaaaaaa-j.json", "groundwork/results/tools/broken.json"]);
     const problems = validate(load(r.root), config(r.root), { root: r.root }).map((p) => `${p.level} ${p.file}`);
-    expect(problems).toContain("error groundwork/results/tools/broken.json");
+    // A warning: a bad file on the results branch can't be fixed in a pull request, so it mustn't fail every validate.
+    expect(problems).toContain("warning groundwork/results/tools/broken.json");
   });
 
   it("works outside a git repository, from the working tree", () => {

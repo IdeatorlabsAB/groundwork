@@ -25,10 +25,7 @@ export interface ResultsOptions {
 }
 
 class PushError extends Error {
-  constructor(
-    message: string,
-    readonly retry = false,
-  ) {
+  constructor(message: string) {
     super(message);
   }
 }
@@ -44,7 +41,16 @@ function run(cwd: string, env: Env, args: string[], input?: string): string {
   return execFileSync("git", args, { cwd, input, env: childEnv(env), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 }).trim();
 }
 
-const stderrOf = (e: unknown) => String((e as { stderr?: unknown }).stderr ?? (e as Error).message).trim().split("\n").filter(Boolean).at(-1) ?? "unknown error";
+/** git's reason: what the server said (remote: lines, e.g. a ruleset's GH013), else git's first fatal or error line, without a final period. */
+function stderrOf(e: unknown): string {
+  const lines = String((e as { stderr?: unknown }).stderr ?? (e as Error).message)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const remote = lines.filter((l) => l.startsWith("remote:")).map((l) => l.replace(/^remote:\s*/, "")).filter(Boolean);
+  const fatal = lines.find((l) => /^(fatal|error):/.test(l));
+  return (remote.length ? remote.join(" ") : (fatal ?? lines.at(-1) ?? "unknown error")).replace(/\.+$/, "");
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -104,8 +110,10 @@ export async function pushResult(
       return { attempts: attempt };
     } catch (e) {
       const msg = String((e as { stderr?: unknown }).stderr ?? "");
-      const rejected = /rejected|fetch first|non-fast-forward|failed to update ref|cannot lock ref/i.test(msg);
-      if (!rejected || attempt >= max) throw new PushError(stderrOf(e), rejected);
+      // Only losing a race with another job is worth redoing. A server that declined the push (a ruleset, a hook) won't change its mind.
+      const declined = /\[remote rejected\]|declined/i.test(msg);
+      const raced = !declined && /fetch first|non-fast-forward|failed to update ref|cannot lock ref/i.test(msg);
+      if (!raced || attempt >= max) throw new PushError(stderrOf(e));
       await sleep(200 + Math.random() * 800);
     }
   }
@@ -171,7 +179,9 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     },
     results: kept,
   };
-  const job = env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? "1"}-${env.GITHUB_JOB ?? "job"}` : randomBytes(4).toString("hex");
+  // Matrix legs share run id, attempt and job name, so a random part keeps two runs in the same second apart.
+  const random = randomBytes(3).toString("hex");
+  const job = env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? "1"}-${env.GITHUB_JOB ?? "job"}-${random}` : random;
   const rel = codeRunPath(runData, job);
   const linkedFiles = new Set(kept.map((r) => r.path)).size;
   lines.push(`Wrote ${rel}: ${plural(kept.length, "result")} from ${plural(linkedFiles, "linked test file")} (${all.length} in the reports).`);
@@ -184,7 +194,7 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     await pushResult(root, posix.normalize(rel), `${JSON.stringify(runData, null, 2)}\n`, { branch: resultsBranch, message: `Groundwork results: ${rel}`, env, beforePush: opts.beforePush });
   } catch (e) {
     if (!(e instanceof PushError)) throw e;
-    lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. In GitHub Actions the job needs permissions: contents: write.`);
+    lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow ${resultsBranch}.`);
     return { code: 1, lines };
   }
   lines.push(`Pushed to ${resultsBranch}.`);

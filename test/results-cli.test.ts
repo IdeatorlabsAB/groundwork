@@ -104,7 +104,7 @@ describe("groundwork results add", () => {
     writeFileSync(event, JSON.stringify({ repository: { default_branch: "trunk" } }));
     await run(s, { env: { ...s.env, GITHUB_SHA: "1234567890abcdef", GITHUB_REF: "refs/heads/feature", GITHUB_EVENT_PATH: event } });
     const name = readdirSync(join(s.root, "groundwork/results/ci"))[0];
-    expect(name).toBe("20261127T101500Z-1234567-4521-1-test.json");
+    expect(name).toMatch(/^20261127T101500Z-1234567-4521-1-test-[0-9a-f]{6}\.json$/);
     const data = JSON.parse(readFileSync(join(s.root, "groundwork/results/ci", name), "utf8"));
     expect(data).toMatchObject({ commitSha: "1234567890abcdef", ref: "refs/heads/feature", defaultBranch: false });
   });
@@ -123,7 +123,7 @@ describe("groundwork results add --push", () => {
     const out = await run(s, { push: true });
     expect(out.code).toBe(0);
     expect(out.lines).toContain("Pushed to groundwork-results.");
-    expect(branchFiles(s.origin)).toEqual(["groundwork/results/ci/20261127T101500Z-" + s.sha.slice(0, 7) + "-4521-1-test.json"]);
+    expect(branchFiles(s.origin)).toEqual([expect.stringMatching(new RegExp(`^groundwork/results/ci/20261127T101500Z-${s.sha.slice(0, 7)}-4521-1-test-[0-9a-f]{6}\\.json$`))]);
     expect(git(s.ci, "rev-parse", "HEAD")).toBe(before);
     expect(git(s.ci, "branch", "--show-current").trim()).toBe("main");
     // The push doesn't also leave the file in the working tree, where a later `git add -A` could commit it to main.
@@ -187,6 +187,26 @@ describe("groundwork results add --push", () => {
     expect(branchFiles(s.origin)).toHaveLength(2);
   });
 
+  it("two matrix legs on the same commit in the same second keep both runs", async () => {
+    const s = setup();
+    await run(s, { push: true });
+    await run(s, { push: true });
+    expect(branchFiles(s.origin)).toHaveLength(2);
+  });
+
+  it("a push a branch rule declines isn't retried, and says why", async () => {
+    const s = setup();
+    const hook = join(s.origin, "hooks", "pre-receive");
+    writeFileSync(hook, "#!/bin/sh\necho 'GH013: Repository rule violations found for refs/heads/groundwork-results.' >&2\nexit 1\n", { mode: 0o755 });
+    let attempts = 0;
+    const out = await run(s, { push: true, beforePush: () => void attempts++ });
+    expect(out.code).toBe(1);
+    expect(attempts).toBe(1);
+    expect(out.lines.at(-1)).toContain("GH013: Repository rule violations found");
+    expect(out.lines.at(-1)).toContain("ruleset");
+    expect(out.lines.at(-1)).not.toMatch(/\.\./);
+  });
+
   it("--push doesn't retry an auth failure", async () => {
     const s = setup();
     git(s.ci, "remote", "set-url", "origin", join(s.top, "no-such-remote.git"));
@@ -194,6 +214,6 @@ describe("groundwork results add --push", () => {
     const out = await run(s, { push: true, beforePush: () => void attempts++ });
     expect(out.code).toBe(1);
     expect(attempts).toBeLessThanOrEqual(1);
-    expect(out.lines.at(-1)).toMatch(/^Couldn't push results to groundwork-results: .+ In GitHub Actions the job needs permissions: contents: write\.$/);
+    expect(out.lines.at(-1)).toMatch(/^Couldn't push results to groundwork-results: fatal: .+\. In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow groundwork-results\.$/);
   });
 });

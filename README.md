@@ -135,15 +135,16 @@ Groundwork keeps test evidence in your repository. On each push to your default 
 ```yaml
 # .github/workflows/test.yml
 on: [push, pull_request]
-permissions:
-  contents: write          # to push to groundwork-results
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write      # to push to groundwork-results
     steps:
       - uses: actions/checkout@v5          # keep the default credentials
       - run: npm ci && npm test -- --reporter=junit --outputFile=reports/junit.xml
-      - if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      # !cancelled(): record the results when tests fail too, or a regression would leave the last pass standing.
+      - if: ${{ !cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         run: npx -p groundwork-mcp groundwork results add "reports/*.xml" --push
 ```
 
