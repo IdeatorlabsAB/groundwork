@@ -11,6 +11,13 @@
 - **Test results in the repository.** `groundwork results add <junit>… --push`, run in CI on the default branch, records the JUnit results of the test files your requirements link to and commits them to a `groundwork-results` branch, without touching the checked-out branch. It works in shallow single-branch checkouts and in monorepos, and retries when parallel jobs push at once. Runs from outside CI don't count as evidence.
 - `record_test_results` records a test-management run (Qase, TestRail, …) for a product version, in `groundwork/results/tools/`. `get_item` on a solution requirement shows whether its tests passed, judged as the web app does.
 - New `config.yml` keys `defaultBranch` and `resultsBranch`. New dependency: `fast-xml-parser`.
+- **Moving to the web app keeps everything.** `groundwork import` (bundle format 2) now carries:
+  - risks;
+  - product versions;
+  - sign-off records, verbatim;
+  - the CI runs that count, and test-tool runs.
+
+  The web app's import turns them into risks, releases, release records and test runs. Keys never change: a key another item already has is refused, not renumbered. Older web apps refuse the new format with "Update the Groundwork web app first". A contract test shared with the web app proves it judges every imported version as `groundwork check release` does.
 - **The GitHub Action without an account.** `mode: local` comments on pull requests with the requirements and risks they name (`Groundwork:` trailer) or touch, and the traceability gaps, from the repository's own files. On default-branch runs it commits the JUnit results to the results branch. It runs this package's command line of the same version, outside the checkout. Cloud mode is unchanged. New command: `groundwork ci pr`.
 - **Bring in your own requirements.** A new `groundwork-write-requirement` skill: the web app's rules for writing stakeholder and solution requirements, and a workflow for turning the team's own documents, tender texts, tickets and spreadsheets into Groundwork requirements. It inventories the source first, rewrites in batches with the exact source place in `originNote`, checks duplicates and records each batch once the team agrees. `search_items` now finds requirements by their source reference.
 - The `groundwork` skill teaches the same plan → build → PR loop as the web app's agents, including the `Groundwork:` trailer and `check_release` when opening a PR. The `groundwork-cloud` plugin's skills are refreshed from the web app, and a test checks that every tool and field a skill names exists.
