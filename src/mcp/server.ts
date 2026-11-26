@@ -65,6 +65,10 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 7. After writing tests in the repository, link_code_tests them to the solution requirements they verify, with the requirement's id in each test's name (e.g. "import > REQ-0042 keeps templates"). With a test-management tool connected (Qase, TestRail, Xray, …), write cases from the acceptance criteria there and link_test_cases them (tool, id, title, project, url). Never claim a case exists when the tool isn't connected. After a run in that tool finishes, record its results with record_test_results for the version it tested, and commit the file it writes.
 8. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement. Then record each ticket with link_tickets (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement ("Bug fix under REQ-0007") is linked to that requirement too.
 9. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
+10. Opening the PR: end its description and each commit with a trailer naming what it implements or restores, "Groundwork: REQ-0042, RSK-0007" (it ties the change to its requirements in git history, and the Groundwork GitHub Action reads it once the repository uses it); link_tickets the PR to its solution requirements ({ tracker: "github", key: "owner/repo#57", url }); and call check_release for the version and report what still blocks it.
+11. Never approve requirements, accept a residual risk or write a release justification on someone's behalf: record them only when the user says who decided.
+
+Bringing in requirements the team already has (documents, tender texts, tickets, spreadsheets): see the groundwork-write-requirement skill. Inventory the source first, rewrite about 20 items at a time with an origin and an originNote naming the exact source place, check duplicates, and record each batch once the team agrees.
 
 Releasing a version ("Release Clinicare 1.1"):
 1. Call get_release for the version, and check_release for what blocks it. Fix what you can (link tests, record results, approve or move requirements) or explain each blocker to the user.
@@ -171,7 +175,8 @@ function textOf(kind: Kind, item: AnyItem): string {
         ...objects(r.codeTests).map((t) => `${t.path ?? ""} ${t.name ?? ""}`),
         ...objects(r.testCases).map((t) => `${t.tool ?? ""} ${t.project ?? ""} ${t.id ?? ""} ${t.title ?? ""}`),
       ];
-      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, ...tests, notes].join(" ");
+      // originNote holds the source reference ("Region North tender 2026, §4.2"), so imports can be found and resumed.
+      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", r.originNote ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, ...tests, notes].join(" ");
     }
     case "risk": {
       const r = item as Risk;
@@ -1357,14 +1362,20 @@ export function buildServer({ root }: ServerOptions): McpServer {
         return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)), ...(plan ? { plannedFor: plan } : {}) } };
       }
       if (r.status !== "awaiting-approval") {
-        const hint = r.status === "draft" ? " If someone approved it outside Groundwork, record it with approvedBy." : "";
+        const hint =
+          r.status !== "draft"
+            ? ""
+            : approvedBy === s.actor.id
+              ? " To record your own approval, submit it to yourself first (submit_requirement_for_approval), then approve it."
+              : " If someone approved it outside Groundwork, record it with approvedBy.";
         throw new UserError(`"${r.title}" is ${r.status}, not awaiting approval.${hint}`);
       }
       if (r.approver !== s.actor.id) {
         const name = s.config.people.find((m) => m.id === r.approver)?.name ?? r.approver ?? "someone else";
         throw new UserError(`"${r.title}" is waiting for ${name}, not you (${s.actor.id}). Set GROUNDWORK_USER or your email in config.yml people if that's wrong.`);
       }
-      const next = planned(apply(state, ops.approveRequirement(state, c, id))[0]);
+      // Your own approval keeps its note too, e.g. the signed contract it was accepted in.
+      const next = planned(apply(state, ops.approveRequirement(state, c, id, note ? { approvedBy: s.actor.id, note } : undefined))[0]);
       return { state: next, result: { approved: s.summary("requirement", requirementOf(next, id)), ...(plan ? { plannedFor: plan } : {}) } };
     }),
   );

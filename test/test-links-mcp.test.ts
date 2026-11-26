@@ -141,6 +141,12 @@ describe("test link tools", () => {
     expect(error).toBe('Not linked to "Check totals": testrail C5.');
   });
 
+  it("search_items finds a requirement by its source reference", async () => {
+    write(`${REQS}/REQ-0002-totals.md`, read(`${REQS}/REQ-0002-totals.md`).replace("---\n", "---\norigin: tender\noriginNote: Region North tender 2026, §4.2\n"));
+    const { data } = await call(await connect(), "search_items", { query: "§4.2" });
+    expect(data.items.map((x: { id: string }) => x.id)).toEqual(["REQ-0002"]);
+  });
+
   it("search_items finds a requirement by test case id", async () => {
     const client = await connect();
     await call(client, "link_test_cases", { requirementId: "REQ-0002", cases: [{ tool: "testrail", id: "C777", title: "Totals" }] });
