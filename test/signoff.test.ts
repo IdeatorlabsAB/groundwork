@@ -87,15 +87,15 @@ describe("buildRecord", () => {
     expect(r.risks[0]).toMatchObject({ id: "RSK-0001", initialLevel: "high", residualLevel: null, mitigated: false });
     expect(r.tests).toMatchObject({ fetchedAt: "2026-11-28T10:00:00.000Z", fetched: true, resultsCommit: "c0ffee" });
     expect(r.tests!.requirements["REQ-0002"].status).toBe("passed");
-    expect(r.requirements.map((x) => x.id)).toEqual(["REQ-0002"]);
+    expect(r.requirements.map((x) => x.id)).toEqual(["REQ-0001", "REQ-0002"]);
     expect(r.report.version.version).toBe("1.1");
   });
 
   it("record includes mitigations shipped earlier", () => {
     const s = state({ risks: [risk("RSK-0001", { probability: 5, severity: 5, residualProbability: 1, residualSeverity: 1, mitigationIds: ["REQ-0004"] })] });
     const r = build(s);
-    expect(r.requirements.map((x) => x.id)).toEqual(["REQ-0002", "REQ-0004"]);
-    expect(r.requirements[1]).toMatchObject({ plannedFor: "1.0", releasedIn: "1.0" });
+    expect(r.requirements.map((x) => x.id)).toEqual(["REQ-0001", "REQ-0002", "REQ-0004"]);
+    expect(r.requirements[2]).toMatchObject({ plannedFor: "1.0", releasedIn: "1.0" });
     expect(r.blockers).toEqual([]);
   });
 

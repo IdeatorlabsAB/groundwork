@@ -34,8 +34,9 @@ Usage:
   groundwork release [product] <version> --correct --reason "…" [--add ID] [--remove ID]
                     [--add-obsolete ID] [--remove-obsolete ID] [--move-rest <version>]
                                        Correct a released version (recorded with the reason)
-  groundwork report release [product] <version> [--json]
-                                       Print a version's release report as Markdown
+  groundwork report release [product] <version> [--format md|csv] [--table traceability|risks] [--json]
+                                       Print a version's traceability report: from its sign-off
+                                       record when it has one, as Markdown or CSV
   groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]
                                        Record a CI run's results for the tests requirements link
                                        to; --push commits them to the results branch (in CI)
@@ -245,6 +246,8 @@ async function main(): Promise<number> {
       "dry-run": { type: "boolean" },
       overwrite: { type: "boolean" },
       commit: { type: "string" },
+      format: { type: "string" },
+      table: { type: "string" },
       ref: { type: "string" },
       push: { type: "boolean" },
       at: { type: "string" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
@@ -284,8 +287,8 @@ async function main(): Promise<number> {
     }
     case "report": {
       const pv = productVersion(positionals.slice(2));
-      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork report release [product] <version> [--json]"), 1;
-      return print(runReportCommand(findRoot(), { ...pv, json: Boolean(values.json) }));
+      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork report release [product] <version> [--format md|csv] [--table traceability|risks] [--json]"), 1;
+      return print(runReportCommand(findRoot(), { ...pv, json: Boolean(values.json), format: values.format, table: values.table }));
     }
     case "migrate":
       return cmdMigrate(Boolean(values["dry-run"]));

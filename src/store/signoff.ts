@@ -35,6 +35,7 @@ export const RECORD_FIELDS = [
   "tickets",
   "plannedFor",
   "releasedIn",
+  "codeRefs",
 ] as const;
 export type RecordRequirement = Pick<Requirement, (typeof RECORD_FIELDS)[number]>;
 export type RecordRisk = Risk & { initialLevel: RiskLevel | null; residualLevel: RiskLevel | null; mitigated: boolean };
@@ -52,7 +53,7 @@ export interface SignOffRecord {
   overrideJustification?: string;
   matrix: RiskMatrix;
   risks: RecordRisk[];
-  /** The version's requirements, plus the mitigations of its risks. */
+  /** The version's requirements, the stakeholder requirements they fulfil, and the mitigations of its risks. */
   requirements: RecordRequirement[];
   blockers: Blocker[];
   tests?: {
@@ -112,7 +113,8 @@ export function buildRecord(args: {
   const scope = versionScope(state, catalogue, product, version);
   const baseline = scope.requirements.length > 0 && scope.requirements.every((r) => r.origin === "existing-product");
   const tests = baseline ? undefined : args.tests;
-  const ids = new Set([...scope.requirements.map((r) => r.id), ...scope.risks.flatMap((r) => r.mitigationIds)]);
+  // The version's requirements, the stakeholder requirements they fulfil, and the mitigations of its risks.
+  const ids = new Set([...scope.requirements.flatMap((r) => [r.id, ...(r.stakeholderIds ?? [])]), ...scope.risks.flatMap((r) => r.mitigationIds)]);
   const people = Object.fromEntries(config.people.map((p) => [p.id, p.name]));
   return {
     schemaVersion: 1,

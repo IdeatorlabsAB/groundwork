@@ -3,6 +3,8 @@ import { readConfig, resolveActor } from "./store/config";
 import { load, save } from "./store/files";
 import { writeProduct, type Product } from "./store/products";
 import { correctRelease, ReleaseError, releaseReport, releaseVersion, renderReleaseReport } from "./store/release";
+import { renderRecord, reportView } from "./store/report";
+import { RISK_COLUMNS, riskRegisterRows, toCsv, TRACEABILITY_COLUMNS, traceabilityRows } from "./core/report-rows";
 
 /**
  * `groundwork release` and `groundwork report release`, as functions that return their output, so they can be
@@ -91,17 +93,22 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
   }
 }
 
-export function runReportCommand(root: string, args: { product?: string; version: string; json?: boolean }): Out {
+export function runReportCommand(root: string, args: { product?: string; version: string; json?: boolean; format?: string; table?: string }): Out {
   const config = readConfig(root);
   const loaded = load(root);
   const catalogue = catalogueOf(config, loaded.products);
   const p = productFor(catalogue, args.product);
   if (typeof p === "string") return { code: 1, lines: [p] };
-  try {
-    const report = releaseReport(loaded.items.requirements, catalogue, p, args.version);
-    return { code: 0, lines: args.json ? [JSON.stringify(report, null, 2)] : renderReleaseReport(report).trimEnd().split("\n") };
-  } catch (e) {
-    if (!(e instanceof ReleaseError)) throw e;
-    return { code: 1, lines: [e.message] };
+  const format = args.format ?? "md";
+  if (!["md", "csv"].includes(format)) return { code: 1, lines: [`--format is md or csv, not "${format}".`] };
+  const table = args.table ?? "traceability";
+  if (!["traceability", "risks"].includes(table)) return { code: 1, lines: [`--table is traceability or risks, not "${table}".`] };
+  if (!p.versions.some((v) => v.version === args.version)) return { code: 1, lines: [`${args.version} isn't a version of ${p.title}.`] };
+  const { record, status } = reportView(root, loaded, p, args.version);
+  if (args.json) return { code: 0, lines: [JSON.stringify({ status, ...record }, null, 2)] };
+  if (format === "csv") {
+    const csv = table === "risks" ? toCsv(RISK_COLUMNS, riskRegisterRows(record) as never) : toCsv(TRACEABILITY_COLUMNS, traceabilityRows(record) as never);
+    return { code: 0, lines: csv.replace(/\r\n$/, "").split("\r\n") };
   }
+  return { code: 0, lines: renderRecord(record, status).trimEnd().split("\n") };
 }
