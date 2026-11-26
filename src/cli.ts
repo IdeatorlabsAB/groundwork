@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { KIND, type Kind } from "./core/schemas";
 import type { Requirement } from "./core/types";
@@ -12,6 +13,7 @@ import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
 import { runCheckCommand, runReleaseCommand, runReportCommand } from "./release-cli";
 import { runResultsCommand } from "./store/results-cli";
+import { runCiPrCommand } from "./ci-cli";
 import { ImportError, runImport } from "./store/import";
 
 declare const __VERSION__: string;
@@ -47,6 +49,8 @@ Usage:
   groundwork check release [product] <version> [--json]
                                        What blocks a version from going out. Exits 1 if anything
                                        does (use it in CI before releasing)
+  groundwork ci pr --input <pr.json> [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>]
+                                       The pull request report as JSON, for the GitHub Action
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -255,6 +259,10 @@ async function main(): Promise<number> {
       commit: { type: "string" },
       format: { type: "string" },
       justification: { type: "string" },
+      input: { type: "string" },
+      junit: { type: "string", multiple: true },
+      "link-base": { type: "string" },
+      "path-prefix": { type: "string" },
       "sign-off": { type: "boolean" },
       table: { type: "string" },
       ref: { type: "string" },
@@ -305,6 +313,16 @@ async function main(): Promise<number> {
       return cmdMigrate(Boolean(values["dry-run"]));
     case "renumber":
       return cmdRenumber(values.against);
+    case "ci": {
+      if (arg !== "pr" || !values.input) return console.error("Usage: groundwork ci pr --input <pr.json> [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>]"), 1;
+      let input: unknown;
+      try {
+        input = JSON.parse(readFileSync(values.input, "utf8"));
+      } catch (e) {
+        return console.error(`Can't read ${values.input}: ${(e as Error).message}`), 1;
+      }
+      return print(runCiPrCommand(findRoot(), { input: input as never, junit: values.junit, linkBase: values["link-base"], pathPrefix: values["path-prefix"] }));
+    }
     case "check": {
       const pv = productVersion(positionals.slice(2));
       if (arg !== "release" || !pv.version) return console.error("Usage: groundwork check release [product] <version> [--json]"), 1;
