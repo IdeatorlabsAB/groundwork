@@ -58,6 +58,15 @@ describe("groundwork import", () => {
     expect(() => buildBundle(root, { dryRun: true })).toThrow(/risks/);
   });
 
+  it("refuses a folder with test results rather than dropping them", () => {
+    mkdirSync(join(root, "groundwork", "results", "ci"), { recursive: true });
+    writeFileSync(
+      join(root, "groundwork", "results", "ci", "20261127T100000Z-abc1234-j.json"),
+      JSON.stringify({ id: "r", commitSha: "abc1234", ref: "refs/heads/main", at: "2026-11-27T10:00:00.000Z", source: "ci", defaultBranch: true, totals: { passed: 0, failed: 0, skipped: 0 }, results: [] }),
+    );
+    expect(() => buildBundle(root, { dryRun: true })).toThrow(/test results/);
+  });
+
   it("posts to /api/import with the token and marks the folder migrated", async () => {
     const server = fakeServer();
     const r = await runImport({ root, to: "https://gw.example/some/page", token: TOKEN, fetch: server.fetch });

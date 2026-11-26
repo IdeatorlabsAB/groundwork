@@ -7,6 +7,9 @@ import * as ops from "../core/ops";
 import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
 import { codeTestInput, KIND, localId, localSchemas, testCaseInput, type Kind } from "../core/schemas";
 import { caseKey, caseLabel } from "../core/test-links";
+import { testStatus } from "../core/tests";
+import type { TestResultStatus } from "../core/types";
+import { loadResults, resultsFor, testRunPath, writeResult, type StoredTestRun } from "../store/results";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk, RiskMatrix } from "../core/types";
 import { initialLevel, isMitigated, residualLevel } from "../core/risk";
@@ -638,6 +641,16 @@ export function buildServer({ root }: ServerOptions): McpServer {
           linkedFrom,
         };
       }
+      if (hit.kind === "requirement" && kindOf(hit.item as Requirement) === "solution") {
+        const r = hit.item as Requirement;
+        if (r.codeTests?.length || r.testCases?.length) {
+          // Judged for the version it shipped in or is planned for; without one, only CI runs count.
+          const version = r.releasedIn ?? r.plannedFor;
+          const loaded = loadResults(s.root, s.config);
+          const tests = testStatus(r, resultsFor(loaded, productOf(s.catalogue, r)?.id ?? "", version ?? ""));
+          return { item: s.full(hit.kind, r), tests: { ...(version ? { version } : {}), ...tests, read: loaded.read }, linksTo, linkedFrom };
+        }
+      }
       if (hit.kind === "risk") {
         const r = hit.item as Risk;
         return {
@@ -870,6 +883,71 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const after = next.requirements.find((x) => x.id === requirementId)!;
       return { state: next, result: { updated: s.summary("requirement", after), removed, testCases: after.testCases ?? [] } };
     }),
+  );
+
+  const RESULT_STATUS = z
+    .enum(["passed", "failed", "blocked", "skipped", "invalid", "in_progress"])
+    .describe("Map the tool's status to one of these, e.g. TestRail retest -> failed, untested -> in_progress.");
+
+  server.registerTool(
+    "record_test_results",
+    {
+      title: "Record test results",
+      description:
+        "Record a finished (or partly finished) test run's results for the product version it tested, after reading them in the team's test-management tool (Qase, TestRail, Xray, …) with your own connection to it. Give every case's latest status, mapped to Groundwork's statuses. Recording the same run (tool, project, id) again replaces it. The run is written to groundwork/results/tools/: commit it with the work. A version's readiness is judged on these results and the CI results on the default branch.",
+      inputSchema: {
+        product: z.string().max(100).optional().describe("The product (id or title). Leave out when there's one product."),
+        version: z.string().trim().min(1).max(40).describe("The version the run tested: a planned version of the product."),
+        run: z.object({
+          tool: testCaseInput.shape.tool,
+          project: z.string().trim().max(40).describe("The tool's project the run belongs to, e.g. the Qase project code. Empty when the tool has none."),
+          id: z.string().trim().min(1).max(60).describe("The tool's run id."),
+          title: z.string().trim().min(1).max(300),
+          url: testCaseInput.shape.url,
+        }),
+        results: z
+          .array(
+            z.object({
+              id: testCaseInput.shape.id,
+              status: RESULT_STATUS,
+              endTime: z.string().datetime({ offset: true }).optional().describe("When the tool recorded the result. Required for a finished status: the latest result per case across runs counts."),
+            }),
+          )
+          .max(2000),
+      },
+    },
+    async (args: { product?: string; version: string; run: { tool: string; project: string; id: string; title: string; url?: string }; results: { id: string; status: TestResultStatus; endTime?: string }[] }) => {
+      try {
+        const s = open();
+        const refused = refusal(s);
+        if (refused) return fail(refused);
+        const p = s.targetProduct(args.product);
+        const v = p.versions.find((x) => x.version === args.version);
+        if (!v) throw new UserError(`"${args.version}" isn't a version of ${p.title}. Versions: ${p.versions.map((x) => x.version).join(", ") || "none"}.`);
+        if (v.status === "released") throw new UserError(`${p.title} ${args.version} is released, so its test results can't change.`);
+        const undated = args.results.filter((x) => x.status !== "in_progress" && !x.endTime);
+        if (undated.length) {
+          throw new UserError(`Give endTime (when the tool recorded it) for every finished result; missing for case ${undated.map((x) => x.id).join(", ")}. The latest result per case counts, so it can't be guessed.`);
+        }
+        const c = s.ctx();
+        const run: StoredTestRun = {
+          source: "test-tool",
+          ...args.run,
+          product: p.id,
+          version: args.version,
+          results: args.results.map((x) => ({ id: x.id, status: x.status, endTime: x.status === "in_progress" ? null : x.endTime! })),
+          recordedAt: c.now,
+          recordedBy: c.actor,
+          ...(c.via ? { via: c.via } : {}),
+        };
+        const file = writeResult(root, testRunPath(run), run);
+        const tests = resultsFor(loadResults(root, s.config), p.id, args.version);
+        const planned = s.loaded.items.requirements.filter((r) => (r.plannedFor === args.version || r.releasedIn === args.version) && productOf(s.catalogue, r)?.id === p.id && (r.codeTests?.length || r.testCases?.length));
+        return ok({ recorded: { file, results: run.results.length }, tests: Object.fromEntries(planned.map((r) => [r.id, testStatus(r, tests)])) });
+      } catch (e) {
+        return fail(e instanceof UserError ? e.message : `Groundwork couldn't save that: ${(e as Error).message}`);
+      }
+    },
   );
 
   server.registerTool(
