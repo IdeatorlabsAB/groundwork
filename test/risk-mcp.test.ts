@@ -182,3 +182,36 @@ describe("risk tools", () => {
     expect(data.paths[1]).toEqual({ path: "src/other", requirements: [], risks: [] });
   });
 });
+
+describe("record_baseline with risks", () => {
+  const args = (risk: Record<string, unknown>) => ({
+    version: "0.9",
+    approvedBy: "sam",
+    area: "billing",
+    stakeholder: [{ key: "s1", title: "Pay invoices", story: "As a customer I want to pay invoices so that my account is settled.", acceptanceCriteria: ["Paid"] }],
+    solution: [{ key: "pay", title: "Card payments", story: "The billing page shall take card payments.", acceptanceCriteria: ["Taken"], stakeholderKeys: ["s1"] }],
+    risks: [{ title: "Card charged twice", hazard: "A retry submits the payment again.", harm: "Customers pay twice.", probability: 3, severity: 4, category: "domain", domain: "financial", mitigationKeys: ["pay"], ...risk }],
+  });
+
+  it("records a baseline risk with its control", async () => {
+    const client = await connect();
+    const { error, data } = await call(client, "record_baseline", args({}));
+    expect(error).toBeUndefined();
+    expect(data.created.risks).toEqual(["RSK-0001"]);
+    const text = read(riskFile());
+    expect(text).toContain("origin: existing-product");
+    expect(text).toMatch(/versions:\n  - "0.9"/);
+    expect(text).toMatch(/mitigationIds:\n  - REQ-\d{4}/);
+  });
+
+  it("refuses a baseline risk scored outside the matrix", async () => {
+    const { error } = await call(await connect(), "record_baseline", args({ severity: 9 }));
+    expect(error).toBe("severity must be a whole number from 1 to 5 on this workspace's 5×5 risk matrix (got 9).");
+  });
+
+  it("refuses a baseline risk mitigated by an insight", async () => {
+    write("groundwork/insights/INS-0001-a.md", renderItem({ id: "INS-0001", title: "A", quote: "q", source: "interview", persona: "P", tags: [], sentiment: "neutral", createdAt: "x" }));
+    const { error } = await call(await connect(), "record_baseline", args({ mitigationKeys: [], mitigationIds: ["INS-0001"] }));
+    expect(error).toBe("mitigationIds: INS-0001 is an insight, not a requirement.");
+  });
+});

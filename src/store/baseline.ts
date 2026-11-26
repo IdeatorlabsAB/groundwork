@@ -27,13 +27,17 @@ export interface BaselineInput {
   area?: string;
   hypotheses: (NewHypothesisBase & { key: string })[];
   stakeholder: (BaselineRequirement & { key: string; hypothesisKeys?: string[] })[];
-  solution: (BaselineRequirement & { stakeholderKeys?: string[]; hypothesisKeys?: string[] })[];
+  solution: (BaselineRequirement & { key?: string; stakeholderKeys?: string[]; hypothesisKeys?: string[] })[];
+  /** Risks the existing product carries, with the baseline's requirements (by key) or existing ones (by id) that control them. */
+  risks?: BaselineRisk[];
 }
+
+export type BaselineRisk = Omit<ops.NewRisk, "product" | "versions" | "mitigationIds" | "origin" | "originNote"> & { mitigationKeys?: string[]; mitigationIds?: string[] };
 
 export interface BaselineResult {
   state: Collections;
   product: Product;
-  created: { hypotheses: Record<string, string>; stakeholder: Record<string, string>; solution: string[] };
+  created: { hypotheses: Record<string, string>; stakeholder: Record<string, string>; solution: string[]; risks: string[] };
   warnings: string[];
 }
 
@@ -72,6 +76,7 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
   };
   unique(input.hypotheses, "hypotheses");
   unique(input.stakeholder, "stakeholder");
+  unique(input.solution.filter((x): x is typeof x & { key: string } => !!x.key), "solution");
   const hKeys = Object.fromEntries(input.hypotheses.map((h) => [h.key, h.key]));
   const sKeys = Object.fromEntries(input.stakeholder.map((s) => [s.key, s.key]));
   for (const s of input.stakeholder) resolve(s.hypothesisKeys, hKeys);
@@ -79,6 +84,8 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
     resolve(s.hypothesisKeys, hKeys);
     resolve(s.stakeholderKeys, sKeys);
   }
+  const solKeys = Object.fromEntries(input.solution.flatMap((x) => (x.key ? [[x.key, x.key]] : [])));
+  for (const r of input.risks ?? []) resolve(r.mitigationKeys, solKeys);
 
   // The version: missing ones become the oldest; a planned one may hold only the baseline; a released one only earlier baselines.
   const product: Product = p0.versions.some((v) => v.version === version) ? p0 : { ...p0, versions: [{ version, status: "planned" }, ...p0.versions] };
@@ -98,7 +105,8 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
 
   const existing = state.requirements;
   let s = state;
-  const created: BaselineResult["created"] = { hypotheses: {}, stakeholder: {}, solution: [] };
+  const created: BaselineResult["created"] = { hypotheses: {}, stakeholder: {}, solution: [], risks: [] };
+  const solutionByKey: Record<string, string> = {};
 
   if (input.hypotheses.length) {
     const items = input.hypotheses.map(({ key: _key, ...h }) => {
@@ -124,10 +132,12 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
     const hypothesisIds = withIds(item.hypothesisIds, resolve(hypothesisKeys, created.hypotheses));
     created.stakeholder[key] = add(item, "stakeholder", hypothesisIds ? { hypothesisIds } : {});
   }
-  for (const { stakeholderKeys, hypothesisKeys, ...item } of input.solution) {
+  for (const { key, stakeholderKeys, hypothesisKeys, ...item } of input.solution) {
     const stakeholderIds = withIds(item.stakeholderIds, resolve(stakeholderKeys, created.stakeholder));
     const hypothesisIds = withIds(item.hypothesisIds, resolve(hypothesisKeys, created.hypotheses));
-    created.solution.push(add(item, "solution", { plannedFor: version, ...(stakeholderIds ? { stakeholderIds } : {}), ...(hypothesisIds ? { hypothesisIds } : {}) }));
+    const id = add(item, "solution", { plannedFor: version, ...(stakeholderIds ? { stakeholderIds } : {}), ...(hypothesisIds ? { hypothesisIds } : {}) });
+    created.solution.push(id);
+    if (key) solutionByKey[key] = id;
   }
 
   const warnings: string[] = [];
@@ -144,6 +154,23 @@ export function recordBaseline(state: Collections, catalogue: Catalogue, input: 
     released = out.product;
   } else if (created.solution.length) {
     s = { ...s, requirements: releaseRequirements(s.requirements, cat, { product, version, ids: created.solution, actor: c.actor, now: c.now }) };
+  }
+
+  // Risks the product carries as it is, tagged for the baseline version, with the controls it already has.
+  for (const { mitigationKeys, mitigationIds, ...r } of input.risks ?? []) {
+    const match = state.risks.find((x) => same(x.title, r.title) && x.productArea === (r.productArea ?? input.area));
+    if (match) warnings.push(`Risk "${r.title}" matches ${match.id} already in this area.`);
+    const [next, [risk]] = apply(
+      s,
+      ops.addRisks(s, c, [{ ...r, product: p0.id, versions: [version], mitigationIds: [], origin: "existing-product", originNote, aiGenerated: true, productArea: r.productArea ?? input.area }]),
+    );
+    s = next;
+    created.risks.push(risk.id);
+    for (const reqId of [...resolve(mitigationKeys, solutionByKey), ...(mitigationIds ?? [])]) {
+      const [linked, ok] = apply(s, ops.linkMitigation(s, c, risk.id, reqId));
+      if (!ok) throw new ReleaseError(`mitigationIds: no requirement with id ${reqId}.`);
+      s = linked;
+    }
   }
   return { state: s, product: released, created, warnings };
 }

@@ -1411,9 +1411,27 @@ export function buildServer({ root }: ServerOptions): McpServer {
       .max(30)
       .default([]),
     solution: z
-      .array(requirementInput.omit({ kind: true, product: true, findingIds: true, replaces: true }).extend({ stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() }).strict())
+      .array(
+        requirementInput
+          .omit({ kind: true, product: true, findingIds: true, replaces: true })
+          .extend({ key: key.optional().describe("Set it to name this requirement as a risk's mitigation (mitigationKeys)."), stakeholderKeys: keys.optional(), hypothesisKeys: keys.optional() })
+          .strict(),
+      )
       .min(1)
       .max(60),
+    risks: z
+      .array(
+        riskInput
+          .omit({ product: true, versions: true })
+          .extend({
+            mitigationKeys: keys.optional().describe("Keys of solution requirements in this call that control the risk today."),
+            mitigationIds: z.array(localId).max(50).optional().describe("Existing requirements that control the risk today."),
+          })
+          .strict(),
+      )
+      .max(30)
+      .default([])
+      .describe("Risks the existing product carries, scored as it is today, tagged for the baseline version."),
   };
   type BaselineArgs = z.infer<z.ZodObject<typeof baselineInput>>;
 
@@ -1422,7 +1440,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     {
       title: "Record baseline",
       description:
-        "Record what an existing product already does as its as-is baseline: inferred hypotheses (validated), stakeholder and solution requirements (approved by approvedBy, origin existing-product), with the solution requirements released in `version`. One product area per call. Use only to document existing behaviour, after the user agreed to the list and named the approver. Link new items with keys (stakeholderKeys, hypothesisKeys) or existing ids.",
+        "Record what an existing product already does as its as-is baseline: inferred hypotheses (validated), stakeholder and solution requirements (approved by approvedBy, origin existing-product), with the solution requirements released in `version`, and the risks the product carries (origin existing-product, tagged for `version`, linked to the requirements that control them). One product area per call. Use only to document existing behaviour, after the user agreed to the list and named the approver. Link new items with keys (stakeholderKeys, hypothesisKeys) or existing ids.",
       inputSchema: baselineInput,
     },
     write((s, state, c, a: BaselineArgs) => {
@@ -1455,10 +1473,15 @@ export function buildServer({ root }: ServerOptions): McpServer {
       };
       const stakeholder = a.stakeholder.map((r) => requirement(r, "stakeholder"));
       const solution = a.solution.map((r) => requirement(r, "solution", r.stakeholderKeys));
+      const risks = a.risks.map((r) => {
+        s.checkScores(r);
+        s.check(state, "requirement", r.mitigationIds, "mitigationIds");
+        return { ...r, productArea: s.area(r.productArea), owner: s.actor.id };
+      });
 
       let out;
       try {
-        out = recordBaseline(state, s.catalogue, { product: p, version: a.version, approvedBy: a.approvedBy, note: a.note, sourceRef: a.sourceRef, area: areaId, hypotheses, stakeholder, solution }, c);
+        out = recordBaseline(state, s.catalogue, { product: p, version: a.version, approvedBy: a.approvedBy, note: a.note, sourceRef: a.sourceRef, area: areaId, hypotheses, stakeholder, solution, risks }, c);
       } catch (e) {
         if (e instanceof ReleaseError) throw new UserError(e.message);
         throw e;
