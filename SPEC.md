@@ -234,6 +234,12 @@ Test results are JSON files under `groundwork/results/`. Their shapes match the 
 
 The name is fixed by tool, project and run id, so recording the same run again replaces it. Statuses are `passed`, `failed`, `blocked`, `skipped`, `invalid` and `in_progress`; the agent maps its tool's own statuses to them.
 
+**From the GitHub Action.** With `mode: local`, the Groundwork Action runs `groundwork results add --push` on default-branch runs. On pull requests it runs `groundwork ci pr`, which prints the PR report as JSON: the requirements and risks the PR names in its `Groundwork:` trailer (`Groundwork: REQ-0042, RSK-0007`, in the description or a commit message) or touches through `codeRefs`, and the gaps. The gaps are:
+- a named solution requirement without tests;
+- an approved requirement whose code changed without being named;
+- a high risk without mitigation;
+- with the PR's JUnit reports, named requirements whose linked tests failed or didn't run.
+
 **Reading.** Tools read CI runs from `origin/<resultsBranch>` as last fetched (never fetching themselves) and from the working tree, the branch winning on a name clash, and test-tool runs from the working tree. Only the newest 30 CI runs that count (CI, default branch) are read; files that don't count don't take their place.
 
 **Judging a requirement's tests** (the web app's rules):
