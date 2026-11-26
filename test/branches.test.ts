@@ -244,6 +244,25 @@ describe("renumber and product files", () => {
   });
 });
 
+describe("renumber and sign-off records", () => {
+  it("renumber rewrites ids in a record that's new on the branch, and leaves the base's alone", () => {
+    const r = scenario();
+    // The base has a record of its own, and the branch adds one naming its clashing REQ-0002.
+    r.git("checkout", "-q", "main");
+    r.write("groundwork/releases/PRD-0001-0-9-1.json", JSON.stringify({ schemaVersion: 1, version: "0.9", product: { id: "PRD-0001" }, requirements: [{ id: "REQ-0002" }] }));
+    r.commit("main signs off 0.9");
+    r.git("checkout", "-q", "feature");
+    r.git("merge", "-q", "--no-edit", "main", "-X", "ours");
+    r.write("groundwork/releases/PRD-0001-1-0-1.json", JSON.stringify({ schemaVersion: 1, version: "1.0", product: { id: "PRD-0001" }, requirements: [{ id: "REQ-0002" }, { id: "REQ-0003" }] }));
+    r.commit("feature signs off 1.0");
+    const out = renumber(r.root, "main");
+    const to = out.renumbered.find((x) => x.from === "REQ-0002")!.to;
+    expect(readFileSync(join(r.root, "groundwork/releases/PRD-0001-1-0-1.json"), "utf8")).toContain(`"${to}"`);
+    expect(readFileSync(join(r.root, "groundwork/releases/PRD-0001-0-9-1.json"), "utf8")).toContain('"REQ-0002"');
+    expect(out.rewritten).toContain("groundwork/releases/PRD-0001-1-0-1.json");
+  });
+});
+
 describe("renumber and tests", () => {
   it("says which linked tests still name the old id", () => {
     const r = repo();

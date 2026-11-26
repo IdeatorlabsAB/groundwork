@@ -84,12 +84,12 @@ Every solution requirement should be verified by tests, and the links go both wa
 
 Only solution requirements belong to releases. Stakeholder needs count as met through the solution requirements that fulfil them.
 
-1. `get_release` for the version shows what's planned to ship and what's planned to become obsolete.
+1. `get_release` for the version shows what's planned to ship and what's planned to become obsolete. `check_release` shows what blocks it: unmitigated risks, unapproved requirements, and tests that are missing, failed or haven't run. Fix what you can, or explain each blocker. CI results are read as last fetched: suggest `git fetch` when they may be stale.
 2. Work out what actually shipped. If you have a tracker tool (Linear, Jira, GitHub), check the planned requirements' tickets there, record their status with `update_tickets`, and call `get_release` again. Propose its `ready` list (all tickets done) as shipped, and ask the user about `notReady` and `noTickets`: never ship those on ticket status alone. A ticket counts as done only when its work was completed as delivered: canceled, won't do or duplicate tickets are not done, even when closed. Without a tracker, ask the user.
-3. Show the user what ships, what becomes obsolete, and which planned version the rest moves to. Call `release_version` only once they agree. Groundwork records who released it and when.
-4. A requirement that shipped later in an already released version goes in with `release_requirements`.
-5. A mistake in a released version is fixed with `correct_release`, with the user's reason. Never edit release fields in the files. The correction shows in the release report.
-6. For documentation, `npx -p groundwork-mcp groundwork report release <version>` prints the release report as Markdown.
+3. Show the user what ships, what becomes obsolete, which planned version the rest moves to, and any blockers. Call `release_version` only once they agree. It signs the version off in a frozen record in `groundwork/releases/`. With blockers, it needs an owner's `overrideJustification`, in their own words: never write one yourself.
+4. A signed-off version can't change. To add a requirement that shipped later, or fix a mistake: `withdraw_release` (an owner, with the reason), then `release_requirements` or `correct_release`, then `sign_off_release`.
+5. A version released before sign-off records, and a baseline once all its areas are recorded, are signed off with `sign_off_release`.
+6. For documentation or an audit, `npx -p groundwork-mcp groundwork report release <version>` prints the traceability report: requirements with their tasks, tests and results, risks and mitigations, and readiness. Add `--format csv` for a spreadsheet, and `--table risks` for the risk register.
 
 ## Rules
 

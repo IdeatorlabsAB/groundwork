@@ -95,9 +95,14 @@ When your agent plans a task, it first decides what kind of task it is. "Let's a
 
 When a version goes out, record it: tell your agent *"Release Clinicare 1.1"*, or use the CLI. Groundwork lists what was planned for 1.1. If your workflow has a tracker, the agent refreshes the tickets' status (`update_tickets`) and proposes the requirements whose tickets are all done. It asks you about the rest; requirements without tickets are never shipped on ticket status alone. Without a tracker, it asks you what shipped. Planned requirements that didn't make it move to the next version you name, so nothing is dropped. A replaced requirement becomes obsolete once all its replacements have shipped. Groundwork records who released the version and when.
 
+Before it goes out, Groundwork checks it the way the web app does: every high risk has approved mitigations and a residual score that's no longer high, every requirement is approved, and its tests passed in CI and in your test-management tool. Releasing signs the version off in a frozen record (`groundwork/releases/`), so its report never changes afterwards. With blockers, only an owner can release it, with a written justification.
+
 ```sh
+npx -p groundwork-mcp groundwork check release 1.1      # what blocks it; exits 1 if anything does
 npx -p groundwork-mcp groundwork release 1.1 --shipped REQ-0012,REQ-0014 --move-rest 1.2
-npx -p groundwork-mcp groundwork report release 1.1     # the release report, as Markdown
+npx -p groundwork-mcp groundwork report release 1.1     # the traceability report, as Markdown
+npx -p groundwork-mcp groundwork report release 1.1 --format csv > traceability.csv
+npx -p groundwork-mcp groundwork report release 1.1 --format csv --table risks > risks.csv
 ```
 
 The release report lists what the version introduced, what it made obsolete and how far each stakeholder need is met, e.g. from [examples/acme](examples/acme):
@@ -264,7 +269,7 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 | | `add_risks` | |
 | | `link_code_tests`, `unlink_code_tests`, `link_test_cases`, `unlink_test_cases` | `record_test_results` |
 | | `record_baseline` | |
-| `get_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release` |
+| `get_release`, `check_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release`, `sign_off_release`, `withdraw_release` |
 
 ## Privacy
 

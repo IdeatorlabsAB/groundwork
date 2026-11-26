@@ -21,3 +21,13 @@ export const takesTests = (r: Requirement) => kindOf(r) === "solution" && r.stat
 
 /** "qase ACME-12", "testrail C5": how tools and messages name a case. */
 export const caseLabel = (t: CaseRef) => `${t.tool} ${t.project ? `${t.project}-` : ""}${t.id}`;
+
+/** How the tool itself names a case: ACME-12 in Qase, C101 in TestRail, PROJ-T45 in Xray. Ported from the web app's case-links.ts. */
+export function caseRef(t: CaseRef): string {
+  const project = t.project === undefined ? undefined : String(t.project);
+  const id = String(t.id);
+  if (project && id.toUpperCase().startsWith(`${project.toUpperCase()}-`)) return id;
+  if (t.tool === "qase") return `${project ?? "Qase"}-${id}`;
+  if (t.tool === "testrail") return id;
+  return project ? `${project}-${id}` : id;
+}

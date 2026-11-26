@@ -21,6 +21,8 @@ export interface ProductVersion {
   releasedBy?: string;
   /** Corrections made after the release, each with who, when and why. */
   corrections?: import("./release").Correction[];
+  /** The sign-off record of the release (groundwork/releases/…). Missing on versions released before sign-off records. */
+  signOff?: string;
 }
 
 export interface Product {
@@ -48,6 +50,7 @@ export const productSchema = z
             plannedFor: z.string().optional(),
             releasedAt: z.string().optional(),
             releasedBy: z.string().optional(),
+            signOff: z.string().optional(),
             corrections: z.array(z.object({ at: z.string(), by: z.string(), reason: z.string().min(1) }).loose()).optional(),
           })
           .loose(),

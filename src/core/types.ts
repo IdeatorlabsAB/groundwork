@@ -422,3 +422,22 @@ export interface TestResults {
   results: TestResult[];
   code: { runs: CodeRunInfo[]; results: import("./code-runs").CodeTestEvidence[] };
 }
+
+export type BlockerType =
+  | "unscored-risk"
+  | "missing-mitigation"
+  | "unmitigated-risk"
+  | "unapproved-mitigation"
+  | "untested-mitigation"
+  | "unapproved-requirement"
+  | "missing-tests"
+  | "failed-code-test"
+  | "no-ci-run"
+  | "untested-requirement";
+
+/** Something that stops a version going out until it's fixed or an owner overrides it. Same as the web app's. */
+export interface Blocker {
+  type: BlockerType;
+  refId: ID;
+  message: string;
+}

@@ -104,7 +104,9 @@ export function releaseVersion(requirements: Requirement[], catalogue: Catalogue
   const removed = new Set(input.removed ?? []);
   for (const id of shipped) if (!planned.some((r) => r.id === id)) throw new ReleaseError(`${id} isn't planned for ${version}.`);
   for (const id of removed) if (!removals.some((r) => r.id === id)) throw new ReleaseError(`${id} isn't planned to become obsolete in ${version}.`);
-  const leftovers = planned.filter((r) => !shipped.has(r.id));
+  // Everything else planned for the version moves on, drafts too: nothing can stay planned for a released version.
+  const drafts = requirements.filter((r) => inProduct(catalogue, p)(r) && !isActive(r) && r.status !== "obsolete" && r.plannedFor === version && !r.releasedIn);
+  const leftovers = [...planned.filter((r) => !shipped.has(r.id)), ...drafts];
   const keep = removals.filter((r) => !removed.has(r.id));
   let moveTo: string | undefined;
   if (leftovers.length || keep.length) {

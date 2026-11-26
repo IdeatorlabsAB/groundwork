@@ -10,7 +10,7 @@ import { clashProblems, GitError, renumber } from "./store/branches";
 import { migrate, planMigration, type MigrationPlan } from "./store/migrate";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
-import { runReleaseCommand, runReportCommand } from "./release-cli";
+import { runCheckCommand, runReleaseCommand, runReportCommand } from "./release-cli";
 import { runResultsCommand } from "./store/results-cli";
 import { ImportError, runImport } from "./store/import";
 
@@ -30,15 +30,23 @@ Usage:
   groundwork migrate [--dry-run]       Move products and areas from config.yml into product files
                                        (groundwork/products/), so products can have versions
   groundwork release [product] <version> --shipped ID,ID [--removed ID,ID] [--move-rest <version>]
-                                       Release a version: what shipped, and where the rest moves
+                                       Release a version: what shipped, and where the rest moves.
+                                       It's signed off too; with blockers, an owner adds
+                                       --justification "…"
+  groundwork release [product] <version> --sign-off [--justification "…"]
+                                       Sign off a version released before sign-off records
   groundwork release [product] <version> --correct --reason "…" [--add ID] [--remove ID]
                     [--add-obsolete ID] [--remove-obsolete ID] [--move-rest <version>]
                                        Correct a released version (recorded with the reason)
-  groundwork report release [product] <version> [--json]
-                                       Print a version's release report as Markdown
+  groundwork report release [product] <version> [--format md|csv] [--table traceability|risks] [--json]
+                                       Print a version's traceability report: from its sign-off
+                                       record when it has one, as Markdown or CSV
   groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]
                                        Record a CI run's results for the tests requirements link
                                        to; --push commits them to the results branch (in CI)
+  groundwork check release [product] <version> [--json]
+                                       What blocks a version from going out. Exits 1 if anything
+                                       does (use it in CI before releasing)
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -245,6 +253,10 @@ async function main(): Promise<number> {
       "dry-run": { type: "boolean" },
       overwrite: { type: "boolean" },
       commit: { type: "string" },
+      format: { type: "string" },
+      justification: { type: "string" },
+      "sign-off": { type: "boolean" },
+      table: { type: "string" },
       ref: { type: "string" },
       push: { type: "boolean" },
       at: { type: "string" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
@@ -279,18 +291,25 @@ async function main(): Promise<number> {
           remove: list(values.remove),
           addObsolete: list(values["add-obsolete"]),
           removeObsolete: list(values["remove-obsolete"]),
+          justification: values.justification,
+          signOff: Boolean(values["sign-off"]),
         }),
       );
     }
     case "report": {
       const pv = productVersion(positionals.slice(2));
-      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork report release [product] <version> [--json]"), 1;
-      return print(runReportCommand(findRoot(), { ...pv, json: Boolean(values.json) }));
+      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork report release [product] <version> [--format md|csv] [--table traceability|risks] [--json]"), 1;
+      return print(runReportCommand(findRoot(), { ...pv, json: Boolean(values.json), format: values.format, table: values.table }));
     }
     case "migrate":
       return cmdMigrate(Boolean(values["dry-run"]));
     case "renumber":
       return cmdRenumber(values.against);
+    case "check": {
+      const pv = productVersion(positionals.slice(2));
+      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork check release [product] <version> [--json]"), 1;
+      return print(runCheckCommand(findRoot(), { ...pv, json: Boolean(values.json) }));
+    }
     case "results": {
       const files = positionals.slice(2);
       if (arg !== "add" || !files.length) return console.error("Usage: groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]"), 1;

@@ -1,7 +1,7 @@
 // Ported from centropic-prototype src/lib/tests.ts. Keep in step with it.
 import { isRunOf } from "./match-tests";
 import type { CodeTestStatus } from "./junit";
-import { caseKey, caseLabel } from "./test-links";
+import { caseKey, caseRef } from "./test-links";
 import type { Requirement, TestResult, TestResultStatus, TestResults } from "./types";
 
 /**
@@ -68,10 +68,10 @@ function caseOutcomes(r: Pick<Requirement, "testCases">, results: TestResult[]):
   });
 }
 
-/** "qase ACME-12 failed, testrail C5 not run": the cases that keep a requirement from counting as tested. */
+/** "ACME-12 failed, C5 not run": the cases that keep a requirement from counting as tested. Same wording as the web app. */
 export function describeUntested(t: RequirementTestStatus): string {
   return t.cases
     .filter((c) => c.status !== "passed")
-    .map((c) => `${caseLabel(c)} ${c.status === "not-run" ? "not run" : c.status}`)
+    .map((c) => `${caseRef(c)} ${c.status === "not-run" ? "not run" : c.status}`)
     .join(", ");
 }
