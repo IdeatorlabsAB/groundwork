@@ -177,3 +177,31 @@ describe("validate test links", () => {
     expect(problems()).toContain(`warning ${REQS}/REQ-0002-totals.md: test case qase ACME-12 is linked twice`);
   });
 });
+
+describe("hand-written test links", () => {
+  const withTests = (yaml: string) => write(`${REQS}/REQ-0002-totals.md`, read(`${REQS}/REQ-0002-totals.md`).replace("---\n", `---\n${yaml}`));
+
+  it("validate reports a project that isn't text instead of crashing", () => {
+    withTests('testCases:\n  - { tool: qase, id: "5", title: T, project: 7, linkedAt: x, linkedBy: sam }\n');
+    expect(problems()).toContain(`error ${REQS}/REQ-0002-totals.md: testCases: project must be text, e.g. project: "7"`);
+  });
+
+  it("validate asks to quote a numeric case id", () => {
+    withTests("testCases:\n  - { tool: qase, id: 12, title: T, linkedAt: x, linkedBy: sam }\n");
+    expect(problems()).toContain(`error ${REQS}/REQ-0002-totals.md: testCases: quote the case id, e.g. id: "12"`);
+  });
+
+  it("validate reports an empty test entry", () => {
+    withTests("codeTests:\n  -\ntestCases:\n  -\n");
+    expect(problems()).toEqual(
+      expect.arrayContaining([`error ${REQS}/REQ-0002-totals.md: codeTests: a test needs a path and a name`, `error ${REQS}/REQ-0002-totals.md: testCases: a case needs a tool, an id and a title`]),
+    );
+  });
+
+  it("search_items and link_test_cases don't crash on hand-written entries", async () => {
+    withTests('codeTests:\n  -\ntestCases:\n  - { tool: qase, id: 12, title: T, project: 7, linkedAt: x, linkedBy: sam }\n');
+    const client = await connect();
+    expect((await call(client, "search_items", { query: "totals" })).error).toBeUndefined();
+    expect((await call(client, "link_test_cases", { requirementId: "REQ-0002", cases: [qase] })).error).toBeUndefined();
+  });
+});

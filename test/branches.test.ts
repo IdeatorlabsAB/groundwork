@@ -165,7 +165,7 @@ describe("renumber", () => {
   it("does nothing the second time", () => {
     const r = scenario();
     renumber(r.root, "main");
-    expect(renumber(r.root, "main")).toEqual({ renumbered: [], rewritten: [], mentions: [], tickets: [] });
+    expect(renumber(r.root, "main")).toEqual({ renumbered: [], rewritten: [], mentions: [], tickets: [], tests: [] });
   });
 
   it("numbers several clashes of one kind without new clashes", () => {
@@ -241,6 +241,30 @@ describe("renumber and product files", () => {
       { from: "PRD-0001", to: "PRD-0002", oldPath: "groundwork/products/PRD-0001-clinicare-mobile.md", newPath: "groundwork/products/PRD-0002-clinicare-mobile.md" },
     ]);
     expect(parseItem(readFileSync(join(r.root, `${R}/REQ-0002-mobile-sol.md`), "utf8")).data.product).toBe("PRD-0002");
+  });
+});
+
+describe("renumber and tests", () => {
+  it("says which linked tests still name the old id", () => {
+    const r = repo();
+    r.write(`${R}/REQ-0001-need.md`, req("REQ-0001", "Need"));
+    r.commit("base");
+    r.git("branch", "feature");
+    r.write(`${R}/REQ-0002-main.md`, req("REQ-0002", "Main"));
+    r.commit("main");
+    r.git("checkout", "-q", "feature");
+    r.write(
+      `${R}/REQ-0002-feat.md`,
+      req("REQ-0002", "Feat", {
+        codeTests: [
+          { path: "test/feat.test.ts", name: "feat > REQ-0002 works", linkedAt: "x", linkedBy: "sam" },
+          { path: "test/feat.test.ts", name: "feat > other", linkedAt: "x", linkedBy: "sam" },
+        ],
+        testCases: [{ tool: "testrail", id: "C9", title: "REQ-0002 works", linkedAt: "x", linkedBy: "sam" }],
+      }),
+    );
+    r.commit("feature");
+    expect(renumber(r.root, "main").tests).toEqual([{ from: "REQ-0002", to: "REQ-0003", tests: ['test/feat.test.ts "feat > REQ-0002 works"', "testrail C9 REQ-0002 works"] }]);
   });
 });
 

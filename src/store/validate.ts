@@ -197,13 +197,22 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
             if (opts.root && !existsSync(join(opts.root, t.path))) warn(`codeTests: ${t.path} doesn't exist`);
           }
           const seenCases = new Set<string>();
-          for (const t of (Array.isArray(cases) ? cases : []) as Partial<TestCaseLink>[]) {
+          for (const t of (Array.isArray(cases) ? cases : []) as Partial<Record<keyof TestCaseLink, unknown>>[]) {
+            if (typeof t?.id === "number") {
+              err(`testCases: quote the case id, e.g. id: "${t.id}"`);
+              continue;
+            }
             if (typeof t?.tool !== "string" || typeof t?.id !== "string" || typeof t?.title !== "string" || !t.tool || !t.id || !t.title) {
               err("testCases: a case needs a tool, an id and a title");
               continue;
             }
-            const k = caseKey({ tool: t.tool, id: t.id, project: t.project });
-            if (seenCases.has(k)) warn(`test case ${t.tool.toLowerCase()} ${t.project ? `${t.project.toUpperCase()}-` : ""}${t.id} is linked twice`);
+            if (t.project !== undefined && typeof t.project !== "string") {
+              err(`testCases: project must be text, e.g. project: "${String(t.project)}"`);
+              continue;
+            }
+            const project = t.project as string | undefined;
+            const k = caseKey({ tool: t.tool, id: t.id, project });
+            if (seenCases.has(k)) warn(`test case ${t.tool.toLowerCase()} ${project ? `${project.toUpperCase()}-` : ""}${t.id} is linked twice`);
             seenCases.add(k);
           }
           const seenTickets = new Set<string>();

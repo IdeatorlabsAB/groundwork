@@ -157,7 +157,12 @@ function textOf(kind: Kind, item: AnyItem): string {
     case "requirement": {
       const r = item as Requirement;
       const tickets = ticketsOf(r).map((t) => `${t.key} ${t.title ?? ""}`);
-      const tests = [...(r.codeTests ?? []).map((t) => `${t.path} ${t.name}`), ...(r.testCases ?? []).map((t) => `${t.tool} ${t.project ?? ""} ${t.id} ${t.title}`)];
+      // Hand-written files can hold empty entries; skip them rather than fail the search.
+      const objects = <T>(list: T[] | undefined) => (Array.isArray(list) ? list : []).filter((t): t is T => !!t && typeof t === "object");
+      const tests = [
+        ...objects(r.codeTests).map((t) => `${t.path ?? ""} ${t.name ?? ""}`),
+        ...objects(r.testCases).map((t) => `${t.tool ?? ""} ${t.project ?? ""} ${t.id ?? ""} ${t.title ?? ""}`),
+      ];
       return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, ...tests, notes].join(" ");
     }
     case "risk": {

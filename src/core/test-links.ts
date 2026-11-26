@@ -9,7 +9,8 @@ import type { CodeTestLink, Requirement, TestCaseLink } from "./types";
 type CaseRef = Pick<TestCaseLink, "tool" | "id"> & { project?: string };
 
 /** A test case is the same case when tool, project and id match, ignoring case. */
-export const caseKey = (t: CaseRef): string => [t.tool.toLowerCase(), (t.project ?? "").toUpperCase(), t.id.toUpperCase()].join("\u0000");
+// Defensive about hand-written files: an unquoted `id: 12` or `project: 7` reads as a number, and must not throw.
+export const caseKey = (t: CaseRef): string => [String(t.tool ?? "").toLowerCase(), String(t.project ?? "").toUpperCase(), String(t.id ?? "").toUpperCase()].join("\u0000");
 
 export const sameCase = (a: CaseRef, b: CaseRef) => caseKey(a) === caseKey(b);
 
