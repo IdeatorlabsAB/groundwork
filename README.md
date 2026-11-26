@@ -157,7 +157,7 @@ jobs:
         run: npx -p groundwork-mcp groundwork results add "reports/*.xml" --push
 ```
 
-If a ruleset protects every branch, allow `groundwork-results`. Results from a laptop are written but don't count as evidence. Your agent records runs from a test-management tool (Qase, TestRail, …) with `record_test_results`, and `get_item` shows whether a requirement's tests passed.
+If a ruleset protects every branch, allow `groundwork-results`. The [Groundwork Action](action/README.md#without-a-groundwork-account-local-mode) does this step for you with `mode: local`, and also comments on pull requests with the requirements and risks they name or touch and the traceability gaps. Results from a laptop are written but don't count as evidence. Your agent records runs from a test-management tool (Qase, TestRail, …) with `record_test_results`, and `get_item` shows whether a requirement's tests passed.
 
 ## Working on branches
 

@@ -69,7 +69,7 @@ Groundwork's records are made while you work, not afterwards. Nobody should have
 - If the work turns out different from the plan, propose the change to the Groundwork section in one short list before recording it.
 
 **4. Open the PR.**
-- End the PR description, and each commit message, with a trailer naming what it implements or restores: `Groundwork: REQ-0042, RSK-0007`. It ties the change to its requirements in the git history, and the Groundwork GitHub Action reads it once the repository uses it.
+- End the PR description, and each commit message, with a trailer naming what it implements or restores: `Groundwork: REQ-0042, RSK-0007`. It ties the change to its requirements in the git history. The Groundwork GitHub Action reads it and comments on the PR with any traceability gaps.
 - After opening it, `link_tickets` the PR to its solution requirements: { tracker: "github", key: "owner/repo#57", url }.
 - Call `check_release` for the version and tell the user what still blocks it.
 

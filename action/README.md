@@ -11,6 +11,8 @@ A safety net for what coding agents forget to record in [Groundwork](https://gro
 
 Groundwork never calls GitHub. The Action posts the comment with the workflow's own token.
 
+**No Groundwork account?** Use [local mode](#without-a-groundwork-account-local-mode): the same comment, from your repository's own `groundwork/` files.
+
 ## Set up
 
 1. A workspace owner creates a CI token in Groundwork → **Settings → Connect CI**. Save it as the repository secret `GROUNDWORK_CI_TOKEN`.
@@ -109,3 +111,40 @@ groundwork:
 ```
 
 This needs the project's merge method to be **Merge commit**, which writes the "See merge request" line. The keys are read from the merge commit message, so put the `Groundwork:` trailer there. Add `%{description}` to the project's merge commit template, or write the trailer in the merge request's title or a commit. The ticket is recorded as `group/project#12`.
+
+## Without a Groundwork account (local mode)
+
+With `mode: local`, the Action works from the `groundwork/` files in your repository, with no token and nothing sent anywhere. It runs the `groundwork-mcp` command line of the Action's own version (via `npx`).
+
+- **On a pull request** it posts the same comment: the requirements and risks the PR names in its `Groundwork:` trailer, or touches through their `codeRefs`, and the gaps. It reads the requirements as they are in the PR, so a PR that adds the requirement it names counts. With `junit`, the comment also says which named requirements' tests failed or didn't run in this PR. `fail-on-gaps` works as in cloud mode.
+- **On the default branch** (a push, a schedule, a manual run) with `junit`, it records the results with `groundwork results add --push` on the `groundwork-results` branch, where `groundwork check release` and reports find them.
+- **No merge tagging.** Local versions have no "collecting" release: plan requirements for versions with your agent, as usual.
+
+```yaml
+# .github/workflows/groundwork.yml
+on:
+  pull_request:          # never pull_request_target: it would run with a write token on a fork's files
+  push:
+    branches: [main]
+jobs:
+  groundwork:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # to push results to groundwork-results
+      pull-requests: write   # to comment
+    steps:
+      - uses: actions/checkout@v5          # keep the default credentials: the results push uses them
+      - run: npm ci && npx vitest run --reporter=junit --outputFile=junit.xml
+      - uses: IdeatorlabsAB/groundwork/action@v0.9.0
+        if: ${{ !cancelled() }}            # record failing runs too
+        with:
+          mode: local
+          junit: junit.xml
+          # working-directory: apps/web    # when groundwork/ isn't at the repository root
+```
+
+- **Pull requests from forks** get a read-only token, so the comment can't be posted. The gaps still go to the job summary and the `gaps` output.
+- **When the command line can't run** (no network to npm, say), the Action warns and leaves `gaps` unset. It doesn't fail the job.
+- **A ruleset that covers every branch** must allow `groundwork-results`.
+- **Use a released tag** (`@v0.9.0`). It runs the `groundwork-mcp` of the same version. From `@main`, set `groundwork-version` to a published version that has `groundwork ci pr` (0.9.0 or later).
+- **With `fail-on-gaps`, a check that couldn't run fails the job**, e.g. no `groundwork/` in `working-directory`, or npm unreachable. Without it, that's a warning.
