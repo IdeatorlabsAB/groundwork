@@ -1,0 +1,773 @@
+{
+  "bundle": {
+    "format": "groundwork-files",
+    "schemaVersion": 2,
+    "config": {
+      "name": "Acme",
+      "productAreas": [
+        {
+          "id": "onboarding",
+          "label": "Onboarding"
+        },
+        {
+          "id": "reporting",
+          "label": "Reporting"
+        }
+      ],
+      "products": [
+        "Acme app"
+      ],
+      "people": [
+        {
+          "id": "sam",
+          "name": "Sam",
+          "role": "owner"
+        },
+        {
+          "id": "alex",
+          "name": "Alex",
+          "role": "editor"
+        }
+      ]
+    },
+    "items": {
+      "insights": [
+        {
+          "id": "INS-0001",
+          "title": "Setup takes too long",
+          "quote": "I gave up on the import after twenty minutes and went back to our spreadsheet.",
+          "source": "interview",
+          "persona": "Ops lead at a 50-person logistics firm",
+          "participant": "P03",
+          "tags": [
+            "onboarding",
+            "import"
+          ],
+          "sentiment": "negative",
+          "productArea": "onboarding",
+          "createdAt": "2026-11-18T08:31:25.125Z",
+          "createdBy": "sam",
+          "notes": "## Interview context\n\nP03 runs dispatch for a 50-person logistics firm. They tried the import twice before giving up; both files had dates in DD/MM format."
+        },
+        {
+          "id": "INS-0002",
+          "title": "Import errors are unclear",
+          "quote": "It just said 'error 4 on row 212'. Error 4 of what?",
+          "source": "support",
+          "persona": "Ops lead",
+          "tags": [
+            "import"
+          ],
+          "sentiment": "negative",
+          "productArea": "onboarding",
+          "createdAt": "2026-11-18T08:31:25.125Z",
+          "createdBy": "sam"
+        },
+        {
+          "id": "INS-0003",
+          "title": "Monthly report is rebuilt by hand",
+          "quote": "Every month I copy the numbers into slides. It takes most of a day.",
+          "source": "interview",
+          "persona": "Finance manager",
+          "participant": "P07",
+          "tags": [
+            "reporting"
+          ],
+          "sentiment": "negative",
+          "productArea": "reporting",
+          "createdAt": "2026-11-18T08:31:25.125Z",
+          "createdBy": "sam"
+        }
+      ],
+      "hypotheses": [
+        {
+          "id": "HYP-0001",
+          "title": "Guided import",
+          "outcome": "raise week-1 activation",
+          "forWhom": "new ops leads",
+          "benefit": "a working workspace in five minutes",
+          "feature": "a guided CSV import that fixes errors inline",
+          "successMetric": {
+            "name": "Week-1 activation",
+            "unit": "%",
+            "baseline": 38,
+            "target": 55,
+            "direction": "increase",
+            "timeframe": "over a 4-week pilot"
+          },
+          "guardrail": "more support tickets",
+          "riskiestAssumption": "Most failed imports are caused by fixable formatting errors.",
+          "confidence": 86,
+          "insightIds": [
+            "INS-0001",
+            "INS-0002"
+          ],
+          "knowWhen": "week-1 activation rises from 38 to 55 % or more over a 4-week pilot, without more support tickets",
+          "productArea": "onboarding",
+          "status": "validated",
+          "aiGenerated": true,
+          "owner": "sam",
+          "createdAt": "2026-11-18T08:31:25.130Z",
+          "updatedAt": "2026-11-18T08:31:25.137Z"
+        },
+        {
+          "id": "HYP-0002",
+          "title": "One-click monthly report",
+          "outcome": "make Acme part of the monthly close",
+          "forWhom": "finance managers",
+          "benefit": "their reporting day back",
+          "feature": "a monthly report exported straight to slides",
+          "confidence": 40,
+          "insightIds": [
+            "INS-0003"
+          ],
+          "knowWhen": "",
+          "productArea": "reporting",
+          "status": "draft",
+          "aiGenerated": true,
+          "owner": "sam",
+          "createdAt": "2026-11-18T08:31:25.132Z",
+          "updatedAt": "2026-11-18T08:31:25.132Z"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "EXP-0001",
+          "title": "Guided import pilot",
+          "hypothesisId": "HYP-0001",
+          "method": "pilot",
+          "description": "The next 40 new accounts get the guided import; the rest get today's import. Activation is measured at day 7.",
+          "primaryMetric": {
+            "name": "Week-1 activation",
+            "unit": "%",
+            "baseline": 38,
+            "target": 55,
+            "direction": "increase",
+            "actual": 61
+          },
+          "guardrails": [
+            {
+              "name": "Import support tickets",
+              "unit": "/week",
+              "baseline": 12,
+              "target": 15,
+              "direction": "decrease",
+              "actual": 11
+            }
+          ],
+          "sampleSize": "40 accounts",
+          "durationWeeks": 4,
+          "status": "completed",
+          "aiGenerated": true,
+          "owner": "sam",
+          "startDate": "2026-11-18T08:31:25.135Z",
+          "endDate": "2026-11-18T08:31:25.137Z",
+          "resultNotes": "Activation rose to 61%. Tickets about imports dropped slightly.",
+          "verdict": "validated"
+        }
+      ],
+      "findings": [
+        {
+          "id": "FND-0001",
+          "title": "Guided import lifts activation",
+          "summary": "New accounts with the guided import activated at 61% vs 38%, without more support load. Inline error fixing mattered most in session recordings.",
+          "experimentIds": [
+            "EXP-0001"
+          ],
+          "hypothesisIds": [
+            "HYP-0001"
+          ],
+          "insightIds": [
+            "INS-0001"
+          ],
+          "confidence": "high",
+          "productArea": "onboarding",
+          "aiGenerated": true,
+          "createdAt": "2026-11-18T08:31:25.139Z"
+        }
+      ],
+      "requirements": [
+        {
+          "id": "REQ-0001",
+          "title": "Get set up without help",
+          "kind": "stakeholder",
+          "story": "As a new ops lead I want to get our data into Acme on my first day without contacting support, so that my team can start using it straight away.",
+          "stakeholder": "Ops leads",
+          "acceptanceCriteria": [
+            "A new account can import its first data set unaided"
+          ],
+          "priority": "must",
+          "findingIds": [
+            "FND-0001"
+          ],
+          "productArea": "onboarding",
+          "aiGenerated": true,
+          "createdAt": "2026-11-18T08:31:25.141Z",
+          "status": "draft",
+          "product": "Acme app",
+          "productId": "PRD-0001"
+        },
+        {
+          "id": "REQ-0002",
+          "title": "Guided CSV import",
+          "kind": "solution",
+          "story": "The CSV import shall guide the user step by step through uploading a file, mapping its columns, fixing errors and confirming. Each error shall name the row, the column and how to fix it, and it shall be possible to fix errors inline without uploading the file again.",
+          "product": "Acme app",
+          "stakeholderIds": [
+            "REQ-0001"
+          ],
+          "acceptanceCriteria": [
+            "Shows each step: upload, map columns, fix errors, confirm",
+            "Errors name the row, the column and how to fix them",
+            "Fixes can be made inline without re-uploading"
+          ],
+          "priority": "must",
+          "findingIds": [
+            "FND-0001"
+          ],
+          "productArea": "onboarding",
+          "aiGenerated": true,
+          "createdAt": "2026-11-18T08:31:25.143Z",
+          "status": "approved",
+          "approver": "sam",
+          "approvedBy": "sam",
+          "approvedAt": "2026-11-18T08:31:25.146Z",
+          "plannedFor": "1.0",
+          "releasedIn": "1.0",
+          "releasedAt": "2026-11-22T22:33:24.310Z",
+          "releasedBy": "sam",
+          "tickets": [
+            {
+              "tracker": "linear",
+              "key": "ACME-12",
+              "url": "https://linear.app/acme/issue/ACME-12",
+              "title": "Guided CSV import wizard",
+              "state": "Done",
+              "done": true,
+              "linkedAt": "2026-11-20T09:00:00.000Z",
+              "linkedBy": "sam"
+            }
+          ],
+          "productId": "PRD-0001"
+        },
+        {
+          "id": "REQ-0003",
+          "title": "Keep audit log of imports for 7 years",
+          "kind": "solution",
+          "story": "The system shall log every import with who ran it, when, and which file was imported, and shall keep each log entry for 7 years.",
+          "product": "Acme app",
+          "stakeholderIds": [
+            "REQ-0004"
+          ],
+          "riskIds": [
+            "RSK-0001"
+          ],
+          "codeTests": [
+            {
+              "path": "test/import-audit.test.ts",
+              "name": "import audit > REQ-0003 records who, when and which file",
+              "linkedAt": "2026-11-27T10:00:00.000Z",
+              "linkedBy": "sam"
+            }
+          ],
+          "testCases": [
+            {
+              "tool": "testrail",
+              "id": "C101",
+              "title": "Audit log keeps 7 years of imports",
+              "linkedAt": "2026-11-27T10:00:00.000Z",
+              "linkedBy": "sam"
+            }
+          ],
+          "acceptanceCriteria": [
+            "Each import records who, when and which file",
+            "Logs are kept for 7 years"
+          ],
+          "priority": "must",
+          "origin": "regulation",
+          "originNote": "Record-keeping rules, section 4.2",
+          "aiGenerated": true,
+          "status": "approved",
+          "findingIds": [],
+          "createdAt": "2026-11-18T08:31:25.148Z",
+          "approvedBy": "sam",
+          "approvedAt": "2026-11-26T10:00:00.000Z",
+          "approver": "sam",
+          "plannedFor": "1.1",
+          "releasedIn": "1.1",
+          "releasedAt": "2026-11-28T10:00:00.000Z",
+          "releasedBy": "sam",
+          "productId": "PRD-0001"
+        },
+        {
+          "id": "REQ-0004",
+          "title": "Prove who imported what",
+          "kind": "stakeholder",
+          "story": "As a compliance officer I want to see who imported which data and when, so that we meet record-keeping rules during audits.",
+          "stakeholder": "Compliance officers",
+          "acceptanceCriteria": [
+            "Any import from the last 7 years can be traced to a person, a time and a file"
+          ],
+          "priority": "must",
+          "origin": "regulation",
+          "originNote": "Record-keeping rules, section 4.2",
+          "aiGenerated": true,
+          "status": "approved",
+          "findingIds": [],
+          "createdAt": "2026-11-18T08:31:25.147Z",
+          "approvedBy": "sam",
+          "approvedAt": "2026-11-26T10:00:00.000Z",
+          "product": "Acme app",
+          "productId": "PRD-0001"
+        },
+        {
+          "id": "REQ-0005",
+          "title": "Show import history",
+          "kind": "solution",
+          "story": "The system shall list every import with who ran it and when.",
+          "acceptanceCriteria": [
+            "Each import is listed"
+          ],
+          "priority": "should",
+          "status": "approved",
+          "approvedBy": "sam",
+          "approvedAt": "2026-11-26T10:00:00.000Z",
+          "approver": "sam",
+          "stakeholderIds": [
+            "REQ-0004"
+          ],
+          "product": "Acme app",
+          "plannedFor": "1.2",
+          "findingIds": [],
+          "codeTests": [
+            {
+              "path": "test/import-audit.test.ts",
+              "name": "import history > REQ-0005 lists imports",
+              "linkedAt": "2026-11-28T10:00:00.000Z",
+              "linkedBy": "sam"
+            }
+          ],
+          "testCases": [
+            {
+              "tool": "qase",
+              "project": "ACME",
+              "id": "7",
+              "title": "History lists imports",
+              "linkedAt": "2026-11-28T10:00:00.000Z",
+              "linkedBy": "sam"
+            }
+          ],
+          "createdAt": "2026-11-26T10:00:00.000Z",
+          "productId": "PRD-0001"
+        }
+      ],
+      "risks": [
+        {
+          "id": "RSK-0001",
+          "title": "Imports attributed to the wrong person",
+          "hazard": "The importer runs under a shared service account, so an import can't be traced to the person who ran it.",
+          "harm": "Acme can't show auditors who imported which data, and fails its record-keeping obligations.",
+          "probability": 3,
+          "severity": 4,
+          "residualProbability": 1,
+          "residualSeverity": 4,
+          "mitigationIds": [
+            "REQ-0003"
+          ],
+          "product": "Acme app",
+          "versions": [
+            "1.1"
+          ],
+          "category": "domain",
+          "domain": "regulatory-compliance",
+          "owner": "sam",
+          "productArea": "onboarding",
+          "createdAt": "2026-11-26T10:00:00.000Z",
+          "notes": "Raised while planning the audit log for 1.1.",
+          "productId": "PRD-0001"
+        },
+        {
+          "id": "RSK-0002",
+          "title": "History shows other tenants' imports",
+          "hazard": "The list isn't filtered by tenant.",
+          "harm": "One customer sees another's data.",
+          "probability": 4,
+          "severity": 5,
+          "mitigationIds": [],
+          "product": "Acme app",
+          "versions": [
+            "1.2"
+          ],
+          "category": "security",
+          "owner": "sam",
+          "createdAt": "2026-11-26T10:00:00.000Z",
+          "productId": "PRD-0001"
+        }
+      ]
+    },
+    "versions": [
+      {
+        "productId": "PRD-0001",
+        "product": "Acme app",
+        "version": "1.0",
+        "status": "released",
+        "releasedAt": "2026-11-22T22:33:24.310Z",
+        "releasedBy": "sam"
+      },
+      {
+        "productId": "PRD-0001",
+        "product": "Acme app",
+        "version": "1.1",
+        "status": "released",
+        "releasedAt": "2026-11-28T10:00:00.000Z",
+        "releasedBy": "sam",
+        "signOff": "groundwork/releases/PRD-0001-1-1-1.json"
+      },
+      {
+        "productId": "PRD-0001",
+        "product": "Acme app",
+        "version": "1.2",
+        "status": "planned"
+      }
+    ],
+    "records": [
+      {
+        "schemaVersion": 1,
+        "kind": "release",
+        "product": {
+          "id": "PRD-0001",
+          "title": "Acme app"
+        },
+        "version": "1.1",
+        "signedAt": "2026-11-28T10:00:00.000Z",
+        "signedOffBy": {
+          "id": "sam",
+          "name": "Sam"
+        },
+        "people": {
+          "sam": "Sam",
+          "alex": "Alex"
+        },
+        "matrix": {
+          "size": 5,
+          "probabilityLabels": [
+            "Rare",
+            "Unlikely",
+            "Possible",
+            "Likely",
+            "Almost certain"
+          ],
+          "severityLabels": [
+            "Negligible",
+            "Minor",
+            "Moderate",
+            "Major",
+            "Catastrophic"
+          ],
+          "cells": [
+            [
+              "low",
+              "low",
+              "low",
+              "low",
+              "medium"
+            ],
+            [
+              "low",
+              "low",
+              "medium",
+              "medium",
+              "medium"
+            ],
+            [
+              "low",
+              "medium",
+              "medium",
+              "medium",
+              "high"
+            ],
+            [
+              "low",
+              "medium",
+              "medium",
+              "high",
+              "high"
+            ],
+            [
+              "medium",
+              "medium",
+              "high",
+              "high",
+              "high"
+            ]
+          ]
+        },
+        "risks": [
+          {
+            "id": "RSK-0001",
+            "title": "Imports attributed to the wrong person",
+            "hazard": "The importer runs under a shared service account, so an import can't be traced to the person who ran it.",
+            "harm": "Acme can't show auditors who imported which data, and fails its record-keeping obligations.",
+            "probability": 3,
+            "severity": 4,
+            "residualProbability": 1,
+            "residualSeverity": 4,
+            "mitigationIds": [
+              "REQ-0003"
+            ],
+            "product": "PRD-0001",
+            "versions": [
+              "1.1"
+            ],
+            "category": "domain",
+            "domain": "regulatory-compliance",
+            "owner": "sam",
+            "productArea": "onboarding",
+            "createdAt": "2026-11-26T10:00:00.000Z",
+            "notes": "Raised while planning the audit log for 1.1.",
+            "initialLevel": "medium",
+            "residualLevel": "low",
+            "mitigated": true
+          }
+        ],
+        "requirements": [
+          {
+            "id": "REQ-0003",
+            "title": "Keep audit log of imports for 7 years",
+            "kind": "solution",
+            "story": "The system shall log every import with who ran it, when, and which file was imported, and shall keep each log entry for 7 years.",
+            "status": "approved",
+            "acceptanceCriteria": [
+              "Each import records who, when and which file",
+              "Logs are kept for 7 years"
+            ],
+            "approvedBy": "sam",
+            "approvedAt": "2026-11-26T10:00:00.000Z",
+            "riskIds": [
+              "RSK-0001"
+            ],
+            "stakeholderIds": [
+              "REQ-0004"
+            ],
+            "testCases": [
+              {
+                "tool": "testrail",
+                "id": "C101",
+                "title": "Audit log keeps 7 years of imports",
+                "linkedAt": "2026-11-27T10:00:00.000Z",
+                "linkedBy": "sam"
+              }
+            ],
+            "codeTests": [
+              {
+                "path": "test/import-audit.test.ts",
+                "name": "import audit > REQ-0003 records who, when and which file",
+                "linkedAt": "2026-11-27T10:00:00.000Z",
+                "linkedBy": "sam"
+              }
+            ],
+            "plannedFor": "1.1",
+            "releasedIn": "1.1"
+          },
+          {
+            "id": "REQ-0004",
+            "title": "Prove who imported what",
+            "kind": "stakeholder",
+            "story": "As a compliance officer I want to see who imported which data and when, so that we meet record-keeping rules during audits.",
+            "status": "approved",
+            "acceptanceCriteria": [
+              "Any import from the last 7 years can be traced to a person, a time and a file"
+            ],
+            "approvedBy": "sam",
+            "approvedAt": "2026-11-26T10:00:00.000Z"
+          }
+        ],
+        "blockers": [],
+        "tests": {
+          "fetchedAt": "2026-11-28T10:00:00.000Z",
+          "fetched": false,
+          "resultsCommit": null,
+          "runs": [
+            {
+              "tool": "testrail",
+              "project": "",
+              "id": "R11",
+              "title": "1.1 regression",
+              "recordedAt": "2026-11-27T12:00:00.000Z",
+              "recordedBy": "sam"
+            }
+          ],
+          "codeRuns": [
+            {
+              "id": "00000000-0000-4000-8000-00000000c101",
+              "commitSha": "abc1234def5678",
+              "ref": "refs/heads/main",
+              "at": "2026-11-27T10:00:00.000Z"
+            }
+          ],
+          "requirements": {
+            "REQ-0003": {
+              "status": "passed",
+              "cases": [
+                {
+                  "tool": "testrail",
+                  "id": "C101",
+                  "title": "Audit log keeps 7 years of imports",
+                  "status": "passed",
+                  "runId": "R11",
+                  "endTime": "2026-11-27T11:00:00.000Z"
+                }
+              ],
+              "codeTests": [
+                {
+                  "path": "test/import-audit.test.ts",
+                  "name": "import audit > REQ-0003 records who, when and which file",
+                  "status": "passed",
+                  "runId": "00000000-0000-4000-8000-00000000c101",
+                  "commitSha": "abc1234def5678"
+                }
+              ]
+            }
+          }
+        },
+        "report": {
+          "product": {
+            "id": "PRD-0001",
+            "title": "Acme app"
+          },
+          "version": {
+            "version": "1.1",
+            "status": "released",
+            "releasedAt": "2026-11-28T10:00:00.000Z",
+            "releasedBy": "sam"
+          },
+          "introduced": [
+            {
+              "id": "REQ-0003",
+              "title": "Keep audit log of imports for 7 years",
+              "story": "The system shall log every import with who ran it, when, and which file was imported, and shall keep each log entry for 7 years.",
+              "tickets": [],
+              "stakeholders": [
+                {
+                  "id": "REQ-0004",
+                  "title": "Prove who imported what"
+                }
+              ],
+              "releasedAt": "2026-11-28T10:00:00.000Z",
+              "releasedBy": "sam"
+            }
+          ],
+          "madeObsolete": [],
+          "stakeholders": [
+            {
+              "id": "REQ-0004",
+              "title": "Prove who imported what",
+              "released": 1,
+              "total": 2,
+              "inThisVersion": "partly met"
+            }
+          ],
+          "corrections": []
+        },
+        "file": "groundwork/releases/PRD-0001-1-1-1.json"
+      }
+    ],
+    "codeRuns": [
+      {
+        "id": "00000000-0000-4000-8000-00000000c101",
+        "commitSha": "abc1234def5678",
+        "ref": "refs/heads/main",
+        "at": "2026-11-27T10:00:00.000Z",
+        "source": "ci",
+        "defaultBranch": true,
+        "totals": {
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        "results": [
+          {
+            "path": "test/import-audit.test.ts",
+            "name": "import audit > REQ-0003 records who, when and which file",
+            "status": "passed"
+          },
+          {
+            "path": "test/import-audit.test.ts",
+            "name": "import history > REQ-0005 lists imports",
+            "status": "passed"
+          }
+        ]
+      }
+    ],
+    "testRuns": [
+      {
+        "source": "test-tool",
+        "tool": "qase",
+        "project": "ACME",
+        "id": "12",
+        "title": "1.2 regression",
+        "product": "Acme app",
+        "version": "1.2",
+        "results": [
+          {
+            "id": "7",
+            "status": "failed",
+            "endTime": "2026-11-27T11:00:00.000Z"
+          }
+        ],
+        "recordedAt": "2026-11-27T12:00:00.000Z",
+        "recordedBy": "sam",
+        "productId": "PRD-0001"
+      },
+      {
+        "source": "test-tool",
+        "tool": "testrail",
+        "project": "",
+        "id": "R11",
+        "title": "1.1 regression",
+        "product": "Acme app",
+        "version": "1.1",
+        "results": [
+          {
+            "id": "C101",
+            "status": "passed",
+            "endTime": "2026-11-27T11:00:00.000Z"
+          }
+        ],
+        "recordedAt": "2026-11-27T12:00:00.000Z",
+        "recordedBy": "sam",
+        "productId": "PRD-0001"
+      }
+    ],
+    "dryRun": false,
+    "overwrite": false
+  },
+  "expected": {
+    "1.0": {
+      "status": "legacy",
+      "blockers": [
+        {
+          "type": "missing-tests",
+          "key": "REQ-0002"
+        }
+      ]
+    },
+    "1.1": {
+      "status": "signed-off",
+      "blockers": []
+    },
+    "1.2": {
+      "status": "planned",
+      "blockers": [
+        {
+          "type": "missing-mitigation",
+          "key": "RSK-0002"
+        },
+        {
+          "type": "untested-requirement",
+          "key": "REQ-0005"
+        }
+      ]
+    }
+  }
+}

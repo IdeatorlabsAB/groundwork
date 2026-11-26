@@ -300,7 +300,15 @@ npx -p groundwork-mcp groundwork import --to https://your-groundwork-app --dry-r
 npx -p groundwork-mcp groundwork import --to https://your-groundwork-app
 ```
 
-Every item keeps its links, and its original id (`INS-0001`) stays its key. Running the import again skips items already there (`--overwrite` replaces them). Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server. For Codex, run `codex mcp remove groundwork` and add this to `~/.codex/config.toml`:
+Everything moves, with its links:
+- the evidence chain;
+- requirements, the baseline included, with their tickets, code tests and test-management cases;
+- risks with their mitigations and scores;
+- product versions, as releases;
+- the CI and test-tool results;
+- sign-off records, kept word for word.
+
+Each item's original id (`REQ-0042`, `RSK-0007`) stays its key, so the `Groundwork:` trailers in your git history still point at the right items. If another item in the workspace already has one of those keys, the import refuses and lists them rather than renumber anything; import into a new workspace. A version released before sign-off records arrives released and locked, marked as never verified. An owner must run the import when the folder has released versions, because only owners sign releases off in the web app. Running the import again skips what's already there (`--overwrite` replaces items, never signed-off releases), and finishes an import that stopped half-way. Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server. For Codex, run `codex mcp remove groundwork` and add this to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.groundwork]

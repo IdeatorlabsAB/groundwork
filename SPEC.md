@@ -269,7 +269,7 @@ riskMatrix:             # optional; leave out for the 5×5 default
     - [low, low, medium]
     - [low, medium, high]
     - [medium, high, high]
-migrated: https://…    # set by the web app importer; local writes stop
+migrated: https://…    # set by the web app importer (groundwork import); local writes stop
 ```
 
 The default 5×5 matrix labels probability Rare, Unlikely, Possible, Likely, Almost certain and severity Negligible, Minor, Moderate, Major, Catastrophic. A score p × s of 15 or more is high, 5 or more is medium, the rest low. The 3×3 default: 6 or more is high, 3 or more medium.
@@ -281,3 +281,21 @@ The person acting is `$GROUNDWORK_USER` (a person id). Otherwise it's the person
 ## Versioning
 
 `schemaVersion` changes only for changes that would break older readers. Version 2 moved products into `products/`. Tools refuse to write a version newer than they understand. Adding optional fields doesn't change the version.
+
+## Moving to the web app
+
+`groundwork import --to <web app>` sends the whole folder as one bundle (`format: groundwork-files`, `schemaVersion: 2`):
+- `items`: insights, hypotheses, experiments, findings, requirements and risks. A requirement's and a risk's `product` is the product's title, with `productId` beside it.
+- `versions`: every product version, with `productId` and the product's title.
+- `records`: the sign-off records, as they are in `groundwork/releases/`, each with its `file`.
+- `codeRuns`: the CI runs that count (`source: ci`, the newest window).
+- `testRuns`: the test-tool runs, with `productId` and the product's title.
+
+How the web app reads it:
+- **Ids.** Each local item, version and record gets an id derived from the workspace and its local name, so importing again finds the same rows.
+- **Keys.** Local ids become keys unchanged. A key another item already has refuses the import.
+- **Versions** become releases, matched by product and name. A requirement is tagged to the release it shipped in, or the one it's planned for while it's live. A risk is tagged to its `versions`.
+- **Sign-offs.**
+  - Each sign-off record becomes a release record, withdrawn ones withdrawn, with the original kept verbatim.
+  - A released version without a record becomes a legacy release record: locked, marked as never verified.
+  - Only an owner can import released versions.

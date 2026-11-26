@@ -1,8 +1,11 @@
 import { readConfig, writeConfig } from "./config";
 import { load } from "./files";
 import { validate, type Problem } from "./validate";
-import { catalogueOf } from "./catalogue";
+import { catalogueOf, productOf } from "./catalogue";
 import { loadResults } from "./results";
+import { loadRecords } from "./signoff";
+import { isRunOf } from "../core/match-tests";
+import type { CodeTestResult } from "../core/junit";
 
 /**
  * Moving a project into the Groundwork web app: send every item to its /api/import endpoint, then mark the folder
@@ -35,40 +38,64 @@ export class ImportError extends Error {
   }
 }
 
+/**
+ * Everything in the folder, for the web app's /api/import: items (risks included), product versions, sign-off records
+ * as they are, the CI runs that count (the newest window, from CI on the default branch) and test-tool runs.
+ */
 export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: boolean } = {}) {
   const config = readConfig(root);
   const loaded = load(root);
   const problems = validate(loaded, config).filter((p) => p.level === "error");
   if (problems.length) throw new ImportError(`Fix ${problems.length} error${problems.length === 1 ? "" : "s"} first (run groundwork validate).`, problems);
-  const { activity: _activity, risks, ...items } = loaded.items;
+  const { activity: _activity, ...items } = loaded.items;
   void _activity;
-  // The web app's import drops kinds it doesn't know, so a folder with risks waits until it takes them.
-  if (risks.length) {
-    throw new ImportError(
-      `This folder has ${risks.length} risk${risks.length === 1 ? "" : "s"}, and the web app's import doesn't carry risks yet. Wait for the groundwork-mcp release that migrates them, so nothing is lost.`,
-    );
-  }
-  const results = loadResults(root, config);
-  if (results.codeRuns.length || results.testRuns.length) {
-    throw new ImportError(
-      "This folder has test results, and the web app's import doesn't carry them yet. Wait for the groundwork-mcp release that migrates them, so nothing is lost.",
-    );
-  }
-  // The web app knows products by name: send each requirement's product as its title, not its id (PRD-0001).
+  const catalogue = catalogueOf(config, loaded.products);
+  // The web app knows products by name: send each one's title, with the local id beside it.
   const titles = new Map(loaded.products.map((p) => [p.id, p.title]));
-  items.requirements = items.requirements.map((r) => (r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product) } : r));
+  items.requirements = items.requirements.map((r) => {
+    const p = productOf(catalogue, r);
+    return p ? { ...r, product: p.title, productId: p.id } : r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product) } : r;
+  });
+  items.risks = items.risks.map((r) => (r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product)!, productId: r.product } : r));
+  const results = loadResults(root, config);
+  const linked = items.requirements.flatMap((r) => r.codeTests ?? []);
+  const { records } = loadRecords(root);
   return {
     format: BUNDLE_FORMAT,
-    schemaVersion: 1,
+    schemaVersion: 2,
     config: (() => {
       // The web app takes flat lists, so the catalogue is flattened: areas across products, product titles.
-      const c = catalogueOf(config, loaded.products);
-      return { name: config.name, productAreas: c.areas.map(({ id, label }) => ({ id, label })), products: c.productNames, people: config.people };
+      return { name: config.name, productAreas: catalogue.areas.map(({ id, label }) => ({ id, label })), products: catalogue.productNames, people: config.people };
     })(),
     items,
+    versions: loaded.products.flatMap((p) => p.versions.map((v) => ({ productId: p.id, product: p.title, ...v }))),
+    records,
+    // Runs from outside CI never count as evidence, so they aren't sent. Each run keeps the results of linked tests,
+    // and one result for every other file in it, so the web app still knows which files ran (a linked test missing from
+    // a newer run of its file was deleted), and a big project's runs stay well under the import's size cap.
+    codeRuns: results.codeRuns.filter((r) => r.source === "ci").map((r) => trimRun(r, linked)),
+    testRuns: results.testRuns.map((r) => ({ ...r, productId: r.product, product: titles.get(r.product) ?? r.product })),
     dryRun: Boolean(opts.dryRun),
     overwrite: Boolean(opts.overwrite),
   };
+}
+
+/** A CI run with only what readiness reads: linked tests' results, and one result for each other file it ran. */
+function trimRun<R extends { results: CodeTestResult[] }>(run: R, linked: { path: string; name: string }[]): R {
+  const out: CodeTestResult[] = [];
+  const files = new Set<string>();
+  for (const res of run.results) {
+    if (linked.some((t) => isRunOf(t, res))) {
+      out.push(res);
+      files.add(res.path);
+    }
+  }
+  for (const res of run.results) {
+    if (files.has(res.path)) continue;
+    out.push(res);
+    files.add(res.path);
+  }
+  return { ...run, results: out };
 }
 
 export async function runImport(opts: {
@@ -106,7 +133,12 @@ export async function runImport(opts: {
   } catch {
     throw new ImportError(`The web app answered ${res.status} without JSON. Is ${origin} a Groundwork web app?`);
   }
-  if (!res.ok) throw new ImportError((data as { error?: { message?: string } }).error?.message ?? `The import failed (${res.status}).`);
+  if (!res.ok) {
+    const message = (data as { error?: { message?: string } }).error?.message ?? `The import failed (${res.status}).`;
+    // A web app from before this format answers that schemaVersion must be 1.
+    if (res.status === 400 && /schemaVersion/.test(message)) throw new ImportError("Update the Groundwork web app first: it doesn't take this folder's format yet.");
+    throw new ImportError(message);
+  }
   const report = data as ImportReport;
   if (!report.dryRun) writeConfig(opts.root, { ...readConfig(opts.root), migrated: report.url });
   return report;
