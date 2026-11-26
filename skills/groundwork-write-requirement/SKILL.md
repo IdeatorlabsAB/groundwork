@@ -74,7 +74,7 @@ New requirements are saved as drafts. Approving them is a person's decision, and
 3. `search_items` with kind `requirement` for each draft's key words, and read the close matches with `get_item`.
 4. If any draft duplicates or conflicts with an existing requirement, show the user the pairs and ask: replace, reuse or reshape. Wait for an answer for each.
 5. `add_requirements` with `hypothesisIds` set to the hypothesis: first the stakeholder ones, then, in a second call, the solution ones with `stakeholderIds` set to the ids the first call returned (or to existing stakeholder requirements they fulfil). A solution requirement without `stakeholderIds` is refused. When there's more than one product, set `product` on each solution requirement.
-   - Replace: `obsolete_requirement` (approved) or `update_item` (draft) on the existing one.
+   - Replace: an approved existing one is replaced by adding the new one with `replaces` naming it (it becomes obsolete when the new one ships); a draft is updated in place with `update_item`.
    - Reuse: don't add the draft; `link_items` the existing requirement to the hypothesis instead.
 6. Mention each requirement's file, so the user can open it.
 
@@ -90,17 +90,17 @@ Teams often have requirements already: a tender or contract, a spec in Word or P
 3. **Place each item.** `get_workspace` for the products and areas. Propose a product area for each item; offer to add missing areas with `add_product_areas`.
 4. **Rewrite, about 20 items at a time.** For each source item, propose:
    - a stakeholder story when it states a need;
-   - one or more shall statements when it states behaviour, one capability each;
+   - one or more shall statements when it states behaviour, one capability each. Every solution requirement needs a stakeholder requirement to fulfil: link an existing one that truly fits, or propose the missing story, marked "(proposed)", and ask. The same for a story's "so that …" when the source doesn't give one;
    - both, linked, when it mixes the two. "Secretaries need a calendar view showing free slots in colour" becomes the story "As a medical secretary, I want to see each practitioner's free slots, so that I can book patients quickly" and the statement "The system shall show free and booked slots of each practitioner's calendar in distinct colours", which fulfils it;
    - verification criteria from the source. Mark any you add yourself "(proposed)";
    - a priority. A tender's mandatory requirements are must, evaluated ones should;
    - an `origin` (tender, regulation, contract, customer-need) and an `originNote` with the source and the exact place: "Region North tender 2026, §4.2", "Jira ACME-142", "Requirements.xlsx, row 37".
-5. **Check overlaps** against existing requirements (`search_items`, including by the source reference, so an import that was interrupted resumes without duplicates) and within the batch. Show duplicates and conflicts with the choices above.
+5. **Check overlaps** against existing requirements and within the batch. Search each draft's key nouns and their synonyms ("retain records" and "keep log"), not only its exact words. Search by the source reference too, as the document's name plus the clause ("tender NW-2026-07 §4.2", not just "4.2"), one clause at a time, so an import that was interrupted resumes without duplicates. Show duplicates and conflicts with the choices above.
 6. **Show the batch** as a numbered table: source ref, kind, title, statement, origin, overlaps. Offer the criteria on request rather than printing them all. Ask what to change. Record the batch only once the user agrees: `add_requirements`, stakeholder first, then solution with `stakeholderIds`. If the user says an item was already approved elsewhere, and who accepted it:
    - `approvedBy` is that person, from config.yml people (the person in your team who accepted it, not the customer), and the note names the signed document;
    - if it's the user themselves, `submit_requirement_for_approval` to them first, then `approve_requirement`;
    - if the product has planned versions, ask which one it's planned for and pass `plannedFor`, or leave it a draft.
-7. **Tickets.** A source ticket for work still to do: `link_tickets` it to the solution requirements it becomes, without `done`. A ticket that's already done describes what the product does today: record it with the baseline workflow (`record_baseline`, origin existing-product) instead. A ticket that becomes only a stakeholder story isn't linked; its key is in the `originNote`.
-8. **Report** what you recorded (ids and files), what you skipped and why, and the open questions: items that were unclear, or contradicted each other. Then carry on with the next batch.
+7. **Tickets.** A source ticket for work still to do: `link_tickets` it to the solution requirements it becomes, without `done`. A ticket that's already done describes what the product does today, so it isn't a new draft. In a product with no releases yet it belongs in a baseline (`record_baseline`, which needs its own version). In a product that already has releases, ask the user which released version it shipped in, or whether to leave it out. A ticket that becomes only a stakeholder story isn't linked; its key is in the `originNote`.
+8. **Report** what you recorded (ids and files), what you skipped and why, and the open questions: items that were unclear, or contradicted each other. A clause you reused (it duplicated an existing requirement) isn't recorded anywhere by the tools: list it in the report as "§4.3 → REQ-0002", and offer to note it under the existing requirement's Markdown body, which is the user's own. Then carry on with the next batch.
 
 **Never** record before the team agrees, drop a source item without saying so, put people's names in stories, invent a source reference, or guess at an item that's unclear. Ask instead.
