@@ -128,6 +128,27 @@ Put it in your release documentation, e.g. the technical documentation for an EU
 
 If you are modernizing a product that already exists, tell your agent *"Reverse-engineer the requirements of this codebase into a Legacy 4.x baseline"*. It reads the code and tests one product area at a time, drafts the needs and "shall" statements with links to the code (`codeRefs`), and shows you each list. It asks you about suspected bugs and dead code, and who approves. Then it records the area with `record_baseline`: the requirements are approved and already released in that version, so you start with a requirement repository instead of a blank page. New or changed behaviour then gets new requirements with `replaces: [baseline id]`. When they ship, the baseline items become obsolete. Never edit the baseline. `groundwork report release <version>` prints it as a baseline report with a count per area.
 
+## Test results from CI
+
+Groundwork keeps test evidence in your repository. On each push to your default branch, CI records the JUnit results of the tests your requirements link to and commits them to a `groundwork-results` branch, so your main branch's history stays clean:
+
+```yaml
+# .github/workflows/test.yml
+on: [push, pull_request]
+permissions:
+  contents: write          # to push to groundwork-results
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5          # keep the default credentials
+      - run: npm ci && npm test -- --reporter=junit --outputFile=reports/junit.xml
+      - if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: npx -p groundwork-mcp groundwork results add "reports/*.xml" --push
+```
+
+If a ruleset protects every branch, allow `groundwork-results`. Results from a laptop are written but don't count as evidence. Your agent records runs from a test-management tool (Qase, TestRail, …) with `record_test_results`, and `get_item` shows whether a requirement's tests passed.
+
 ## Working on branches
 
 Everyone works on their own clone of the repo: developers writing requirements while they plan, and product managers logging insights and results. Groundwork numbers new items on each clone as one more than the highest id it can see. So two branches can both create `REQ-0012`, each meaning something different.
@@ -233,12 +254,14 @@ The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examp
 |---|---|---|
 | `get_workspace` | `add_insights` | `start_experiment` |
 | `search_items` | `add_hypotheses` | `record_experiment_results` |
-| `get_item` | `add_experiment` | `submit_requirement_for_approval` |
+| `get_item`, `trace_code` | `add_experiment` | `submit_requirement_for_approval` |
 | | `add_findings` | `approve_requirement` |
 | | `add_requirements` | `send_back_requirement` |
 | | `update_item`, `link_items` | `obsolete_requirement` |
 | | `delete_item` | |
 | | `link_tickets`, `unlink_tickets`, `update_tickets` | |
+| | `add_risks` | |
+| | `link_code_tests`, `unlink_code_tests`, `link_test_cases`, `unlink_test_cases` | `record_test_results` |
 | | `record_baseline` | |
 | `get_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release` |
 
