@@ -38,7 +38,7 @@ Add the stakeholder requirements first, then the solution requirements in a seco
 
 ## When you plan work
 
-Before you plan a task, decide what kind it is. If you're unsure, search for related requirements first.
+Before you plan a task, call `trace_code` on the files in scope: it names the requirements and risks they touch. Then decide what kind of task it is. If you're unsure, search for related requirements first.
 
 - **New need:** something users can't do today. "Let's add a feature to book appointments."
 - **Change:** existing behaviour that should work differently. "Booking slots should be 15 minutes, not 30."
@@ -51,6 +51,7 @@ State your call in one line of the plan, so the user can overrule it:
 - **Change:** update the requirement if it's a draft. If it's approved, add a new one with `replaces: [old id]`. Once the new one is approved, the old one becomes obsolete in the version the new one ships in, or straight away if the product has no versions.
 - **Modernization:** when the product is a rewrite or modernization of an existing one, new or changed behaviour gets new solution requirements (in the new product, or the next version) with `replaces: [baseline id]`. Never edit baseline items.
 - **Fix:** don't write requirements. Name the requirement the fix restores when you can tell.
+- **Risks:** for a new need or a change, check whether it introduces or affects a product risk, and record it with its mitigations (the `groundwork-risk` skill). Name affected risks in the plan.
 - **No person reviewing the plan** (an autonomous workflow): follow your own call. The one-line call stays in the plan as the record.
 
 Recording evidence or requirements directly isn't planning work. When a product manager (or anyone) asks you to log interview notes, draft hypotheses, record experiment results or write requirements, skip the new need / change / fix call and record what they ask for.
@@ -64,10 +65,11 @@ Use this when the user wants the existing behaviour of a product written down, f
 1. `get_workspace`. Make sure the product exists, then agree the baseline version name with the user. Default to the product's current version number, else "legacy".
 2. Survey the code: entry points, routes and screens, background jobs, integrations, the data model, permissions and roles. Propose product areas and add them with `add_product_areas`.
 3. Take one area at a time. Read its code and tests. Draft the stakeholder needs (roles come from permissions and UI copy), "shall" statements of the behaviour you can see, and acceptance criteria from validation rules and tests. Give each requirement `codeRefs` (a repo path, optionally `#symbol` or `:line`). Add one hypothesis per major feature, with `origin: "inferred"` and an `originNote` saying what you inferred it from.
-4. Show the user the area's list. Raise suspected bugs, dead code and feature-flagged paths as questions. Don't bake them in. Ask who approves the baseline.
-5. Call `record_baseline` for the area, with the version, the approver (`approvedBy`) and keys that link the new items. Repeat for each area. The version must hold only baseline work: it refuses one with other planned work or other shipped requirements. At the end, report the ids you created and the command `npx -p groundwork-mcp groundwork report release <version>`.
+4. List the risks the area carries as it is (security, and domain harm such as patient safety), with the requirements that already control them (the `groundwork-risk` skill, "In a baseline").
+5. Show the user the area's list. Raise suspected bugs, dead code and feature-flagged paths as questions. Don't bake them in. Ask who approves the baseline.
+6. Call `record_baseline` for the area, with the version, the approver (`approvedBy`), the risks, and keys that link the new items. Repeat for each area. The version must hold only baseline work: it refuses one with other planned work or other shipped requirements. At the end, report the ids you created and the command `npx -p groundwork-mcp groundwork report release <version>`.
 
-`record_baseline` makes the hypotheses validated and the requirements approved by the named person, and releases the solution requirements in the version. The approver must be a person who can approve, not a viewer. It takes no `findingIds` or `replaces`. It warns when a title matches a requirement already in the area. Without product files (`catalogue: legacy`), run `groundwork migrate` first.
+`record_baseline` makes the hypotheses validated and the requirements approved by the named person, and releases the solution requirements in the version. The approver must be a person who can approve, not a viewer. It takes no `findingIds` or `replaces`. It warns when a title matches a requirement or risk already in the area. Risks get `origin: existing-product` and are tagged for the baseline version. Without product files (`catalogue: legacy`), run `groundwork migrate` first.
 
 ## Releasing
 

@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -13,6 +13,10 @@ beforeEach(() => {
   cpSync(join(__dirname, "../examples/acme/groundwork"), join(root, "groundwork"), { recursive: true });
   // The web app can't take risks until its import is extended (PR 7), so these tests run on acme without them.
   rmSync(join(root, "groundwork", "risks"), { recursive: true, force: true });
+  for (const name of readdirSync(join(root, "groundwork", "requirements"))) {
+    const file = join(root, "groundwork", "requirements", name);
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^riskIds:\n(  - .*\n)+/m, ""));
+  }
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 

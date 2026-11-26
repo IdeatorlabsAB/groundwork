@@ -6,6 +6,8 @@ story: The system shall log every import with who ran it, when, and which file w
 product: PRD-0001
 stakeholderIds:
   - REQ-0004
+riskIds:
+  - RSK-0001
 acceptanceCriteria:
   - Each import records who, when and which file
   - Logs are kept for 7 years

@@ -19,9 +19,17 @@ beforeEach(() => {
     "# Groundwork settings. See SPEC.md for every field.\nschemaVersion: 1\nname: Acme\nproductAreas:\n  - id: onboarding\n    label: Onboarding\n  - id: reporting\n    label: Reporting\nproducts:\n  - Acme app\npeople:\n  - id: sam\n    name: Sam\n    role: owner\n",
   );
   rmSync(join(root, "groundwork/products"), { recursive: true, force: true });
+  // Risks came after products moved to files (they need a product file), so the older example has none.
+  rmSync(join(root, "groundwork/risks"), { recursive: true, force: true });
   for (const name of readdirSync(join(root, "groundwork/requirements"))) {
     const file = join(root, "groundwork/requirements", name);
-    writeFileSync(file, readFileSync(file, "utf8").replace(/^product: PRD-0001$/m, "product: Acme app").replace(/^(plannedFor|releasedIn|releasedAt|releasedBy): .*\n/gm, ""));
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8")
+        .replace(/^product: PRD-0001$/m, "product: Acme app")
+        .replace(/^(plannedFor|releasedIn|releasedAt|releasedBy): .*\n/gm, "")
+        .replace(/^riskIds:\n(  - .*\n)+/m, ""),
+    );
   }
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));

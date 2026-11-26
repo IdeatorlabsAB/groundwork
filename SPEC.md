@@ -11,6 +11,7 @@ groundwork/
   experiments/EXP-0001-guided-import-pilot.md
   findings/FND-0001-guided-import-lifts-activation.md
   requirements/REQ-0001-guided-csv-import.md
+  risks/RSK-0001-invoice-sent-to-wrong-patient.md
 ```
 
 ## Items
@@ -35,7 +36,7 @@ createdBy: sam
 Anything you write here is yours. Groundwork reads it as the item's `notes` and never rewrites it.
 ```
 
-- **Ids** are a kind prefix and a number of at least four digits: `INS`, `HYP`, `EXP`, `FND`, `REQ`. They never change, and an id is never reused within its kind. New items get one more than the highest id of their kind. Two branches can therefore give the same id to different items. The same id at a different file path is a different item. `groundwork validate --against <base>` reports this, and `groundwork renumber --against <base>` fixes it on the branch: the branch's item gets the next free id, its file is renamed (the slug stays), and links to it are rewritten in the files the branch added or changed. Ids on the base never change, and Markdown bodies are never rewritten.
+- **Ids** are a kind prefix and a number of at least four digits: `INS`, `HYP`, `EXP`, `FND`, `REQ`, `RSK`. They never change, and an id is never reused within its kind. New items get one more than the highest id of their kind. Two branches can therefore give the same id to different items. The same id at a different file path is a different item. `groundwork validate --against <base>` reports this, and `groundwork renumber --against <base>` fixes it on the branch: the branch's item gets the next free id, its file is renamed (the slug stays), and links to it are rewritten in the files the branch added or changed. Ids on the base never change, and Markdown bodies are never rewritten.
 - **File names** are `<id>-<slug>.md`. Only the id matters; the slug comes from the title at creation and stays when the title changes, so links to the file don't break. A file has to be in the folder for its kind.
 - **Links** are lists of ids in fields such as `insightIds`. They point from an item to the evidence it builds on.
 - **Unknown fields** are kept. Tools may add fields in later versions.
@@ -60,6 +61,11 @@ Required fields are in bold.
 **Requirement** (`requirements/`, `REQ-`): what is needed before building, in two layers.
 **`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need` | `existing-product`) and `originNote`, `codeRefs` (where the behaviour lives: a repo-relative path, optionally with `#symbol` or `:line`, up to 50), `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `replaces` (approved requirements this one replaces), `plannedFor`, `releasedIn`, `releasedAt`, `releasedBy`, `obsoletePlannedFor`, `obsoletedIn` (solution requirements only, versions of its product; see below), `obsoletedBy`, `obsoletedAt`, `madeObsoleteBy` (the person who made it obsolete), `tickets` (solution requirements; see below), `productArea`, `createdAt`, `updatedAt`.
 
+`riskIds` (set by the tools): the risks this requirement mitigates. It mirrors each risk's `mitigationIds`.
+
+**Risk** (`risks/`, `RSK-`): what could go wrong with the product, for the people who use it or depend on it.
+**`title`**, **`hazard`** (what could go wrong, and why), **`harm`** (who gets hurt, and how), **`probability`** and **`severity`** (whole numbers from 1 to the matrix size, before mitigation), `residualProbability` and `residualSeverity` (once the mitigations are in place), `mitigationIds` (the requirements that control it), `product` (a product id), `versions` (versions of its product it's introduced in or affects), `category` (`security` | `domain`), `domain` (for domain risks, e.g. `patient-safety`, `financial`), `owner`, `codeRefs`, `origin` (`existing-product`) and `originNote`, `productArea`, `createdAt`, `updatedAt`.
+
 The two layers:
 
 - A **stakeholder requirement** says who needs what and why. Its `story` is a user story: "As a medical secretary I want a view of the calendars of all practitioners in the clinic with their unbooked slots highlighted so that I can find them and book appointments easily."
@@ -79,6 +85,8 @@ The two layers:
 | solution requirement | `stakeholderIds` | stakeholder requirements |
 | requirement | `obsoletedBy` | the requirements that replaced it |
 | requirement | `replaces` | the approved requirements it replaces |
+| risk | `mitigationIds` | the requirements that mitigate it |
+| requirement | `riskIds` | the risks it mitigates (the same links, seen from the requirement) |
 
 ### Rules the tools apply
 
@@ -121,6 +129,13 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - Tickets are linked and unlinked only with `link_tickets` and `unlink_tickets`. `update_tickets` refreshes `state` and `done` everywhere a ticket is linked.
   - A ticket linked before its requirement shipped is part of that release's record and can't be unlinked. A release report lists only the tickets linked by the time the version was released.
   - The web app's single Linear issue (`delivery`) is read as a ticket.
+- **Risks.**
+  - A risk's level (`low`, `medium`, `high`) is never stored. It's read from the matrix in `config.yml` (`riskMatrix`) at `cells[probability - 1][severity - 1]`, for the initial and the residual score.
+  - A risk that isn't high is acceptable as it is. A high risk is mitigated when its residual score is no longer high and every mitigating requirement exists and is `approved` or `in-delivery`.
+  - Mitigations are linked with `link_items` from the risk to the requirement, and recorded on both (`mitigationIds`, `riskIds`). A released requirement can be linked: the risk register isn't part of a requirement's release record. Deleting either side removes the link.
+  - `versions` names versions of the risk's product. Only planned versions can be added or removed. A risk's product can't change once it's tagged for versions.
+  - `validate` reports scores outside the matrix, unknown mitigations, products and versions, and a `riskIds` entry the risk doesn't list back, as errors. It warns about a high risk without a mitigation.
+  - `record_baseline` takes the risks an existing product carries: `origin: existing-product`, tagged for the baseline version, with `mitigationKeys` (keys of the call's solution requirements) and `mitigationIds` for the controls it already has.
 - Requirements go from `draft` to `awaiting-approval` (with an `approver`) to `approved`. The approver can send one back to `draft`. Only `approved` requirements can become `obsolete`.
 - Deleting an item removes links to it. Deleting a hypothesis also deletes its experiments.
 
@@ -154,8 +169,18 @@ people:
     name: Sam
     role: owner        # owner | editor | viewer
     email: sam@acme.example   # optional: matched against `git config user.email`
+riskMatrix:             # optional; leave out for the 5×5 default
+  size: 3                # 3 or 5
+  probabilityLabels: [Low, Medium, High]
+  severityLabels: [Low, Medium, High]
+  cells:                 # cells[p - 1][s - 1]: low | medium | high
+    - [low, low, medium]
+    - [low, medium, high]
+    - [medium, high, high]
 migrated: https://…    # set by the web app importer; local writes stop
 ```
+
+The default 5×5 matrix labels probability Rare, Unlikely, Possible, Likely, Almost certain and severity Negligible, Minor, Moderate, Major, Catastrophic. A score p × s of 15 or more is high, 5 or more is medium, the rest low. The 3×3 default: 6 or more is high, 3 or more medium.
 
 **Version 1 folders** keep areas and products as flat lists in `config.yml` (`productAreas: [{ id, label }]`, `products: [names]`), and a requirement's `product` is a name. Tools keep reading and writing them that way. `groundwork migrate` moves them to product files: each product name becomes a product, all areas go to the first one (it says so when there are several), requirements get product ids, and the lists are removed from `config.yml`, which gets `schemaVersion: 2`. Nothing migrates implicitly; the first product file in a folder without lists also sets `schemaVersion: 2`. If lists are left in a version 2 `config.yml`, they're ignored and `validate` warns.
 
