@@ -1,4 +1,5 @@
 import { canObsolete, kindOf, sameTicket, ticketsOf, type RequirementChanges } from "./requirements";
+import { caseKey, sameCodeTest, takesTests } from "./test-links";
 import type {
   Activity,
   Delivery,
@@ -11,6 +12,8 @@ import type {
   ProductArea,
   Requirement,
   Risk,
+  CodeTestLink,
+  TestCaseLink,
   Ticket,
 } from "./types";
 import { computeVerdict, type VerdictResult } from "./verdict";
@@ -598,5 +601,90 @@ export function unlinkMitigation(s: Collections, c: Ctx, riskId: string, require
       activity: [log(c, "risk", `removed requirement "${req.title}" as mitigation for risk "${risk.title}"`, risk.id), ...s.activity],
     },
     result: true,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tests (code tests ported from centropic-prototype src/lib/domain/ops.ts; test cases tool-neutral)
+// ---------------------------------------------------------------------------------------------
+
+/** Link automated tests in the repository to a solution requirement. Tests already linked are skipped. */
+export function linkCodeTests(s: Collections, c: Ctx, requirementId: string, tests: Pick<CodeTestLink, "path" | "name">[]): Change<number> {
+  const req = s.requirements.find((r) => r.id === requirementId);
+  if (!req || !takesTests(req)) return nothing(0);
+  const list = req.codeTests ?? [];
+  const added = tests.filter((t, i) => !list.some((x) => sameCodeTest(x, t)) && tests.findIndex((y) => sameCodeTest(y, t)) === i);
+  if (!added.length) return nothing(0);
+  return {
+    next: {
+      requirements: s.requirements.map((r) =>
+        r === req ? { ...r, codeTests: [...list, ...added.map((t) => ({ path: t.path, name: t.name, linkedAt: c.now, linkedBy: c.actor }))], updatedAt: c.now } : r,
+      ),
+      activity: [log(c, "requirement", `linked ${added.length === 1 ? "a code test" : `${added.length} code tests`} to "${req.title}"`, req.id), ...s.activity],
+    },
+    result: added.length,
+  };
+}
+
+export function unlinkCodeTests(s: Collections, c: Ctx, requirementId: string, tests: Pick<CodeTestLink, "path" | "name">[]): Change<number> {
+  const req = s.requirements.find((r) => r.id === requirementId);
+  const list = req?.codeTests ?? [];
+  const kept = list.filter((x) => !tests.some((t) => sameCodeTest(x, t)));
+  if (!req || kept.length === list.length) return nothing(0);
+  return {
+    next: {
+      requirements: s.requirements.map((r) => (r === req ? { ...r, codeTests: kept, updatedAt: c.now } : r)),
+      activity: [log(c, "requirement", `unlinked ${list.length - kept.length === 1 ? "a code test" : `${list.length - kept.length} code tests`} from "${req.title}"`, req.id), ...s.activity],
+    },
+    result: list.length - kept.length,
+  };
+}
+
+/**
+ * Link cases from any test-management tool to a solution requirement. A case already linked keeps when and by whom
+ * it was linked, and takes the new title and url. Returns how many were new.
+ */
+export function linkTestCases(s: Collections, c: Ctx, requirementId: string, cases: Omit<TestCaseLink, "linkedAt" | "linkedBy">[]): Change<number> {
+  const req = s.requirements.find((r) => r.id === requirementId);
+  if (!req || !takesTests(req) || !cases.length) return nothing(0);
+  const byKey = new Map((req.testCases ?? []).map((t) => [caseKey(t), t]));
+  let added = 0;
+  for (const t of cases) {
+    const was = byKey.get(caseKey(t));
+    if (!was) added++;
+    byKey.set(caseKey(t), {
+      ...(was ?? {}),
+      tool: was?.tool ?? t.tool.toLowerCase(),
+      id: was?.id ?? t.id,
+      ...(was?.project ?? t.project ? { project: was?.project ?? t.project } : {}),
+      title: t.title,
+      ...(t.url ? { url: t.url } : was?.url ? { url: was.url } : {}),
+      linkedAt: was?.linkedAt ?? c.now,
+      linkedBy: was?.linkedBy ?? c.actor,
+    });
+  }
+  const n = cases.length;
+  return {
+    next: {
+      requirements: s.requirements.map((r) => (r === req ? { ...r, testCases: [...byKey.values()], updatedAt: c.now } : r)),
+      activity: [log(c, "requirement", `linked ${n === 1 ? "a test case" : `${n} test cases`} to "${req.title}"`, req.id), ...s.activity],
+    },
+    result: added,
+  };
+}
+
+export function unlinkTestCases(s: Collections, c: Ctx, requirementId: string, cases: Pick<TestCaseLink, "tool" | "id" | "project">[]): Change<number> {
+  const req = s.requirements.find((r) => r.id === requirementId);
+  const list = req?.testCases ?? [];
+  const drop = new Set(cases.map(caseKey));
+  const kept = list.filter((x) => !drop.has(caseKey(x)));
+  if (!req || kept.length === list.length) return nothing(0);
+  const n = list.length - kept.length;
+  return {
+    next: {
+      requirements: s.requirements.map((r) => (r === req ? { ...r, testCases: kept.length ? kept : undefined, updatedAt: c.now } : r)),
+      activity: [log(c, "requirement", `unlinked ${n === 1 ? "a test case" : `${n} test cases`} from "${req.title}"`, req.id), ...s.activity],
+    },
+    result: n,
   };
 }

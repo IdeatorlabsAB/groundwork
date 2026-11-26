@@ -286,6 +286,39 @@ export interface Requirement {
   tickets?: Ticket[];
   /** The risks this requirement mitigates. Kept in step with each risk's mitigationIds. */
   riskIds?: ID[];
+  /** Solution requirements: automated tests in the repository that verify it. */
+  codeTests?: CodeTestLink[];
+  /** Solution requirements: cases in the team's test-management tool that verify it. */
+  testCases?: TestCaseLink[];
+}
+
+/**
+ * An automated test in the repository that verifies a requirement. CI results are matched on path + name, so `name`
+ * is the full name the test runner reports, e.g. "releaseReadiness > blocks an unmitigated high risk".
+ */
+export interface CodeTestLink {
+  /** Repo-relative test file, e.g. "test/release.test.ts". */
+  path: string;
+  name: string;
+  linkedAt: string;
+  linkedBy: string;
+}
+
+/**
+ * A case in a test-management tool (Qase, TestRail, Xray, …) that verifies a requirement. The agent finds or creates it
+ * there with the tool's own connection; Groundwork stores what it's given. Identified by tool + project + id, ignoring case.
+ */
+export interface TestCaseLink {
+  /** Lowercase, e.g. "qase", "testrail", "xray". */
+  tool: string;
+  /** The tool's case id, e.g. "12" (Qase), "C123" (TestRail), "PROJ-T45" (Xray). */
+  id: string;
+  title: string;
+  /** The tool's project, e.g. the Qase project code "ACME". Case ids often restart per project. */
+  project?: string;
+  url?: string;
+  linkedAt: string;
+  linkedBy: string;
 }
 
 export type RiskLevel = "low" | "medium" | "high";
