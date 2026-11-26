@@ -11,6 +11,7 @@ import { catalogueOf, findProduct, plannedVersions, productOf } from "./catalogu
 import { CONFIG_FILE, DIR, matrixOf, type Config } from "./config";
 import { COLLECTIONS, type Loaded } from "./files";
 import { loadResults } from "./results";
+import { activeRecord, loadRecords, recordPrefix } from "./signoff";
 
 export interface Problem {
   level: "error" | "warning";
@@ -45,6 +46,7 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
   const out: Problem[] = loaded.problems.map((p) => ({ level: "error", ...p }));
   // Warnings: a bad file on the results branch can't be fixed in a pull request, so it mustn't fail validate everywhere.
   if (opts.root) for (const p of loadResults(opts.root, config).problems) out.push({ level: "warning", ...p });
+  if (opts.root) out.push(...recordProblems(opts.root, loaded));
   const s: Collections = loaded.items;
   const kindById = new Map<string, Kind>();
   for (const kind of Object.keys(COLLECTIONS) as Kind[]) for (const x of s[COLLECTIONS[kind]] as { id: string }[]) kindById.set(x.id, kind);
@@ -248,6 +250,37 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
           if (initialLevel(matrix, k) === "high" && !(k.mitigationIds ?? []).length) warn(`high risk "${k.title}" has no mitigating requirement`);
           break;
         }
+      }
+    }
+  }
+  return out;
+}
+
+/** Sign-off records: readable, for a released version of a known product, named for it, one active per version. */
+function recordProblems(root: string, loaded: Loaded): Problem[] {
+  const out: Problem[] = [];
+  const { records, problems } = loadRecords(root);
+  for (const p of problems) out.push({ level: "error", ...p });
+  for (const r of records) {
+    const err = (message: string) => out.push({ level: "error", file: r.file, message });
+    const p = loaded.products.find((x) => x.id === r.product.id);
+    const v = p?.versions.find((x) => x.version === r.version);
+    if (!p) err(`product ${r.product.id} doesn't exist`);
+    else if (!v) err(`${p.title} has no version ${r.version}`);
+    else if (v.status !== "released") err(`${p.title} ${r.version} isn't released`);
+    const prefix = recordPrefix(r.product.id, r.version);
+    if (!r.file.split("/").at(-1)!.startsWith(prefix)) err(`the file name should start with ${prefix}`);
+    const active = activeRecord(records, r.product.id, r.version);
+    if (!r.withdrawnAt && active && active.file !== r.file) {
+      // Report it on the newer file of the two, the one most likely added by mistake (e.g. two branches signing off).
+      const newer = [r.file, active.file].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1)!;
+      out.push({ level: "error", file: newer, message: `${p?.title ?? r.product.id} ${r.version} has more than one active sign-off: withdraw all but one` });
+    }
+  }
+  for (const p of loaded.products) {
+    for (const v of p.versions) {
+      if (v.signOff && !existsSync(join(root, ...v.signOff.split("/")))) {
+        out.push({ level: "error", file: loaded.paths.get(p.id) ?? p.id, message: `version ${v.version}: signOff ${v.signOff} doesn't exist` });
       }
     }
   }
