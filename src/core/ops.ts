@@ -10,6 +10,7 @@ import type {
   Prioritization,
   ProductArea,
   Requirement,
+  Risk,
   Ticket,
 } from "./types";
 import { computeVerdict, type VerdictResult } from "./verdict";
@@ -309,6 +310,7 @@ export function updateRequirement(s: Collections, id: string, patch: Partial<Req
 
 export function deleteRequirement(s: Collections, id: string): Change {
   return nothing0({
+    risks: s.risks.map((r) => (r.mitigationIds.includes(id) ? { ...r, mitigationIds: without(r.mitigationIds, id) } : r)),
     requirements: s.requirements
       .filter((r) => r.id !== id)
       .map((r) => {
@@ -537,4 +539,64 @@ export function updateTickets(
     if (!hit) notLinked.push({ tracker: u.tracker.toLowerCase(), key: u.key });
   }
   return { next: { requirements }, result: { updated, notLinked } };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Risks (ported from centropic-prototype src/lib/domain/ops.ts; keep in step)
+// ---------------------------------------------------------------------------------------------
+
+export type NewRisk = Omit<Risk, "id" | "createdAt" | "updatedAt">;
+
+export function addRisks(s: Collections, c: Ctx, items: NewRisk[]): Change<Risk[]> {
+  const created: Risk[] = items.map((r) => ({ ...r, id: c.newId(), createdAt: c.now }));
+  const text = created.length === 1 ? "added 1 risk" : `added ${created.length} risks`;
+  return { next: { risks: [...created, ...s.risks], activity: [log(c, "risk", text, created[0]?.id), ...s.activity] }, result: created };
+}
+
+export function updateRisk(s: Collections, c: Ctx, id: string, patch: Partial<Risk>): Change {
+  return nothing0({ risks: s.risks.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: c.now } : r)) });
+}
+
+export function deleteRisk(s: Collections, id: string): Change {
+  return nothing0({
+    risks: s.risks.filter((r) => r.id !== id),
+    requirements: s.requirements.map((r) => (r.riskIds?.includes(id) ? { ...r, riskIds: without(r.riskIds, id) } : r)),
+  });
+}
+
+function without(ids: string[] | undefined, id: string) {
+  return (ids ?? []).filter((x) => x !== id);
+}
+function withId(ids: string[] | undefined, id: string) {
+  return ids?.includes(id) ? ids : [...(ids ?? []), id];
+}
+
+/** Record a requirement as a control for a risk, on both sides. */
+export function linkMitigation(s: Collections, c: Ctx, riskId: string, requirementId: string): Change<boolean> {
+  const risk = s.risks.find((r) => r.id === riskId);
+  const req = s.requirements.find((r) => r.id === requirementId);
+  if (!risk || !req) return nothing(false);
+  if (risk.mitigationIds.includes(requirementId) && req.riskIds?.includes(riskId)) return nothing(true);
+  return {
+    next: {
+      risks: s.risks.map((r) => (r === risk ? { ...r, mitigationIds: withId(r.mitigationIds, requirementId), updatedAt: c.now } : r)),
+      requirements: s.requirements.map((r) => (r === req ? { ...r, riskIds: withId(r.riskIds, riskId) } : r)),
+      activity: [log(c, "risk", `linked requirement "${req.title}" as mitigation for risk "${risk.title}"`, risk.id), ...s.activity],
+    },
+    result: true,
+  };
+}
+
+export function unlinkMitigation(s: Collections, c: Ctx, riskId: string, requirementId: string): Change<boolean> {
+  const risk = s.risks.find((r) => r.id === riskId);
+  const req = s.requirements.find((r) => r.id === requirementId);
+  if (!risk || !req) return nothing(false);
+  return {
+    next: {
+      risks: s.risks.map((r) => (r === risk ? { ...r, mitigationIds: without(r.mitigationIds, requirementId), updatedAt: c.now } : r)),
+      requirements: s.requirements.map((r) => (r === req ? { ...r, riskIds: without(r.riskIds, riskId) } : r)),
+      activity: [log(c, "risk", `removed requirement "${req.title}" as mitigation for risk "${risk.title}"`, risk.id), ...s.activity],
+    },
+    result: true,
+  };
 }

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Risks.** A new kind, `RSK`, in `groundwork/risks/`: hazard, harm, probability and severity on a 3×3 or 5×5 matrix (`riskMatrix` in `config.yml`, 5×5 by default), residual scores, category (security or domain), and the versions it affects. Levels are derived, never stored. Same fields and rules as the Groundwork web app, so a later import carries them across.
+- Mitigating requirements are linked with `link_items` from a risk to a requirement and recorded on both (`mitigationIds`, `riskIds`). `get_item` on a risk says whether it's mitigated.
+- `record_baseline` records the risks an existing product carries, with the requirements that already control them.
+- `trace_code` lists the requirements and risks a set of files touches, by their `codeRefs`. Agents call it before planning a change.
+- A new `groundwork-risk` skill for spotting and scoring risks while planning, in a baseline, or in a risk analysis.
+- `groundwork import` refuses a folder with risks until the web app's import carries them, so nothing is dropped.
 - Needs Node.js 22 or newer. Node 20 reached end of life in April 2026, and CI no longer tests it.
 
 ## 0.8.0

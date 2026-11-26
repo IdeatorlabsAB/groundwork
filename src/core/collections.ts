@@ -1,4 +1,4 @@
-import type { Activity, Experiment, Finding, Hypothesis, Insight, Requirement } from "./types";
+import type { Activity, Experiment, Finding, Hypothesis, Insight, Requirement, Risk } from "./types";
 
 /** A workspace's items, by collection. Shared by the local file store and the hosted app. */
 export interface Collections {
@@ -7,6 +7,7 @@ export interface Collections {
   experiments: Experiment[];
   findings: Finding[];
   requirements: Requirement[];
+  risks: Risk[];
   activity: Activity[];
 }
 
@@ -16,6 +17,7 @@ export const COLLECTION_KIND = {
   experiments: "experiment",
   findings: "finding",
   requirements: "requirement",
+  risks: "risk",
   activity: "activity",
 } as const satisfies Record<keyof Collections, string>;
 
@@ -27,6 +29,7 @@ export const emptyCollections = (): Collections => ({
   experiments: [],
   findings: [],
   requirements: [],
+  risks: [],
   activity: [],
 });
 

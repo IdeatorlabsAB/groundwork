@@ -19,6 +19,7 @@ export const COLLECTIONS: Record<Kind, ItemCollection> = {
   experiment: "experiments",
   finding: "findings",
   requirement: "requirements",
+  risk: "risks",
 };
 
 export const KIND_OF: Record<ItemCollection, Kind> = {
@@ -27,6 +28,7 @@ export const KIND_OF: Record<ItemCollection, Kind> = {
   experiments: "experiment",
   findings: "finding",
   requirements: "requirement",
+  risks: "risk",
 };
 
 const ITEM_COLLECTIONS = COLLECTION_KEYS.filter((k): k is ItemCollection => k !== "activity");
@@ -139,7 +141,7 @@ export function idAllocator(items: Collections) {
   };
 }
 
-export const LINK_FIELDS = ["insightIds", "hypothesisIds", "experimentIds", "findingIds", "stakeholderIds", "obsoletedBy", "replaces"] as const;
+export const LINK_FIELDS = ["insightIds", "hypothesisIds", "experimentIds", "findingIds", "stakeholderIds", "obsoletedBy", "replaces", "mitigationIds", "riskIds"] as const;
 
 /**
  * The operations make new items with temporary ids. Give each a readable id (INS-0008…) in creation order, and

@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import YAML from "yaml";
 import { z } from "zod";
+import { defaultMatrix, isValidMatrix } from "../core/risk";
+import type { RiskMatrix } from "../core/types";
 
 /** The folder inside a project that holds everything Groundwork writes. */
 export const DIR = "groundwork";
@@ -27,12 +29,21 @@ export const configSchema = z.object({
       }),
     )
     .default([]),
+  /** Probability × severity grid for scoring risks. Leave out for the 5×5 default. */
+  riskMatrix: z
+    .custom<RiskMatrix>(isValidMatrix, {
+      message: "riskMatrix must have size 3 or 5, that many probabilityLabels and severityLabels, and size × size cells of low, medium or high",
+    })
+    .optional(),
   /** Set when this folder was imported into the Groundwork web app. Local writes stop, so the two can't drift apart. */
   migrated: z.string().url().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
 export type Person = Config["people"][number];
+
+/** The matrix risks are scored on: config.yml's riskMatrix, or the 5×5 default. */
+export const matrixOf = (config: Config): RiskMatrix => config.riskMatrix ?? defaultMatrix(5);
 
 /**
  * Where the project is: $GROUNDWORK_DIR, else the nearest folder above the working directory that has a
@@ -83,8 +94,8 @@ const CONFIG_HEADER = `# Groundwork settings. See SPEC.md in the groundwork-mcp 
 export function writeConfig(root: string, config: Config) {
   mkdirSync(join(root, DIR), { recursive: true });
   // Empty flat lists aren't written: products live in groundwork/products/ now, and the lists are only for older folders.
-  const { productAreas, products, ...rest } = config;
-  const out = { ...rest, ...(productAreas.length ? { productAreas } : {}), ...(products.length ? { products } : {}) };
+  const { productAreas, products, riskMatrix, ...rest } = config;
+  const out = { ...rest, ...(riskMatrix ? { riskMatrix } : {}), ...(productAreas.length ? { productAreas } : {}), ...(products.length ? { products } : {}) };
   writeFileSync(configPath(root), CONFIG_HEADER + YAML.stringify(out, { lineWidth: 0 }));
 }
 

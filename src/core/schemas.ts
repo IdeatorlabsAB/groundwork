@@ -26,7 +26,8 @@ export const REQUIREMENT_KIND = z.enum(["stakeholder", "solution"]);
 export const REQUIREMENT_ORIGIN = z.enum(["tender", "regulation", "contract", "customer-need", "existing-product"]);
 export const HYPOTHESIS_ORIGIN = z.enum(["inferred"]);
 export const FINDING_CONFIDENCE = z.enum(["low", "medium", "high"]);
-export const KIND = z.enum(["insight", "hypothesis", "experiment", "finding", "requirement"]);
+export const RISK_CATEGORY = z.enum(["security", "domain"]);
+export const KIND = z.enum(["insight", "hypothesis", "experiment", "finding", "requirement", "risk"]);
 export type Kind = z.infer<typeof KIND>;
 
 /** The input shapes for one id format. `id` validates a single item id. */
@@ -145,6 +146,31 @@ export function makeSchemas(id: z.ZodString) {
     productArea: area,
   });
 
+  /** Checked against the matrix size by the server, so agents get a precise message. */
+  const score = (what: string) => z.number().int().describe(`${what}, 1 (lowest) to the matrix size from get_workspace (riskMatrix.size).`);
+
+  // Same fields and descriptions as the web app's riskInput, with versions for its releaseIds. Mitigations are
+  // linked with link_items (risk -> requirement), not set here.
+  const riskInput = z.object({
+    title: short().describe("One line naming what could go wrong."),
+    hazard: long(2000).default("").describe("What could go wrong, and why."),
+    harm: long(2000).default("").describe("Who gets hurt, and how."),
+    probability: score("How likely it is"),
+    severity: score("How bad it would be"),
+    residualProbability: score("Probability once the mitigations are in place").optional(),
+    residualSeverity: score("Severity once the mitigations are in place").optional(),
+    product: z.string().trim().max(100).optional().describe("The product this risk belongs to (id or title from get_workspace). Leave out when there's one product."),
+    versions: z
+      .array(z.string().trim().min(1).max(40))
+      .max(50)
+      .default([])
+      .describe("Planned versions of the same product this risk is introduced in or affects."),
+    category: RISK_CATEGORY.optional().describe("security: access, data exposure, injection, auth. domain: harm in the product's own domain (name it in `domain`)."),
+    domain: z.string().trim().max(60).optional().describe('For domain risks, which domain, e.g. "patient-safety", "financial", "legal".'),
+    codeRefs,
+    productArea: area,
+  });
+
   /** Fields an agent may change with update_item, per kind. Status changes with rules have their own tools. */
   const PATCHES = {
     insight: insightInput.partial().extend({ tags: z.array(short(40)).max(10).optional(), sentiment: SENTIMENT.optional() }),
@@ -173,18 +199,19 @@ export function makeSchemas(id: z.ZodString) {
       findingIds: z.array(id).max(100).optional(),
       kind: REQUIREMENT_KIND.optional(),
     }),
+    risk: riskInput.partial().extend({ hazard: long(2000).optional(), harm: long(2000).optional(), versions: z.array(z.string().trim().min(1).max(40)).max(50).optional() }),
   } as const;
 
-  return { id, insightInput, hypothesisInput, experimentInput, findingInput, requirementInput, PATCHES };
+  return { id, insightInput, hypothesisInput, experimentInput, findingInput, requirementInput, riskInput, PATCHES };
 }
 
 export type Schemas = ReturnType<typeof makeSchemas>;
 
 /** Readable ids used in files: a kind prefix and a number, e.g. INS-0007. */
-export const ID_PREFIX = { insight: "INS", hypothesis: "HYP", experiment: "EXP", finding: "FND", requirement: "REQ" } as const satisfies Record<
+export const ID_PREFIX = { insight: "INS", hypothesis: "HYP", experiment: "EXP", finding: "FND", requirement: "REQ", risk: "RSK" } as const satisfies Record<
   Kind,
   string
 >;
-export const LOCAL_ID = /^(INS|HYP|EXP|FND|REQ)-\d{4,}$/;
+export const LOCAL_ID = /^(INS|HYP|EXP|FND|REQ|RSK)-\d{4,}$/;
 export const localId = z.string().regex(LOCAL_ID, "an id like INS-0007");
 export const localSchemas = makeSchemas(localId);

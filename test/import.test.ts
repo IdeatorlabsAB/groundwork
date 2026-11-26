@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +11,12 @@ const TOKEN = "gw_" + "a".repeat(43);
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "groundwork-import-"));
   cpSync(join(__dirname, "../examples/acme/groundwork"), join(root, "groundwork"), { recursive: true });
+  // The web app can't take risks until its import is extended (PR 7), so these tests run on acme without them.
+  rmSync(join(root, "groundwork", "risks"), { recursive: true, force: true });
+  for (const name of readdirSync(join(root, "groundwork", "requirements"))) {
+    const file = join(root, "groundwork", "requirements", name);
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^riskIds:\n(  - .*\n)+/m, ""));
+  }
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -40,6 +46,16 @@ describe("groundwork import", () => {
     expect(b).toMatchObject({ format: "groundwork-files", schemaVersion: 1, dryRun: true, overwrite: false, config: { name: "Acme", products: ["Acme app"] } });
     expect(Object.fromEntries(Object.entries(b.items).map(([k, v]) => [k, v.length]))).toEqual({ insights: 3, hypotheses: 2, experiments: 1, findings: 1, requirements: 4 });
     expect(b.items.insights[0]).toMatchObject({ id: "INS-0001", notes: expect.stringContaining("Interview context") });
+  });
+
+  it("refuses a folder with risks rather than dropping them", () => {
+    mkdirSync(join(root, "groundwork", "risks"));
+    writeFileSync(
+      join(root, "groundwork", "risks", "RSK-0001-wrong-user.md"),
+      "---\nid: RSK-0001\ntitle: Wrong user\nhazard: x\nharm: y\nprobability: 2\nseverity: 2\nmitigationIds: []\nversions: []\n---\n",
+    );
+    expect(() => buildBundle(root, { dryRun: true })).toThrow(ImportError);
+    expect(() => buildBundle(root, { dryRun: true })).toThrow(/risks/);
   });
 
   it("posts to /api/import with the token and marks the folder migrated", async () => {
