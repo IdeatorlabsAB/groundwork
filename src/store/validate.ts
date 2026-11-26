@@ -16,7 +16,7 @@ export interface Problem {
 }
 
 const REQUIREMENT_STATUS = z.enum(["draft", "awaiting-approval", "approved", "in-delivery", "obsolete"]);
-const { insightInput, hypothesisInput, experimentInput, findingInput, requirementInput } = localSchemas;
+const { insightInput, hypothesisInput, experimentInput, findingInput, requirementInput, riskInput } = localSchemas;
 
 /** What a stored item must look like: the agent's input shape plus the fields Groundwork sets. Unknown fields are kept. */
 const STORED: Record<Kind, z.ZodType> = {
@@ -26,6 +26,14 @@ const STORED: Record<Kind, z.ZodType> = {
   finding: findingInput.loose(),
   requirement: requirementInput
     .extend({ kind: REQUIREMENT_KIND.optional(), status: REQUIREMENT_STATUS, acceptanceCriteria: z.array(z.string()).default([]) })
+    .loose(),
+  risk: riskInput
+    .extend({
+      createdAt: z.string().optional(),
+      mitigationIds: z.array(z.string()).default([]),
+      origin: z.enum(["existing-product"]).optional(),
+      originNote: z.string().optional(),
+    })
     .loose(),
 };
 

@@ -39,8 +39,14 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
   const loaded = load(root);
   const problems = validate(loaded, config).filter((p) => p.level === "error");
   if (problems.length) throw new ImportError(`Fix ${problems.length} error${problems.length === 1 ? "" : "s"} first (run groundwork validate).`, problems);
-  const { activity: _activity, ...items } = loaded.items;
+  const { activity: _activity, risks, ...items } = loaded.items;
   void _activity;
+  // The web app's import drops kinds it doesn't know, so a folder with risks waits until it takes them.
+  if (risks.length) {
+    throw new ImportError(
+      `This folder has ${risks.length} risk${risks.length === 1 ? "" : "s"}, and the web app's import doesn't carry risks yet. Wait for the groundwork-mcp release that migrates them, so nothing is lost.`,
+    );
+  }
   // The web app knows products by name: send each requirement's product as its title, not its id (PRD-0001).
   const titles = new Map(loaded.products.map((p) => [p.id, p.title]));
   items.requirements = items.requirements.map((r) => (r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product) } : r));

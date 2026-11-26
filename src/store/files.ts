@@ -19,6 +19,7 @@ export const COLLECTIONS: Record<Kind, ItemCollection> = {
   experiment: "experiments",
   finding: "findings",
   requirement: "requirements",
+  risk: "risks",
 };
 
 export const KIND_OF: Record<ItemCollection, Kind> = {
@@ -27,6 +28,7 @@ export const KIND_OF: Record<ItemCollection, Kind> = {
   experiments: "experiment",
   findings: "finding",
   requirements: "requirement",
+  risks: "risk",
 };
 
 const ITEM_COLLECTIONS = COLLECTION_KEYS.filter((k): k is ItemCollection => k !== "activity");

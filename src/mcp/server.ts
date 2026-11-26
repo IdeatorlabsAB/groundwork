@@ -7,7 +7,7 @@ import * as ops from "../core/ops";
 import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
-import type { Experiment, Finding, Hypothesis, Insight, Requirement } from "../core/types";
+import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk } from "../core/types";
 import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
 import { nextProductId, writeProduct, type Product } from "../store/products";
 import { correctRelease, laterVersion, pendingRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, stakeholderProgress } from "../store/release";
@@ -66,7 +66,7 @@ Recording evidence or requirements directly isn't planning work. A product manag
 
 type State = Collections;
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
-type AnyItem = Insight | Hypothesis | Experiment | Finding | Requirement;
+type AnyItem = Insight | Hypothesis | Experiment | Finding | Requirement | Risk;
 
 class UserError extends Error {}
 
@@ -110,8 +110,18 @@ export function outgoing(kind: Kind, item: AnyItem): string[] {
     }
     case "requirement": {
       const r = item as Requirement;
-      return [...(r.findingIds ?? []), ...(r.insightIds ?? []), ...(r.hypothesisIds ?? []), ...(r.stakeholderIds ?? []), ...(r.obsoletedBy ?? []), ...(r.replaces ?? [])];
+      return [
+        ...(r.findingIds ?? []),
+        ...(r.insightIds ?? []),
+        ...(r.hypothesisIds ?? []),
+        ...(r.stakeholderIds ?? []),
+        ...(r.obsoletedBy ?? []),
+        ...(r.replaces ?? []),
+        ...(r.riskIds ?? []),
+      ];
     }
+    case "risk":
+      return (item as Risk).mitigationIds ?? [];
     default:
       return [];
   }
@@ -143,6 +153,10 @@ function textOf(kind: Kind, item: AnyItem): string {
       const r = item as Requirement;
       const tickets = ticketsOf(r).map((t) => `${t.key} ${t.title ?? ""}`);
       return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, notes].join(" ");
+    }
+    case "risk": {
+      const r = item as Risk;
+      return [r.title, r.hazard, r.harm, r.domain ?? "", notes].join(" ");
     }
   }
 }
@@ -848,6 +862,9 @@ export function buildServer({ root }: ServerOptions): McpServer {
           change = ops.updateRequirement(state, id, { ...(p as Partial<Requirement>), updatedAt: c.now });
           break;
         }
+        case "risk":
+          change = ops.updateRisk(state, c, id, p as Partial<Risk>);
+          break;
       }
       const [next] = apply(state, change);
       const updated = find(next, id)!;
@@ -1409,7 +1426,9 @@ export function buildServer({ root }: ServerOptions): McpServer {
               ? ops.deleteExperiment(state, id)
               : hit.kind === "finding"
                 ? ops.deleteFinding(state, id)
-                : ops.deleteRequirement(state, id);
+                : hit.kind === "risk"
+                  ? ops.deleteRisk(state, id)
+                  : ops.deleteRequirement(state, id);
       const [next] = apply(state, change);
       const alsoDeleted = hit.kind === "hypothesis" ? state.experiments.filter((e) => e.hypothesisId === id).map((e) => e.id) : [];
       return { state: next, result: { deleted: { kind: hit.kind, id, title: hit.item.title }, ...(alsoDeleted.length ? { alsoDeletedExperiments: alsoDeleted } : {}) } };
