@@ -5,6 +5,7 @@ import { writeProduct, type Product } from "./store/products";
 import { correctRelease, ReleaseError, releaseReport, releaseVersion, renderReleaseReport } from "./store/release";
 import { renderRecord, reportView } from "./store/report";
 import { commitSignOff, GateError, lockMessage, prepareSignOff } from "./store/signing";
+import { checkRelease } from "./store/check";
 import { activeRecord, loadRecords } from "./store/signoff";
 
 /** The gate's refusal, with the CLI's way to override it. */
@@ -141,6 +142,31 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
     }
     return { code: 1, lines };
   }
+}
+
+/** `groundwork check release`: the version's blockers. Exits 1 when a planned version has any, for CI. */
+export function runCheckCommand(root: string, args: { product?: string; version: string; json?: boolean }): Out {
+  const config = readConfig(root);
+  const loaded = load(root);
+  const p = productFor(catalogueOf(config, loaded.products), args.product);
+  if (typeof p === "string") return { code: 1, lines: [p] };
+  if (!p.versions.some((v) => v.version === args.version)) return { code: 1, lines: [`${args.version} isn't a version of ${p.title}.`] };
+  const out = checkRelease(root, loaded, p, args.version);
+  const code = out.status === "planned" && !out.ready ? 1 : 0;
+  if (args.json) return { code, lines: JSON.stringify(out, null, 2).split("\n") };
+  const name = `${p.title} ${args.version}`;
+  if (out.status === "signed-off") return { code, lines: [`${name} is signed off: ${out.record}, by ${out.signedOffBy.name}.`] };
+  if (out.status === "released") return { code, lines: [`${name}: ${out.note}. Sign it off with: groundwork release ${args.version} --sign-off`] };
+  const n = out.blockers.length;
+  return {
+    code,
+    lines: [
+      n ? `${name} isn't ready: ${n} blocker${n === 1 ? "" : "s"}.` : `${name} is ready to release.`,
+      ...out.blockers.map((b) => `- ${b.message}`),
+      ...out.warnings.map((w) => `warning: ${w}`),
+      `CI results read from ${out.results.read.join(" and ")}. ${out.results.hint}`,
+    ],
+  };
 }
 
 export function runReportCommand(root: string, args: { product?: string; version: string; json?: boolean; format?: string; table?: string }): Out {

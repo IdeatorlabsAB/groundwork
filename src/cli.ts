@@ -10,7 +10,7 @@ import { clashProblems, GitError, renumber } from "./store/branches";
 import { migrate, planMigration, type MigrationPlan } from "./store/migrate";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
-import { runReleaseCommand, runReportCommand } from "./release-cli";
+import { runCheckCommand, runReleaseCommand, runReportCommand } from "./release-cli";
 import { runResultsCommand } from "./store/results-cli";
 import { ImportError, runImport } from "./store/import";
 
@@ -44,6 +44,9 @@ Usage:
   groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]
                                        Record a CI run's results for the tests requirements link
                                        to; --push commits them to the results branch (in CI)
+  groundwork check release [product] <version> [--json]
+                                       What blocks a version from going out. Exits 1 if anything
+                                       does (use it in CI before releasing)
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -302,6 +305,11 @@ async function main(): Promise<number> {
       return cmdMigrate(Boolean(values["dry-run"]));
     case "renumber":
       return cmdRenumber(values.against);
+    case "check": {
+      const pv = productVersion(positionals.slice(2));
+      if (arg !== "release" || !pv.version) return console.error("Usage: groundwork check release [product] <version> [--json]"), 1;
+      return print(runCheckCommand(findRoot(), { ...pv, json: Boolean(values.json) }));
+    }
     case "results": {
       const files = positionals.slice(2);
       if (arg !== "add" || !files.length) return console.error("Usage: groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]"), 1;

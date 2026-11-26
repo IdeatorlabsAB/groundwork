@@ -134,6 +134,7 @@ describe("local MCP server", () => {
         "add_requirements",
         "add_risks",
         "approve_requirement",
+        "check_release",
         "delete_item",
         "get_item",
         "get_workspace",

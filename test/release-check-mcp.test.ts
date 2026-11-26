@@ -232,3 +232,43 @@ describe("signing off and withdrawing", () => {
     expect(rec.requirements.filter((r: { kind: string }) => r.kind === "solution")).toHaveLength(2);
   });
 });
+
+describe("check_release", () => {
+  it("check_release lists a planned version's blockers", async () => {
+    const { error, data } = await call(await connect(), "check_release", { version: "1.1" });
+    expect(error).toBeUndefined();
+    expect(data).toMatchObject({ version: "1.1", status: "planned", ready: false });
+    expect(data.blockers).toEqual([{ type: "missing-tests", refId: "REQ-0002", message: 'Requirement "Check totals" has no linked tests' }]);
+    expect(data.scope.requirements.map((r: { id: string }) => r.id)).toEqual(["REQ-0002"]);
+    expect(data.results.read).toEqual(["working tree"]);
+  });
+
+  it("check_release on a ready version", async () => {
+    const { data } = await call(await ready(), "check_release", { version: "1.1" });
+    expect(data).toMatchObject({ status: "planned", ready: true, blockers: [] });
+  });
+
+  it("check_release on a signed-off version reads the record", async () => {
+    const client = await ready();
+    await call(client, "release_version", { version: "1.1", shipped: ["REQ-0002"] });
+    const { data } = await call(client, "check_release", { version: "1.1" });
+    expect(data).toMatchObject({ status: "signed-off", record: "groundwork/releases/PRD-0001-1-1-1.json", signedOffBy: { id: "sam", name: "Sam" }, blockers: [] });
+  });
+
+  it("check_release on a version released before sign-off records", async () => {
+    const { data } = await call(await connect(), "check_release", { version: "1.0" });
+    expect(data).toEqual({ version: "1.0", status: "released", note: "Released before sign-off records", signOff: "sign_off_release" });
+  });
+
+  it("check_release warns about a mitigation that isn't in the version", async () => {
+    const client = await ready();
+    write(
+      `${REQS}/REQ-0004-later.md`,
+      renderItem({ id: "REQ-0004", title: "Recheck totals", kind: "solution", story: "The app shall recheck totals.", status: "approved", stakeholderIds: ["REQ-0001"], product: "PRD-0001", plannedFor: "1.2", ...base }),
+    );
+    const id = (await call(client, "add_risks", { risks: [{ title: "Overcharge", probability: 5, severity: 5, residualProbability: 1, residualSeverity: 1, versions: ["1.1"] }] })).data.created[0].id;
+    await call(client, "link_items", { id, linkTo: ["REQ-0004"] });
+    const { data } = await call(client, "check_release", { version: "1.1" });
+    expect(data.warnings).toEqual(['Risk "Overcharge": its mitigation "Recheck totals" isn\'t in this version.']);
+  });
+});

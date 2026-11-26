@@ -11,6 +11,7 @@ import { testStatus } from "../core/tests";
 import type { TestResultStatus } from "../core/types";
 import { loadResults, resultsFor, testRunPath, writeResult, type StoredTestRun } from "../store/results";
 import { commitSignOff, GateError, lockMessage, prepareSignOff } from "../store/signing";
+import { checkRelease } from "../store/check";
 import { activeRecord, loadRecords, withdrawRecord, RecordError } from "../store/signoff";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk, RiskMatrix } from "../core/types";
@@ -1558,6 +1559,28 @@ export function buildServer({ root }: ServerOptions): McpServer {
           report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version),
         },
       };
+    }),
+  );
+
+  server.registerTool(
+    "check_release",
+    {
+      title: "Check release",
+      description:
+        "Whether a version is ready to release, and what blocks it: risks without approved mitigations or with a residual score still high, requirements not approved, and requirements whose tests haven't passed: code tests in the newest CI runs on the default branch (failed-code-test, no-ci-run), test-management cases in the runs recorded for the version (untested-requirement), or no tests linked at all (missing-tests). Call it before opening a PR for release work and report the gaps. CI results are read as last fetched: suggest git fetch when they may be stale. For a released version it says whether it's signed off.",
+      inputSchema: { product: productArg, version: versionArg },
+      annotations: { readOnlyHint: true },
+    },
+    read((s, a: { product?: string; version: string }) => {
+      const p = s.targetProduct(a.product);
+      if (!p.versions.some((v) => v.version === a.version)) throw new UserError(`"${a.version}" isn't a version of ${p.title}. Versions: ${p.versions.map((x) => x.version).join(", ") || "none"}.`);
+      const out = checkRelease(root, s.loaded, p, a.version);
+      if (out.status !== "planned") return out;
+      const byId = (kind: Kind) => (id: string) => {
+        const hit = find(s.loaded.items, id);
+        return hit ? s.summary(kind, hit.item) : { id };
+      };
+      return { ...out, scope: { requirements: out.scope.requirements.map(byId("requirement")), risks: out.scope.risks.map(byId("risk")) } };
     }),
   );
 

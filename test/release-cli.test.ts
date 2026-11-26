@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runReleaseCommand, runReportCommand } from "../src/release-cli";
+import { runCheckCommand, runReleaseCommand, runReportCommand } from "../src/release-cli";
 import { readConfig, writeConfig } from "../src/store/config";
 import { load, save } from "../src/store/files";
 import { writeProduct } from "../src/store/products";
@@ -99,6 +99,23 @@ describe("groundwork release through the gate", () => {
     const out = runReleaseCommand(root, { version: "1.0", signOff: true, justification: "Released before Groundwork checked tests." });
     expect(out.code).toBe(0);
     expect(load(root).products[0].versions[0].signOff).toBe("groundwork/releases/PRD-0001-1-0-1.json");
+  });
+});
+
+describe("groundwork check release", () => {
+  it("groundwork check release exits 1 with blockers and 0 when ready", () => {
+    const blocked = runCheckCommand(root, { version: "1.0" });
+    expect(blocked.code).toBe(1);
+    expect(blocked.lines).toContain('- Requirement "Guided CSV import" has no linked tests');
+    runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    const signed = runCheckCommand(root, { version: "1.0" });
+    expect(signed.code).toBe(0);
+    expect(signed.lines[0]).toBe("Acme app 1.0 is signed off: groundwork/releases/PRD-0001-1-0-1.json, by Sam.");
+  });
+
+  it("--json prints the same as check_release", () => {
+    const out = runCheckCommand(root, { version: "1.0", json: true });
+    expect(JSON.parse(out.lines.join("\n"))).toMatchObject({ version: "1.0", status: "planned", ready: false });
   });
 });
 
