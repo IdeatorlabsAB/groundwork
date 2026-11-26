@@ -7,8 +7,10 @@ import * as ops from "../core/ops";
 import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
 import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
-import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk } from "../core/types";
-import { appendToConfig, isInitialized, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
+import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk, RiskMatrix } from "../core/types";
+import { initialLevel, isMitigated, residualLevel } from "../core/risk";
+import { touches } from "../core/code-refs";
+import { appendToConfig, isInitialized, matrixOf, readConfig, resolveActor, setSchemaVersion, writeConfig, type Config } from "../store/config";
 import { nextProductId, writeProduct, type Product } from "../store/products";
 import { correctRelease, laterVersion, pendingRelease, ReleaseError, releaseReport, releaseRequirements, releaseVersion, stakeholderProgress } from "../store/release";
 import { recordBaseline } from "../store/baseline";
@@ -19,7 +21,7 @@ import { catalogueOf, findArea, findProduct, plannedVersions, productOf, type Ca
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
 
-const { insightInput, hypothesisInput, experimentInput, findingInput, requirementInput, PATCHES } = localSchemas;
+const { insightInput, hypothesisInput, experimentInput, findingInput, requirementInput, riskInput, PATCHES } = localSchemas;
 
 export const INSTRUCTIONS = `Groundwork keeps this product's evidence and decisions as linked Markdown files in the groundwork/ folder, as a chain:
 insight -> hypothesis -> experiment -> finding -> requirement.
@@ -32,6 +34,7 @@ insight -> hypothesis -> experiment -> finding -> requirement.
   - "stakeholder": who needs what and why, as a user story: "As a <role> I want <need> so that <reason>".
   - "solution": the qualities and behaviour the solution must have, as "shall" statements: "The <system or part> shall …". Every solution requirement fulfils at least one stakeholder requirement (stakeholderIds); one stakeholder requirement is usually fulfilled by several solution requirements.
   Add the stakeholder requirements first, then the solution requirements that reference their ids. Link findingIds, insightIds or an origin (tender, regulation, contract, customer-need, existing-product) when there is evidence or an outside source; they're optional.
+- Risk: what could go wrong with a product (hazard, harm), scored for probability and severity on the risk matrix (get_workspace riskMatrix). A high risk needs mitigating requirements (link_items risk -> requirement) and a residual score that is no longer high before its version can go out. Category: security, or domain (name it, e.g. patient-safety). Tag it for the planned versions it's introduced in or affects (versions).
 
 How to work:
 1. Call get_workspace first: it gives the products (with their areas and versions) and people (for approvers). If an area, product or version you need is missing, add it with add_product_areas, add_products or add_product_versions, after checking for an existing match. If it says catalogue is legacy, suggest the user runs groundwork migrate before adding versions.
@@ -42,6 +45,7 @@ How to work:
 6. The Markdown body under an item's frontmatter is the user's own notes. Read it, but don't overwrite it.
 
 When you plan work (a plan, plan mode, or a step in an autonomous workflow):
+0. Call trace_code on the files in scope; a hit on a risk or a mitigating requirement means the change affects that risk. Name it in the plan, and check new needs and changes for new risks (see the groundwork-risk skill).
 1. Classify the task first. If unsure, search_items for related requirements.
    - New need: something users can't do today, e.g. "Let's add a feature to book appointments".
    - Change: existing behaviour that should work differently.
@@ -333,6 +337,7 @@ class Session {
       title: item.title,
       ...(statusOf(kind, item) ? { status: statusOf(kind, item) } : {}),
       ...(kind === "requirement" ? { requirementKind: kindOf(item as Requirement) } : {}),
+      ...(kind === "risk" ? this.levels(item as Risk) : {}),
       ...(area ? { area } : {}),
       file: this.file(kind, item),
     };
@@ -345,7 +350,44 @@ class Session {
       if (tickets.length) item = { ...r, tickets };
     }
     const area = this.areaLabel((item as { productArea?: string }).productArea) || undefined;
-    return { kind, ...item, ...(area ? { areaLabel: area } : {}), file: this.file(kind, item) };
+    return { kind, ...item, ...(kind === "risk" ? this.levels(item as Risk) : {}), ...(area ? { areaLabel: area } : {}), file: this.file(kind, item) };
+  }
+
+  get matrix(): RiskMatrix {
+    return matrixOf(this.config);
+  }
+
+  /** Scores must be whole numbers on this project's matrix. Same message as the web app. */
+  checkScores(p: Partial<Pick<Risk, "probability" | "severity" | "residualProbability" | "residualSeverity">>) {
+    const n = this.matrix.size;
+    for (const field of ["probability", "severity", "residualProbability", "residualSeverity"] as const) {
+      const v = p[field];
+      if (v !== undefined && (!Number.isInteger(v) || v < 1 || v > n)) {
+        throw new UserError(`${field} must be a whole number from 1 to ${n} on this workspace's ${n}×${n} risk matrix (got ${v}).`);
+      }
+    }
+  }
+
+  /**
+   * A risk's versions must be versions of its product. Tagging for a released version, or untagging from one, would
+   * change what that release recorded, so only planned versions may be added or removed.
+   */
+  checkRiskVersions(product: Product, versions: string[], was: string[] = []) {
+    for (const v of versions) {
+      if (!product.versions.some((x) => x.version === v)) {
+        throw new UserError(`"${v}" isn't a version of ${product.title}. Versions: ${product.versions.map((x) => x.version).join(", ") || "none"}.`);
+      }
+    }
+    const changed = [...versions.filter((v) => !was.includes(v)), ...was.filter((v) => !versions.includes(v))];
+    for (const v of changed) {
+      if (product.versions.find((x) => x.version === v)?.status === "released") throw new UserError(`"${v}" is released, so a risk can't be added to it or removed from it.`);
+    }
+  }
+
+  /** A risk's levels on this project's matrix. */
+  levels(r: Risk) {
+    const residual = residualLevel(this.matrix, r);
+    return { level: initialLevel(this.matrix, r) ?? "unscored", ...(residual ? { residualLevel: residual } : {}) };
   }
 
   ctx(): ops.Ctx {
@@ -495,6 +537,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
           : s.catalogue.productNames.map((title) => ({ title, areas: [], versions: [] })),
         productAreas: s.catalogue.areas,
         members: s.config.people.map(({ id, name, role }) => ({ id, name, role })),
+        riskMatrix: s.matrix,
         counts: Object.fromEntries(KIND.options.map((k) => [k, items[COLLECTIONS[k]].length])),
         problems: {
           errors: problems.filter((p) => p.level === "error").length,
@@ -510,7 +553,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
     {
       title: "Search items",
       description:
-        "Find insights, hypotheses, experiments, findings or requirements. Matches every word of `query` against titles, main text and notes. Returns short summaries; use get_item for the full item and its links.",
+        "Find insights, hypotheses, experiments, findings, requirements or risks. Matches every word of `query` against titles, main text and notes. Returns short summaries; use get_item for the full item and its links.",
       inputSchema: {
         kind: KIND.optional().describe("Only this kind."),
         query: z.string().max(200).optional().describe("Words to match, any order."),
@@ -572,7 +615,43 @@ export function buildServer({ root }: ServerOptions): McpServer {
           linkedFrom,
         };
       }
+      if (hit.kind === "risk") {
+        const r = hit.item as Risk;
+        return {
+          item: s.full(hit.kind, r),
+          mitigated: isMitigated(s.matrix, r, items.requirements),
+          mitigatedBy: items.requirements.filter((x) => r.mitigationIds.includes(x.id)).map((x) => s.summary("requirement", x)),
+          linksTo,
+          linkedFrom,
+        };
+      }
       return { item: s.full(hit.kind, hit.item), linksTo, linkedFrom };
+    }),
+  );
+
+  server.registerTool(
+    "trace_code",
+    {
+      title: "Trace code",
+      description:
+        "Which requirements and risks the given files or folders touch, by their codeRefs. Call it before changing code, so you know when a change touches an approved requirement or a risk control, and name those in the plan and the PR. Obsolete requirements are left out.",
+      inputSchema: {
+        paths: z.array(z.string().trim().min(1).max(300)).min(1).max(200).describe("Repo-relative files or folders, e.g. the files a change touches."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    read((s, { paths }: { paths: string[] }) => {
+      const items = s.loaded.items;
+      const hits = (refs: string[] | undefined, path: string) => (refs ?? []).filter((ref) => touches(ref, path));
+      return {
+        paths: paths.map((path) => ({
+          path,
+          requirements: items.requirements
+            .filter((r) => r.status !== "obsolete" && hits(r.codeRefs, path).length)
+            .map((r) => ({ ...s.summary("requirement", r), codeRefs: hits(r.codeRefs, path) })),
+          risks: items.risks.filter((r) => hits(r.codeRefs, path).length).map((r) => ({ ...s.summary("risk", r), codeRefs: hits(r.codeRefs, path) })),
+        })),
+      };
     }),
   );
 
@@ -690,6 +769,26 @@ export function buildServer({ root }: ServerOptions): McpServer {
         created.push(...many);
       }
       return { state: next, result: { created: created.map((x) => s.summary("requirement", x)), ...(warnings.length ? { warnings } : {}) } };
+    }),
+  );
+
+  server.registerTool(
+    "add_risks",
+    {
+      title: "Add risks",
+      description:
+        "Add risks to a product's risk register, scored on the project's risk matrix (see get_workspace). Then link mitigating requirements with link_items (risk -> requirement).",
+      inputSchema: { risks: z.array(riskInput).min(1).max(30) },
+    },
+    write((s, state, c, { risks }: { risks: z.infer<typeof riskInput>[] }) => {
+      const items: ops.NewRisk[] = risks.map((r) => {
+        const p = s.targetProduct(r.product);
+        s.checkScores(r);
+        s.checkRiskVersions(p, r.versions);
+        return { ...r, product: p.id, productArea: s.area(r.productArea), mitigationIds: [], owner: s.actor.id };
+      });
+      const [next, created] = apply(state, ops.addRisks(state, c, items));
+      return { state: next, result: { created: created.map((x) => s.summary("risk", x)) } };
     }),
   );
 
@@ -862,9 +961,22 @@ export function buildServer({ root }: ServerOptions): McpServer {
           change = ops.updateRequirement(state, id, { ...(p as Partial<Requirement>), updatedAt: c.now });
           break;
         }
-        case "risk":
+        case "risk": {
+          const r = hit.item as Risk;
+          s.checkScores(p as Partial<Risk>);
+          const was = s.catalogue.products.find((x) => x.id === r.product);
+          if (typeof p.product === "string") {
+            const next = s.targetProduct(p.product);
+            if (r.versions.length && next.id !== r.product) throw new UserError(`"${r.title}" is tagged for versions of ${was?.title ?? r.product}, so its product can't change.`);
+            p.product = next.id;
+          }
+          if (p.versions) {
+            const product = s.catalogue.products.find((x) => x.id === (p.product ?? r.product)) ?? s.targetProduct(undefined);
+            s.checkRiskVersions(product, p.versions as string[], r.versions);
+          }
           change = ops.updateRisk(state, c, id, p as Partial<Risk>);
           break;
+        }
       }
       const [next] = apply(state, change);
       const updated = find(next, id)!;
@@ -877,13 +989,27 @@ export function buildServer({ root }: ServerOptions): McpServer {
     {
       title: "Link items",
       description:
-        "Add evidence links without replacing existing ones. `id` is the item to link from; `linkTo` are the items it builds on. Supported: hypothesis -> insights; finding -> experiments, hypotheses, insights; requirement -> findings, insights, hypotheses, stakeholder requirements (for a solution requirement); experiment -> one hypothesis (replaces it).",
+        "Add evidence links without replacing existing ones. `id` is the item to link from; `linkTo` are the items it builds on. Supported: hypothesis -> insights; finding -> experiments, hypotheses, insights; requirement -> findings, insights, hypotheses, stakeholder requirements (for a solution requirement); experiment -> one hypothesis (replaces it); risk -> requirements that mitigate it (recorded on both).",
       inputSchema: { id: itemId, linkTo: z.array(localId).min(1).max(50) },
     },
-    write((s, state, _c, { id, linkTo }: { id: string; linkTo: string[] }) => {
+    write((s, state, c, { id, linkTo }: { id: string; linkTo: string[] }) => {
       const hit = find(state, id);
       if (!hit) throw new UserError(`No item with id ${id}.`);
       const add = (list: string[] | undefined, x: string) => (list?.includes(x) ? list : [...(list ?? []), x]);
+      if (hit.kind === "risk") {
+        // A mitigation link isn't part of a requirement's release record, so released requirements can be linked:
+        // that's how a baseline records the controls an existing product already has.
+        let next = state;
+        for (const target of linkTo) {
+          const t = find(next, target);
+          if (!t) throw new UserError(`No item with id ${target}.`);
+          if (t.kind !== "requirement") throw new UserError(`A risk can link only to the requirements that mitigate it, not to ${an(t.kind)}.`);
+          [next] = apply(next, ops.linkMitigation(next, c, id, target));
+        }
+        const updated = find(next, id)!;
+        return { state: next, result: { updated: s.full(updated.kind, updated.item) } };
+      }
+      if (linkTo.some((x) => find(state, x)?.kind === "risk")) throw new UserError("Link the other way: link_items from the risk to the requirement.");
       if (hit.kind === "requirement") {
         const locked = releaseRecordReason(state.requirements, hit.item as Requirement);
         if (locked) throw new UserError(locked);
