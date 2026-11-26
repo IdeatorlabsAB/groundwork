@@ -10,6 +10,8 @@ import { caseKey, caseLabel } from "../core/test-links";
 import { testStatus } from "../core/tests";
 import type { TestResultStatus } from "../core/types";
 import { loadResults, resultsFor, testRunPath, writeResult, type StoredTestRun } from "../store/results";
+import { commitSignOff, GateError, lockMessage, prepareSignOff } from "../store/signing";
+import { activeRecord, loadRecords, withdrawRecord, RecordError } from "../store/signoff";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk, RiskMatrix } from "../core/types";
 import { initialLevel, isMitigated, residualLevel } from "../core/risk";
@@ -527,7 +529,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
         renamed.forEach((to, from) => (text = text.split(from).join(to)));
         return { content: [{ type: "text", text }] };
       } catch (e) {
-        if (e instanceof UserError || e instanceof ReleaseError) return fail(e.message);
+        if (e instanceof UserError || e instanceof ReleaseError || e instanceof GateError || e instanceof RecordError) return fail(e.message);
         return fail(`Groundwork couldn't save that: ${(e as Error).message}`);
       }
     };
@@ -1480,6 +1482,12 @@ export function buildServer({ root }: ServerOptions): McpServer {
   const productArg = z.string().max(100).optional().describe("The product's id or title. Needed when there's more than one product.");
   const versionArg = z.string().trim().min(1).max(40);
   const reqIds = z.array(localId).max(100);
+  const justification = z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .describe("Owners only: why this version may go out despite its blockers. Recorded on the sign-off. Only when the user gives it; never write one yourself.");
   /** The catalogue with one product replaced, for a report on the state after a change. */
   const withProduct = (s: Session, p: Product) => catalogueOf(s.config, s.catalogue.products.map((x) => (x.id === p.id ? p : x)));
 
@@ -1523,14 +1531,73 @@ export function buildServer({ root }: ServerOptions): McpServer {
       title: "Release version",
       description:
         "Release a planned version: `shipped` are the planned requirements that went out in it. Planned requirements not listed, and planned removals not confirmed in `removed`, move to `moveTo` (another planned version), which is required if there are any. Replaced requirements become obsolete once all their replacements have shipped. Show the user the list and get their agreement first.",
-      inputSchema: { product: productArg, version: versionArg, shipped: reqIds, removed: reqIds.optional(), moveTo: versionArg.optional() },
+      inputSchema: {
+        product: productArg,
+        version: versionArg,
+        shipped: reqIds,
+        removed: reqIds.optional(),
+        moveTo: versionArg.optional(),
+        overrideJustification: justification.optional(),
+      },
     },
-    write((s, state, c, a: { product?: string; version: string; shipped: string[]; removed?: string[]; moveTo?: string }) => {
+    write((s, state, c, a: { product?: string; version: string; shipped: string[]; removed?: string[]; moveTo?: string; overrideJustification?: string }) => {
       s.requireReleaser();
       const p = s.targetProduct(a.product);
       const out = releaseVersion(state.requirements, s.catalogue, { product: p, version: a.version, shipped: a.shipped, removed: a.removed, moveTo: a.moveTo, actor: c.actor, now: c.now });
       const next = { ...state, requirements: out.requirements };
-      return { state: next, products: [out.product], result: { released: `${p.title} ${a.version}`, report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version) } };
+      // Judged on what ships; written only once everything is worked out.
+      const signed = prepareSignOff({ root, config: s.config, state: next, catalogue: withProduct(s, out.product), product: out.product, version: a.version, actor: s.actor, now: c.now, justification: a.overrideJustification });
+      commitSignOff(root, signed);
+      return {
+        state: next,
+        products: [signed.product],
+        result: {
+          released: `${p.title} ${a.version}`,
+          signOff: { file: signed.file, blockers: signed.record.blockers },
+          ...(signed.warnings.length ? { warnings: signed.warnings } : {}),
+          report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version),
+        },
+      };
+    }),
+  );
+
+  server.registerTool(
+    "sign_off_release",
+    {
+      title: "Sign off release",
+      description:
+        "Sign off a released version that has no sign-off: one released before sign-off records, a baseline once its last area is recorded, or one whose sign-off was withdrawn and then corrected. It checks readiness on what shipped, as release_version does, and writes a frozen record. With blockers, only an owner can sign it off, with overrideJustification. A baseline's blockers are recorded but don't stop it.",
+      inputSchema: { product: productArg, version: versionArg, overrideJustification: justification.optional() },
+    },
+    write((s, state, c, a: { product?: string; version: string; overrideJustification?: string }) => {
+      s.requireReleaser();
+      const p = s.targetProduct(a.product);
+      const v = p.versions.find((x) => x.version === a.version);
+      if (!v) throw new UserError(`"${a.version}" isn't a version of ${p.title}. Versions: ${p.versions.map((x) => x.version).join(", ") || "none"}.`);
+      if (v.status !== "released") throw new UserError(`${p.title} ${a.version} isn't released yet: release it with release_version, which signs it off too.`);
+      const active = activeRecord(loadRecords(root).records, p.id, a.version);
+      if (active) throw new UserError(`${p.title} ${a.version} is already signed off (${active.file}).`);
+      const signed = prepareSignOff({ root, config: s.config, state, catalogue: s.catalogue, product: p, version: a.version, actor: s.actor, now: c.now, justification: a.overrideJustification });
+      commitSignOff(root, signed);
+      return { state, products: [signed.product], result: { signOff: { file: signed.file, kind: signed.record.kind, blockers: signed.record.blockers }, ...(signed.warnings.length ? { warnings: signed.warnings } : {}) } };
+    }),
+  );
+
+  server.registerTool(
+    "withdraw_release",
+    {
+      title: "Withdraw sign-off",
+      description:
+        "Withdraw a version's sign-off, e.g. to correct a mistake in what shipped. Owners only, with the reason. The record is kept, marked withdrawn; the version stays released. Correct it, then sign it off again with sign_off_release.",
+      inputSchema: { product: productArg, version: versionArg, reason: z.string().trim().min(1).max(5000) },
+    },
+    write((s, state, c, a: { product?: string; version: string; reason: string }) => {
+      if (s.actor.person?.role !== "owner") throw new UserError("Only an owner can withdraw a sign-off.");
+      const p = s.targetProduct(a.product);
+      const active = activeRecord(loadRecords(root).records, p.id, a.version);
+      if (!active) throw new UserError(`${p.title} ${a.version} has no sign-off to withdraw.`);
+      withdrawRecord(root, active.file, c.actor, a.reason, c.now);
+      return { state, result: { withdrawn: active.file, next: "Correct the release if needed (correct_release, release_requirements), then sign it off again with sign_off_release." } };
     }),
   );
 
@@ -1544,6 +1611,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
     write((s, state, c, a: { product?: string; version: string; ids: string[] }) => {
       s.requireReleaser();
       const p = s.targetProduct(a.product);
+      const locked = lockMessage(root, p, a.version);
+      if (locked) throw new UserError(locked);
       const requirements = releaseRequirements(state.requirements, s.catalogue, { product: p, version: a.version, ids: a.ids, actor: c.actor, now: c.now });
       return { state: { ...state, requirements }, result: { report: releaseReport(requirements, s.catalogue, p, a.version) } };
     }),
@@ -1569,6 +1638,8 @@ export function buildServer({ root }: ServerOptions): McpServer {
     write((s, state, c, a: { product?: string; version: string; reason: string; addShipped?: string[]; removeShipped?: string[]; addObsolete?: string[]; removeObsolete?: string[]; moveTo?: string }) => {
       s.requireReleaser();
       const p = s.targetProduct(a.product);
+      const locked = lockMessage(root, p, a.version);
+      if (locked) throw new UserError(locked);
       const out = correctRelease(state.requirements, s.catalogue, { ...a, product: p, actor: c.actor, now: c.now });
       return { state: { ...state, requirements: out.requirements }, products: [out.product], result: { report: releaseReport(out.requirements, withProduct(s, out.product), out.product, a.version) } };
     }),

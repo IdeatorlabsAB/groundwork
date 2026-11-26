@@ -30,7 +30,11 @@ Usage:
   groundwork migrate [--dry-run]       Move products and areas from config.yml into product files
                                        (groundwork/products/), so products can have versions
   groundwork release [product] <version> --shipped ID,ID [--removed ID,ID] [--move-rest <version>]
-                                       Release a version: what shipped, and where the rest moves
+                                       Release a version: what shipped, and where the rest moves.
+                                       It's signed off too; with blockers, an owner adds
+                                       --justification "…"
+  groundwork release [product] <version> --sign-off [--justification "…"]
+                                       Sign off a version released before sign-off records
   groundwork release [product] <version> --correct --reason "…" [--add ID] [--remove ID]
                     [--add-obsolete ID] [--remove-obsolete ID] [--move-rest <version>]
                                        Correct a released version (recorded with the reason)
@@ -247,6 +251,8 @@ async function main(): Promise<number> {
       overwrite: { type: "boolean" },
       commit: { type: "string" },
       format: { type: "string" },
+      justification: { type: "string" },
+      "sign-off": { type: "boolean" },
       table: { type: "string" },
       ref: { type: "string" },
       push: { type: "boolean" },
@@ -282,6 +288,8 @@ async function main(): Promise<number> {
           remove: list(values.remove),
           addObsolete: list(values["add-obsolete"]),
           removeObsolete: list(values["remove-obsolete"]),
+          justification: values.justification,
+          signOff: Boolean(values["sign-off"]),
         }),
       );
     }

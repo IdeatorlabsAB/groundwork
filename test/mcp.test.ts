@@ -152,6 +152,7 @@ describe("local MCP server", () => {
         "record_test_results",
         "search_items",
         "send_back_requirement",
+        "sign_off_release",
         "start_experiment",
         "submit_requirement_for_approval",
         "trace_code",
@@ -160,6 +161,7 @@ describe("local MCP server", () => {
         "unlink_tickets",
         "update_item",
         "update_tickets",
+        "withdraw_release",
       ].sort(),
     );
     expect(c.getInstructions()).toContain("insight -> hypothesis -> experiment -> finding -> requirement");
@@ -888,18 +890,21 @@ describe("releasing", () => {
   });
 
   it("releases what shipped and moves the rest", async () => {
-    expect((await call(c, "release_version", { version: "1.0", shipped: [a] })).error).toMatch(new RegExp(`${b}.*moveTo`, "s"));
-    const { data, error } = await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a] , overrideJustification: "Release mechanics test: no tests linked." })).error).toMatch(new RegExp(`${b}.*moveTo`, "s"));
+    const { data, error } = await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" , overrideJustification: "Release mechanics test: no tests linked." });
     expect(error).toBeUndefined();
     expect(data.report.introduced.map((x: { id: string }) => x.id)).toEqual([a]);
     expect(load(root).products[0].versions[0]).toMatchObject({ version: "1.0", status: "released", releasedBy: "sam" });
     expect(stored(b).plannedFor).toBe("1.1");
     expect((await call(c, "get_release", { version: "1.0" })).data.status).toBe("released");
-    expect((await call(c, "release_version", { version: "1.0", shipped: [] })).error).toMatch(/correct_release/);
+    expect((await call(c, "release_version", { version: "1.0", shipped: [] , overrideJustification: "Release mechanics test: no tests linked." })).error).toMatch(/correct_release/);
   });
 
   it("corrects a released version only with a reason, and records it", async () => {
-    await call(c, "release_version", { version: "1.0", shipped: [a, b] });
+    await call(c, "release_version", { version: "1.0", shipped: [a, b] , overrideJustification: "Release mechanics test: no tests linked." });
+    // A signed-off version is frozen: withdraw the sign-off to correct it.
+    expect((await call(c, "correct_release", { version: "1.0", reason: "x", removeShipped: [b], moveTo: "1.1" })).error).toMatch(/Withdraw the sign-off first/);
+    expect((await call(c, "withdraw_release", { version: "1.0", reason: "Filters were behind a flag" })).error).toBeUndefined();
     expect((await call(c, "correct_release", { version: "1.0", removeShipped: [b], moveTo: "1.1" })).error).toBeDefined();
     const { error } = await call(c, "correct_release", { version: "1.0", reason: "Filters were behind a flag", removeShipped: [b], moveTo: "1.1" });
     expect(error).toBeUndefined();
@@ -908,7 +913,8 @@ describe("releasing", () => {
   });
 
   it("adds a requirement shipped later to a released version", async () => {
-    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" , overrideJustification: "Release mechanics test: no tests linked." });
+    expect((await call(c, "withdraw_release", { version: "1.0", reason: "B shipped too" })).error).toBeUndefined();
     expect((await call(c, "release_requirements", { version: "1.0", ids: [b] })).error).toBeUndefined();
     expect(stored(b).releasedIn).toBe("1.0");
   });
@@ -917,7 +923,7 @@ describe("releasing", () => {
     const config = readConfig(root);
     writeConfig(root, { ...config, people: [...config.people, { id: "vic", name: "Vic", role: "viewer" }] });
     process.env.GROUNDWORK_USER = "vic";
-    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/viewer/);
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] , overrideJustification: "Release mechanics test: no tests linked." })).error).toMatch(/viewer/);
   });
 
   it("sorts planned requirements by ticket status, and keeps tickets linked before the release", async () => {
@@ -925,7 +931,7 @@ describe("releasing", () => {
     const { data } = await call(c, "get_release", { version: "1.0" });
     expect(data.ready.map((x: { id: string }) => x.id)).toEqual([a]);
     expect(data.noTickets.map((x: { id: string }) => x.id)).toEqual([b]);
-    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" , overrideJustification: "Release mechanics test: no tests linked." });
     expect((await call(c, "unlink_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-1" } })).error).toMatch(/part of that release's record/);
     await call(c, "link_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-77" } });
     expect((await call(c, "unlink_tickets", { requirementIds: [a], ticket: { tracker: "linear", key: "CLN-77" } })).error).toBeUndefined();
@@ -933,11 +939,11 @@ describe("releasing", () => {
 
   it("refuses someone who isn't in config.yml", async () => {
     process.env.GROUNDWORK_USER = "mallory";
-    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] })).error).toMatch(/config.yml people/);
+    expect((await call(c, "release_version", { version: "1.0", shipped: [a, b] , overrideJustification: "Release mechanics test: no tests linked." })).error).toMatch(/config.yml people/);
   });
 
   it("protects released requirements, and the needs they meet, from edits and deletes", async () => {
-    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" });
+    await call(c, "release_version", { version: "1.0", shipped: [a], moveTo: "1.1" , overrideJustification: "Release mechanics test: no tests linked." });
     expect((await call(c, "update_item", { id: a, patch: { title: "Rewritten" } })).error).toMatch(/shipped in 1.0/);
     expect((await call(c, "delete_item", { id: a })).error).toMatch(/shipped in 1.0/);
     const need = stored(a).stakeholderIds![0];

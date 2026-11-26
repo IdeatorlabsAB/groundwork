@@ -4,6 +4,33 @@ import { load, save } from "./store/files";
 import { writeProduct, type Product } from "./store/products";
 import { correctRelease, ReleaseError, releaseReport, releaseVersion, renderReleaseReport } from "./store/release";
 import { renderRecord, reportView } from "./store/report";
+import { commitSignOff, GateError, lockMessage, prepareSignOff } from "./store/signing";
+import { activeRecord, loadRecords } from "./store/signoff";
+
+/** The gate's refusal, with the CLI's way to override it. */
+const cliGate = (e: GateError) => e.message.replace("An owner can release it anyway with overrideJustification.", 'An owner can release it anyway: add --justification "…".').split("\n");
+
+function signOffCommand(root: string, args: ReleaseArgs, actor: ReturnType<typeof resolveActor>): Out {
+  const config = readConfig(root);
+  const loaded = load(root);
+  const catalogue = catalogueOf(config, loaded.products);
+  const p = productFor(catalogue, args.product);
+  if (typeof p === "string") return { code: 1, lines: [p] };
+  const v = p.versions.find((x) => x.version === args.version);
+  if (!v) return { code: 1, lines: [`${args.version} isn't a version of ${p.title}.`] };
+  if (v.status !== "released") return { code: 1, lines: [`${p.title} ${args.version} isn't released yet: release it with --shipped, which signs it off too.`] };
+  const active = activeRecord(loadRecords(root).records, p.id, args.version);
+  if (active) return { code: 1, lines: [`${p.title} ${args.version} is already signed off (${active.file}).`] };
+  try {
+    const signed = prepareSignOff({ root, config, state: loaded.items, catalogue, product: p, version: args.version, actor, now: new Date().toISOString(), justification: args.justification });
+    commitSignOff(root, signed);
+    writeProduct(root, signed.product, loaded.paths.get(p.id));
+    return { code: 0, lines: [...signed.warnings, `Signed off: ${signed.file}${signed.record.blockers.length ? ` over ${signed.record.blockers.length} blocker(s)` : ""}`] };
+  } catch (e) {
+    if (e instanceof GateError) return { code: 1, lines: cliGate(e) };
+    throw e;
+  }
+}
 import { RISK_COLUMNS, riskRegisterRows, toCsv, TRACEABILITY_COLUMNS, traceabilityRows } from "./core/report-rows";
 
 /**
@@ -23,6 +50,10 @@ export interface ReleaseArgs {
   remove?: string[];
   addObsolete?: string[];
   removeObsolete?: string[];
+  /** Owners only: why the version may go out despite its blockers. */
+  justification?: string;
+  /** Sign off a version that's already released (released before sign-off records, or after a withdrawal). */
+  signOff?: boolean;
 }
 
 type Out = { code: number; lines: string[] };
@@ -48,12 +79,17 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
   if (args.correct && (args.shipped !== undefined || args.removed !== undefined)) {
     return { code: 1, lines: ["--shipped and --removed are for releasing; a correction uses --add, --remove, --add-obsolete and --remove-obsolete."] };
   }
+  if (args.signOff) return signOffCommand(root, args, actor);
   if (!args.correct && args.shipped === undefined) return { code: 1, lines: ['Say what shipped: --shipped REQ-0001,REQ-0002 (or --shipped "" to release a version with nothing in it).'] };
   const loaded = load(root);
   const catalogue = catalogueOf(config, loaded.products);
   const p = productFor(catalogue, args.product);
   if (typeof p === "string") return { code: 1, lines: [p] };
   const now = new Date().toISOString();
+  if (args.correct) {
+    const locked = lockMessage(root, p, args.version);
+    if (locked) return { code: 1, lines: [locked] };
+  }
   try {
     const out = args.correct
       ? correctRelease(loaded.items.requirements, catalogue, {
@@ -78,12 +114,26 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
           now,
         });
     const productPath = loaded.paths.get(p.id);
-    const files = save(root, loaded, { ...loaded.items, requirements: out.requirements });
-    files.push(writeProduct(root, out.product, productPath));
     const after = catalogueOf(config, catalogue.products.map((x) => (x.id === p.id ? out.product : x)));
+    const next = { ...loaded.items, requirements: out.requirements };
+    // A release is signed off in the same step, judged on what ships; nothing is written if it's refused.
+    const signed = args.correct ? undefined : prepareSignOff({ root, config, state: next, catalogue: after, product: out.product, version: args.version, actor, now, justification: args.justification });
+    if (signed) commitSignOff(root, signed);
+    const files = save(root, loaded, next);
+    files.push(writeProduct(root, signed?.product ?? out.product, productPath));
     const report = renderReleaseReport(releaseReport(out.requirements, after, out.product, args.version));
-    return { code: 0, lines: [...report.trimEnd().split("\n"), "", `${args.correct ? "Corrected" : "Released"}. Files changed: ${files.join(", ")}`] };
+    return {
+      code: 0,
+      lines: [
+        ...report.trimEnd().split("\n"),
+        "",
+        ...(signed?.warnings ?? []),
+        `${args.correct ? "Corrected" : "Released"}. Files changed: ${files.join(", ")}`,
+        ...(signed ? [`Signed off: ${signed.file}${signed.record.blockers.length ? ` over ${signed.record.blockers.length} blocker(s)` : ""}`] : []),
+      ],
+    };
   } catch (e) {
+    if (e instanceof GateError) return { code: 1, lines: cliGate(e) };
     if (!(e instanceof ReleaseError)) throw e;
     const lines = [e.message];
     if (/already released/.test(e.message)) {
