@@ -5,7 +5,8 @@ import type { Collections } from "../core/collections";
 import { composeKnowWhen } from "../core/hypothesis";
 import * as ops from "../core/ops";
 import { canBeReplaced, fulfilledBy, kindOf, layerProblem, ticketsOf, wordingWarnings } from "../core/requirements";
-import { KIND, localId, localSchemas, type Kind } from "../core/schemas";
+import { codeTestInput, KIND, localId, localSchemas, testCaseInput, type Kind } from "../core/schemas";
+import { caseKey } from "../core/test-links";
 import { mergeAreas, mergeProducts, mergeVersions, WorkspaceError } from "../core/workspace";
 import type { Experiment, Finding, Hypothesis, Insight, Requirement, Risk, RiskMatrix } from "../core/types";
 import { initialLevel, isMitigated, residualLevel } from "../core/risk";
@@ -55,8 +56,9 @@ When you plan work (a plan, plan mode, or a step in an autonomous workflow):
 4. Change: update the requirement with update_item if it's a draft. If it's approved, add a new one with replaces: [the old id]. When the new one is approved, the old one becomes obsolete in the version the new one ships in (or straight away if the product has no versions).
 5. Fix: don't write requirements. Name the requirement the fix restores when you can tell.
 6. With no person to review the plan (an autonomous workflow), follow your own call. The one-line call stays in the plan as the record.
-7. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement. Then record each ticket with link_tickets (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement ("Bug fix under REQ-0007") is linked to that requirement too.
-8. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
+7. After writing tests in the repository, link_code_tests them to the solution requirements they verify, with the requirement's id in each test's name (e.g. "import > REQ-0042 keeps templates"). With a test-management tool connected (Qase, TestRail, Xray, …), write cases from the acceptance criteria there and link_test_cases them (tool, id, title, project, url). Never claim a case exists when the tool isn't connected.
+8. When the workflow creates tickets or user stories, use the solution requirements and the stakeholder stories they fulfil as a source. Put the REQ ids and each requirement's file path in the ticket. By default, one ticket per solution requirement. Then record each ticket with link_tickets (tracker, key, URL), so the link goes both ways. A fix ticket under an existing requirement ("Bug fix under REQ-0007") is linked to that requirement too.
+9. Approval given outside Groundwork (e.g. verbally by a PM): record it with approve_requirement, passing approvedBy and a note. Only do this when the user tells you who approved it.
 
 Releasing a version ("Release Clinicare 1.1"):
 1. Call get_release for the version.
@@ -155,7 +157,8 @@ function textOf(kind: Kind, item: AnyItem): string {
     case "requirement": {
       const r = item as Requirement;
       const tickets = ticketsOf(r).map((t) => `${t.key} ${t.title ?? ""}`);
-      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, notes].join(" ");
+      const tests = [...(r.codeTests ?? []).map((t) => `${t.path} ${t.name}`), ...(r.testCases ?? []).map((t) => `${t.tool} ${t.project ?? ""} ${t.id} ${t.title}`)];
+      return [r.title, r.story, r.stakeholder ?? "", r.product ?? "", (r.acceptanceCriteria ?? []).join(" "), ...tickets, ...tests, notes].join(" ");
     }
     case "risk": {
       const r = item as Risk;
@@ -350,6 +353,22 @@ class Session {
     }
     const area = this.areaLabel((item as { productArea?: string }).productArea) || undefined;
     return { kind, ...item, ...(kind === "risk" ? this.levels(item as Risk) : {}), ...(area ? { areaLabel: area } : {}), file: this.file(kind, item) };
+  }
+
+  /** Tests are linked to solution requirements that can still change. Same wording as the web app. */
+  testable(state: State, id: string): Requirement {
+    const r = state.requirements.find((x) => x.id === id);
+    if (!r) throw new UserError(`No requirement with id ${id}.`);
+    if (kindOf(r) !== "solution") throw new UserError(`"${r.title}" is a stakeholder requirement; link tests to the solution requirements that fulfil it.`);
+    if (r.status === "obsolete") throw new UserError(`"${r.title}" is obsolete, so its tests can't change.`);
+    return r;
+  }
+
+  /** Like tickets: a test linked before its requirement shipped is part of that release's record. */
+  checkUnlinkable(r: Requirement, linked: { linkedAt?: string; label: string }[]) {
+    if (!r.releasedIn || !r.releasedAt) return;
+    const frozen = linked.find((t) => t.linkedAt && t.linkedAt <= r.releasedAt!);
+    if (frozen) throw new UserError(`"${r.title}" shipped in ${r.releasedIn} with ${frozen.label} linked, so it's part of that release's record and can't be unlinked.`);
   }
 
   get matrix(): RiskMatrix {
@@ -768,6 +787,84 @@ export function buildServer({ root }: ServerOptions): McpServer {
         created.push(...many);
       }
       return { state: next, result: { created: created.map((x) => s.summary("requirement", x)), ...(warnings.length ? { warnings } : {}) } };
+    }),
+  );
+
+  const caseLabel = (t: { tool: string; project?: string; id: string }) => `${t.tool} ${t.project ? `${t.project}-` : ""}${t.id}`;
+  const codeLabel = (t: { path: string; name: string }) => `${t.path} "${t.name}"`;
+
+  server.registerTool(
+    "link_code_tests",
+    {
+      title: "Link code tests",
+      description:
+        "Link automated tests in the repository to the solution requirement they verify, after writing them. Put the requirement's id (e.g. REQ-0042) in the test's name too, so anyone reading the test can trace it. Tests already linked are skipped.",
+      inputSchema: { requirementId: itemId, tests: z.array(codeTestInput).min(1).max(50) },
+      annotations: { destructiveHint: false },
+    },
+    write((s, state, c, { requirementId, tests }: { requirementId: string; tests: { path: string; name: string }[] }) => {
+      s.testable(state, requirementId);
+      const [next, added] = apply(state, ops.linkCodeTests(state, c, requirementId, tests));
+      const after = next.requirements.find((r) => r.id === requirementId)!;
+      return { state: next, result: { updated: s.summary("requirement", after), added, codeTests: after.codeTests ?? [] } };
+    }),
+  );
+
+  server.registerTool(
+    "unlink_code_tests",
+    {
+      title: "Unlink code tests",
+      description:
+        "Remove automated tests linked to a solution requirement, e.g. after deleting or renaming them. Renamed tests: unlink the old name and link the new one. Tests linked before the requirement shipped are part of that release's record and stay.",
+      inputSchema: { requirementId: itemId, tests: z.array(codeTestInput).min(1).max(50) },
+      annotations: { destructiveHint: false },
+    },
+    write((s, state, c, { requirementId, tests }: { requirementId: string; tests: { path: string; name: string }[] }) => {
+      const r = s.testable(state, requirementId);
+      const linked = r.codeTests ?? [];
+      const missing = tests.filter((t) => !linked.some((x) => x.path === t.path && x.name === t.name));
+      if (missing.length) throw new UserError(`Not linked to "${r.title}": ${missing.map(codeLabel).join(", ")}.`);
+      s.checkUnlinkable(r, linked.filter((x) => tests.some((t) => t.path === x.path && t.name === x.name)).map((x) => ({ linkedAt: x.linkedAt, label: codeLabel(x) })));
+      const [next, removed] = apply(state, ops.unlinkCodeTests(state, c, requirementId, tests));
+      const after = next.requirements.find((x) => x.id === requirementId)!;
+      return { state: next, result: { updated: s.summary("requirement", after), removed, codeTests: after.codeTests ?? [] } };
+    }),
+  );
+
+  server.registerTool(
+    "link_test_cases",
+    {
+      title: "Link test cases",
+      description:
+        "Link cases in your test-management tool (Qase, TestRail, Xray, …) to a solution requirement, as the tests that verify it. Find or create the cases in the tool with your own connection to it first (write cases from the requirement's acceptance criteria); Groundwork stores what you give it and doesn't check the tool. A case is identified by tool, project and id. Already linked: its title and url are refreshed.",
+      inputSchema: { requirementId: itemId, cases: z.array(testCaseInput).min(1).max(20) },
+      annotations: { destructiveHint: false },
+    },
+    write((s, state, c, { requirementId, cases }: { requirementId: string; cases: z.infer<typeof testCaseInput>[] }) => {
+      s.testable(state, requirementId);
+      const [next, added] = apply(state, ops.linkTestCases(state, c, requirementId, cases));
+      const after = next.requirements.find((r) => r.id === requirementId)!;
+      return { state: next, result: { updated: s.summary("requirement", after), added, testCases: after.testCases ?? [] } };
+    }),
+  );
+
+  server.registerTool(
+    "unlink_test_cases",
+    {
+      title: "Unlink test cases",
+      description: "Remove linked test cases (by tool, project and id) from a solution requirement. Cases linked before the requirement shipped are part of that release's record and stay.",
+      inputSchema: { requirementId: itemId, cases: z.array(testCaseInput.pick({ tool: true, id: true, project: true })).min(1).max(20) },
+      annotations: { destructiveHint: false },
+    },
+    write((s, state, c, { requirementId, cases }: { requirementId: string; cases: { tool: string; id: string; project?: string }[] }) => {
+      const r = s.testable(state, requirementId);
+      const linked = new Map((r.testCases ?? []).map((t) => [caseKey(t), t]));
+      const missing = cases.filter((t) => !linked.has(caseKey(t)));
+      if (missing.length) throw new UserError(`Not linked to "${r.title}": ${missing.map(caseLabel).join(", ")}.`);
+      s.checkUnlinkable(r, cases.map((t) => linked.get(caseKey(t))!).map((t) => ({ linkedAt: t.linkedAt, label: caseLabel(t) })));
+      const [next, removed] = apply(state, ops.unlinkTestCases(state, c, requirementId, cases));
+      const after = next.requirements.find((x) => x.id === requirementId)!;
+      return { state: next, result: { updated: s.summary("requirement", after), removed, testCases: after.testCases ?? [] } };
     }),
   );
 

@@ -4,7 +4,8 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, REQUIREMENT_KIND, localSchemas, type Kind } from "../core/schemas";
-import type { Requirement, Risk, Ticket } from "../core/types";
+import type { CodeTestLink, Requirement, Risk, TestCaseLink, Ticket } from "../core/types";
+import { caseKey } from "../core/test-links";
 import { initialLevel } from "../core/risk";
 import { catalogueOf, findProduct, plannedVersions, productOf } from "./catalogue";
 import { CONFIG_FILE, DIR, matrixOf, type Config } from "./config";
@@ -183,6 +184,28 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
           }
           if (r.approver && !people.has(r.approver)) warn(`approver "${r.approver}" isn't in config.yml people`);
           checkVersions(r, err, warn);
+          const codeTests = r.codeTests as unknown;
+          const cases = r.testCases as unknown;
+          if ((Array.isArray(codeTests) && codeTests.length) || (Array.isArray(cases) && cases.length)) {
+            if (kindOf(r) === "stakeholder") err("tests on a stakeholder requirement: link them to the solution requirements that fulfil it");
+          }
+          for (const t of (Array.isArray(codeTests) ? codeTests : []) as Partial<CodeTestLink>[]) {
+            if (typeof t?.path !== "string" || typeof t?.name !== "string" || !t.path || !t.name) {
+              err("codeTests: a test needs a path and a name");
+              continue;
+            }
+            if (opts.root && !existsSync(join(opts.root, t.path))) warn(`codeTests: ${t.path} doesn't exist`);
+          }
+          const seenCases = new Set<string>();
+          for (const t of (Array.isArray(cases) ? cases : []) as Partial<TestCaseLink>[]) {
+            if (typeof t?.tool !== "string" || typeof t?.id !== "string" || typeof t?.title !== "string" || !t.tool || !t.id || !t.title) {
+              err("testCases: a case needs a tool, an id and a title");
+              continue;
+            }
+            const k = caseKey({ tool: t.tool, id: t.id, project: t.project });
+            if (seenCases.has(k)) warn(`test case ${t.tool.toLowerCase()} ${t.project ? `${t.project.toUpperCase()}-` : ""}${t.id} is linked twice`);
+            seenCases.add(k);
+          }
           const seenTickets = new Set<string>();
           if (r.tickets !== undefined && !Array.isArray(r.tickets)) err("tickets must be a list");
           for (const t of (Array.isArray(r.tickets) ? r.tickets : []) as Partial<Ticket>[]) {
