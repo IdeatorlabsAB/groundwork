@@ -27,7 +27,7 @@ Groundwork's records are made while you work, not afterwards. Nobody should have
   - stakeholder and solution requirements to add (stakeholder first). An approved requirement is never edited: add one that replaces it, and say which.
   - risks the change introduces or affects: hazard, harm, probability and severity on the workspace matrix, the requirements that mitigate them, and the residual score (groundwork-risk skill).
   - the release they're new in.
-  - the tests that will verify each solution requirement: tests in the repository, and Qase cases if the team uses Qase.
+  - the tests that will verify each solution requirement: tests in the repository, and cases in the team's test-management tool (Qase, TestRail, …) if it uses one.
   - tickets to create in the team's tracker, if its tools are connected.
   - a fix lists none of these: name the requirement it restores, by key.
 - The user approving the plan approves the Groundwork section: record it without asking again. With nobody to approve the plan, follow your own classification and keep the section in your summary as the record.
@@ -37,7 +37,7 @@ Groundwork's records are made while you work, not afterwards. Nobody should have
 - add_requirements (stakeholder requirements first, then the solution requirements that fulfil them), add_risks, and link_items for mitigations and release tags.
 - Once the code exists, set codeRefs on the requirements and risks it implements (update_item).
 - After writing tests, link_code_tests, with the requirement's key in each test's name (e.g. "import > REQ-0042 keeps templates").
-- In the team's own tools, when they're connected: create the tickets and link_tickets them; write Qase cases from the verification criteria and link_test_cases them. If a tool isn't connected, skip that step and say so. Never claim it was done.
+- In the team's own tools, when they're connected: create the tickets and link_tickets them; write cases in the test-management tool from the verification criteria and link_test_cases them (tool, id, title, project, url). If a tool isn't connected, skip that step and say so. Never claim it was done.
 - If the work turns out different from the plan, propose the change to the Groundwork section in one short list before recording it.
 - Pass context on every change: the branch, then the PR and commit once they exist.
 
