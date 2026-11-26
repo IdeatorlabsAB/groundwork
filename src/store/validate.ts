@@ -4,9 +4,10 @@ import { z } from "zod";
 import type { Collections } from "../core/collections";
 import { fulfilledBy, isActive, kindOf, layerProblem, wordingWarnings } from "../core/requirements";
 import { EXPERIMENT_STATUS, HYPOTHESIS_STATUS, REQUIREMENT_KIND, localSchemas, type Kind } from "../core/schemas";
-import type { Requirement, Ticket } from "../core/types";
+import type { Requirement, Risk, Ticket } from "../core/types";
+import { initialLevel } from "../core/risk";
 import { catalogueOf, findProduct, plannedVersions, productOf } from "./catalogue";
-import { CONFIG_FILE, DIR, type Config } from "./config";
+import { CONFIG_FILE, DIR, matrixOf, type Config } from "./config";
 import { COLLECTIONS, type Loaded } from "./files";
 
 export interface Problem {
@@ -66,6 +67,7 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
     out.push({ level: "warning", file: `${DIR}/${CONFIG_FILE}`, message: "config.yml productAreas/products are ignored: products live in groundwork/products/" });
   }
   const people = new Set(config.people.map((p) => p.id));
+  const matrix = matrixOf(config);
 
   /** Version references on a requirement: they must be versions of its product, in the right state. */
   const checkVersions = (r: Requirement, err: (m: string) => void, warn: (m: string) => void) => {
@@ -119,7 +121,7 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
         }
       };
 
-      if (opts.root && (kind === "requirement" || kind === "hypothesis")) {
+      if (opts.root && (kind === "requirement" || kind === "hypothesis" || kind === "risk")) {
         // Malformed values are reported by the schema check above; skip them here.
         for (const ref of Array.isArray(item.codeRefs) ? item.codeRefs : []) {
           if (typeof ref !== "string") continue;
@@ -155,6 +157,11 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
           link("stakeholderIds", "requirement", r.stakeholderIds);
           link("obsoletedBy", "requirement", r.obsoletedBy);
           link("replaces", "requirement", r.replaces);
+          link("riskIds", "risk", r.riskIds);
+          for (const id of r.riskIds ?? []) {
+            const k = s.risks.find((x) => x.id === id);
+            if (k && !(k.mitigationIds ?? []).includes(r.id)) err(`riskIds: ${id} doesn't list ${r.id} as a mitigation`);
+          }
           for (const id of r.stakeholderIds ?? []) {
             const t = s.requirements.find((x) => x.id === id);
             if (t && kindOf(t) !== "stakeholder") err(`stakeholderIds: ${id} is a solution requirement, not a stakeholder requirement`);
@@ -187,6 +194,23 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
             if (seenTickets.has(k)) warn(`ticket ${t.key} is linked twice`);
             seenTickets.add(k);
           }
+          break;
+        }
+        case "risk": {
+          const k = item as unknown as Risk;
+          link("mitigationIds", "requirement", k.mitigationIds);
+          for (const field of ["probability", "severity", "residualProbability", "residualSeverity"] as const) {
+            const v = k[field];
+            if (typeof v === "number" && (!Number.isInteger(v) || v < 1 || v > matrix.size)) {
+              err(`${field} ${v} is outside the ${matrix.size}×${matrix.size} risk matrix (1–${matrix.size})`);
+            }
+          }
+          const p = k.product ? loaded.products.find((x) => x.id === k.product) : undefined;
+          if (k.product && !p) err(`product "${k.product}" doesn't exist`);
+          for (const v of Array.isArray(k.versions) ? k.versions : []) {
+            if (p && !p.versions.some((x) => x.version === v)) err(`versions: "${v}" isn't a version of ${p.id}`);
+          }
+          if (initialLevel(matrix, k) === "high" && !(k.mitigationIds ?? []).length) warn(`high risk "${k.title}" has no mitigating requirement`);
           break;
         }
       }
