@@ -6,7 +6,7 @@ A safety net for what coding agents forget to record in [Groundwork](https://gro
   - a named solution requirement with no tests;
   - an approved requirement whose code changed, but the PR doesn't name it;
   - a high risk with no mitigation.
-- **On a merge to the default branch** it tags the solution requirements and risks the PR names to their product's collecting release, and links the PR to them as a ticket with its merge commit. Signed-off releases are never changed.
+- **On a merge to the default branch** it tags the solution requirements and risks the PR names to their product's collecting release, and links the PR to them as a ticket with its merge commit and merge time (updating a link an agent made while the PR was open). Signed-off releases are never changed.
 - **With `junit`** it uploads your test reports for the commit and matches them to the code tests linked to requirements.
 
 Groundwork never calls GitHub. The Action posts the comment with the workflow's own token.
@@ -74,7 +74,7 @@ The Action only wraps three HTTP calls, so any CI can make them with `curl`. Eac
 | Endpoint | Body | Returns |
 | --- | --- | --- |
 | `POST /api/ci/pr` | `{ prBody, commitMessages[], changedPaths[] }` | `{ named, touched, unknownKeys, gaps, markdown }` |
-| `POST /api/ci/merge` | `{ prBody, commitMessages[], repo, number, title, url, mergeSha }` | `{ keys, tagged, ignored, ticketLinked, changed }` |
+| `POST /api/ci/merge` | `{ prBody, commitMessages[], repo, number, title, url, mergeSha, mergedAt? }` (`mergedAt`: when it merged, ISO 8601) | `{ keys, tagged, ignored, ticketLinked, changed }` |
 | `POST /api/ci/test-results` | `{ commitSha, ref?, defaultBranch?, junit: string \| string[] }` | `{ id, totals, matched }` |
 
 Only test results sent with `defaultBranch: true` count towards a release being ready, so send it only from runs on the default branch. Pull-request runs show up in the pull request comment instead.
@@ -101,7 +101,8 @@ groundwork:
       if [ -n "$IID" ]; then
         jq -n --arg msg "$CI_COMMIT_MESSAGE" --arg repo "$CI_PROJECT_PATH" --arg title "$CI_COMMIT_TITLE" \
           --arg sha "$CI_COMMIT_SHA" --argjson iid "$IID" --arg url "$CI_PROJECT_URL/-/merge_requests/$IID" \
-          '{commitMessages: [$msg], repo: $repo, number: $iid, title: $title, url: $url, mergeSha: $sha}' |
+          --arg at "$CI_COMMIT_TIMESTAMP" \
+          '{commitMessages: [$msg], repo: $repo, number: $iid, title: $title, url: $url, mergeSha: $sha, mergedAt: $at}' |
         curl -sf -X POST "https://groundwork.ideatorlabs.com/api/ci/merge" \
           -H "Authorization: Bearer $GROUNDWORK_CI_TOKEN" -H "Content-Type: application/json" --data @- || true
       fi

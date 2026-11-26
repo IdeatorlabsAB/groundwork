@@ -128,6 +128,7 @@ export async function run(env, fetchImpl = fetch) {
           title: merged.title ?? "",
           url: merged.html_url,
           mergeSha: env.GITHUB_SHA,
+          mergedAt: merged.merged_at,
         });
         if (result) {
           for (const t of result.tagged) console.log(`Groundwork: ${t.key} is in release ${t.release}`);
