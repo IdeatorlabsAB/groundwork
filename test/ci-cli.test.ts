@@ -50,6 +50,31 @@ describe("groundwork ci pr", () => {
     expect(r.gaps.map((g: { type: string }) => g.type)).toEqual(["failed-code-test"]);
   });
 
+  it("ci pr with a broken JUnit file still reports, without test results", () => {
+    const junit = join(root, "junit.xml");
+    writeFileSync(junit, "<testsuites><testsuite");
+    const out = runCiPrCommand(root, { input: { body: "Groundwork: REQ-0003", commits: [], changed: [] }, junit: [junit] });
+    expect(out.code).toBe(0);
+    const r = json(out);
+    expect(r.warnings[0]).toMatch(/junit\.xml: The JUnit report isn't valid XML/);
+    expect(r.markdown).toContain("junit.xml");
+  });
+
+  it("ci pr fails without a groundwork/ folder", () => {
+    const empty = mkdtempSync(join(tmpdir(), "gw-ci-empty-"));
+    const out = runCiPrCommand(empty, { input: { body: "Groundwork: REQ-0003", commits: [], changed: [] } });
+    expect(out.code).toBe(1);
+    expect(out.lines[0]).toMatch(/^No groundwork\/config\.yml in /);
+    rmSync(empty, { recursive: true, force: true });
+  });
+
+  it("ci pr says when files in groundwork/ can't be read", () => {
+    writeFileSync(join(root, "groundwork/requirements/REQ-0003-keep-audit-log-of-imports-for-7-years.md"), "not frontmatter");
+    const r = json(runCiPrCommand(root, { input: { body: "Groundwork: REQ-0003", commits: [], changed: [] } }));
+    expect(r.markdown).toContain("couldn't be read");
+    expect(r.markdown).toContain("REQ-0003-keep-audit-log-of-imports-for-7-years.md");
+  });
+
   it("ci pr refuses input that isn't a PR description", () => {
     expect(runCiPrCommand(root, { input: { nope: true } as never }).code).toBe(1);
   });

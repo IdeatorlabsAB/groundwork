@@ -15,7 +15,7 @@
 import { execFile } from "node:child_process";
 import { globSync, readFileSync, appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const MARKER = "<!-- groundwork -->";
@@ -27,11 +27,16 @@ const MAX_COMMENT = 65_000;
 const fit = (markdown) =>
   markdown.length <= MAX_COMMENT ? markdown : `${markdown.slice(0, MAX_COMMENT)}\n\n…cut short: the full report is in the job summary.`;
 
-/** Runs a command and resolves with its exit code and output. Never throws. Windows needs npx.cmd through a shell. */
+/**
+ * Runs a command and resolves with its exit code and output. Never throws. On Windows, npx is a .cmd file that would
+ * need a shell, which mangles arguments; npm's own npx-cli.js runs under this Node instead, with no shell.
+ */
 function defaultExec(cmd, args, { cwd, env }) {
-  const win = process.platform === "win32";
+  const win = process.platform === "win32" && cmd === "npx";
+  const file = win ? process.execPath : cmd;
+  const argv = win ? [join(dirname(process.execPath), "node_modules", "npm", "bin", "npx-cli.js"), ...args] : args;
   return new Promise((done) => {
-    execFile(win ? `${cmd}.cmd` : cmd, args, { cwd, env, shell: win, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) =>
+    execFile(file, argv, { cwd, env, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) =>
       done({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout: String(stdout ?? ""), stderr: String(stderr ?? err?.message ?? "") }),
     );
   });
@@ -204,7 +209,8 @@ async function local({ env, input, log, event, exec, pages, messages, publish, r
   const rel = relative(workspace, projectDir).split(sep).join("/");
   const prefix = rel ? `${rel}/` : "";
   const temp = mkdtempSync(join(env.RUNNER_TEMP || tmpdir(), "groundwork-"));
-  const childEnv = { ...env, GROUNDWORK_DIR: projectDir };
+  // The package doesn't get the workflow's inputs (its github-token among them); the results push uses checkout's credentials.
+  const childEnv = Object.fromEntries(Object.entries({ ...env, GROUNDWORK_DIR: projectDir }).filter(([k]) => !k.startsWith("INPUT_")));
   /** groundwork <args> through npx: this tag's version, else the latest one when it isn't published (e.g. @main). */
   const cli = async (args) => {
     const once = (v) => exec("npx", ["-y", "-p", `groundwork-mcp@${v}`, "groundwork", ...args], { cwd: temp, env: childEnv });
@@ -224,7 +230,8 @@ async function local({ env, input, log, event, exec, pages, messages, publish, r
       writeFileSync(inputFile, JSON.stringify({ body: pr.body ?? "", commits: await messages(pr.number), changed }));
       const server = (env.GITHUB_SERVER_URL || "https://github.com").replace(/\/+$/, "");
       const sha = pr.head?.sha ?? env.GITHUB_SHA;
-      const out = await cli(["ci", "pr", "--input", inputFile, "--link-base", `${server}/${repo}/blob/${sha}/`, "--path-prefix", prefix, ...files.flatMap((f) => ["--junit", f])]);
+      // --name=value: an empty value (the root folder) stays one argument.
+      const out = await cli(["ci", "pr", `--input=${inputFile}`, `--link-base=${server}/${repo}/blob/${sha}/`, `--path-prefix=${prefix}`, ...files.map((f) => `--junit=${f}`)]);
       let report = null;
       try {
         report = out.code === 0 ? JSON.parse(out.stdout) : null;
@@ -232,8 +239,12 @@ async function local({ env, input, log, event, exec, pages, messages, publish, r
         report = null;
       }
       if (!report) {
-        log("warning", `Groundwork: the PR check didn't run: ${(out.stderr || out.stdout).trim().split("\n").slice(-3).join(" ") || `exit ${out.code}`}`);
-        return 0;
+        const why = (out.stderr || out.stdout).trim().split("\n").slice(-3).join(" ") || `exit ${out.code}`;
+        const older = /Unknown (option|command)|Usage: groundwork/i.test(why) ? " This groundwork-mcp version is older than the Action: set groundwork-version, or use a released tag of the Action." : "";
+        // With fail-on-gaps the check is a gate: a gate that couldn't run doesn't pass.
+        const strict = input("fail-on-gaps") === "true";
+        log(strict ? "error" : "warning", `Groundwork: the PR check didn't run: ${why}.${older}`);
+        return strict ? 1 : 0;
       }
       return await publish(pr, report);
     } catch (e) {

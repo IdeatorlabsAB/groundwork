@@ -73,8 +73,10 @@ export function prReport(input: {
   /** e.g. https://github.com/acme/app/blob/<sha>/ */
   linkBase?: string;
   results?: CodeTestResult[];
+  /** Said in the comment: e.g. a JUnit report that couldn't be read, or files in groundwork/ that couldn't. */
+  notes?: string[];
 }): PrReport {
-  const { keys, changedPaths, items, matrix, files, linkBase, results } = input;
+  const { keys, changedPaths, items, matrix, files, linkBase, results, notes = [] } = input;
   const reqs = items.requirements.filter((r) => r.status !== "obsolete");
   const ref = (kind: ItemRef["kind"], x: Requirement | Risk): ItemRef => {
     const file = files.get(x.id);
@@ -126,7 +128,7 @@ export function prReport(input: {
     if (initialLevel(matrix, r) === "high" && !r.mitigationIds.length) gaps.push({ type: "unmitigated-high-risk", key: r.id, title: r.title });
   }
 
-  return { named, touched, unknownKeys, gaps, markdown: markdown(named, touched, unknownKeys, gaps) };
+  return { named, touched, unknownKeys, gaps, markdown: markdown(named, touched, unknownKeys, gaps, notes) };
 }
 
 /**
@@ -137,8 +139,9 @@ const text = (s: string) =>
   s
     .replace(/\s+/g, " ")
     .replace(/([\\`*_[\]()!|<>#])/g, "\\$1")
-    // A zero-width space after @ stops GitHub turning it into a mention.
-    .replace(/@/g, "@\u200b");
+    // A zero-width space after @ stops GitHub turning it into a mention, and in :// stops a bare URL becoming a link.
+    .replace(/@/g, "@\u200b")
+    .replace(/:\/\//g, ":\u200b//");
 
 const GAP_TEXT: Record<Gap["type"], (g: Gap) => string> = {
   "untested-requirement": (g) => `**${g.key}** ${text(g.title)}: no tests are linked. Link the tests that verify it.`,
@@ -153,7 +156,7 @@ const GAP_TEXT: Record<Gap["type"], (g: Gap) => string> = {
 const code = (s: string) => `\`${s.replace(/`/g, "'").replace(/\s+/g, " ")}\``;
 const testList = (g: Gap) => ((g as Extract<Gap, { tests: string[] }>).tests ?? []).map(code).join(", ");
 
-function markdown(named: ItemRef[], touched: ItemRef[], unknownKeys: string[], gaps: Gap[]): string {
+function markdown(named: ItemRef[], touched: ItemRef[], unknownKeys: string[], gaps: Gap[], notes: string[]): string {
   const lines = [COMMENT_MARKER, "## Groundwork", ""];
   const rows = [...named.map((x) => ({ ...x, how: "named" })), ...touched.filter((t) => !named.some((n) => n.key === t.key)).map((x) => ({ ...x, how: "code changed" }))];
   if (rows.length) {
@@ -169,5 +172,9 @@ function markdown(named: ItemRef[], touched: ItemRef[], unknownKeys: string[], g
   lines.push("", "### Gaps", "");
   if (gaps.length) for (const g of gaps) lines.push(`- ${GAP_TEXT[g.type](g)}`);
   else lines.push("No gaps found.");
+  if (notes.length) {
+    lines.push("", "### Notes", "");
+    for (const n of notes) lines.push(`- ${text(n)}`);
+  }
   return lines.join("\n");
 }

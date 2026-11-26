@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { JunitError, parseJunit, type CodeTestResult } from "./core/junit";
 import { groundworkKeys, prReport } from "./core/pr-report";
-import { matrixOf, readConfig } from "./store/config";
+import { isInitialized, matrixOf, readConfig } from "./store/config";
 import { load } from "./store/files";
 
 /**
@@ -36,7 +36,10 @@ export function runCiPrCommand(
   },
 ): Out {
   if (!isInput(opts.input)) return { code: 1, lines: ['The input must be { "body": "…", "commits": ["…"], "changed": ["path"] }.'] };
+  // A missing folder (a wrong working-directory, or a PR that deletes groundwork/) must not read as "no gaps".
+  if (!isInitialized(root)) return { code: 1, lines: [`No groundwork/config.yml in ${root}. Is working-directory right?`] };
   const prefix = (opts.pathPrefix ?? "").replace(/^\.?\/+/, "").replace(/([^/])$/, "$1/");
+  const warnings: string[] = [];
   let results: CodeTestResult[] | undefined;
   if (opts.junit?.length) {
     results = [];
@@ -44,15 +47,20 @@ export function runCiPrCommand(
       try {
         results.push(...parseJunit(readFileSync(f, "utf8")));
       } catch (e) {
-        if (e instanceof JunitError) return { code: 1, lines: [`${f}: ${e.message}`] };
-        throw e;
+        // A crashed test run can leave a broken report: say so, and judge the rest without test results.
+        if (!(e instanceof JunitError)) throw e;
+        warnings.push(`${f.split(/[\\/]/).at(-1)}: ${e.message} The test results weren't checked.`);
+        results = undefined;
+        break;
       }
     }
   }
   const loaded = load(root);
+  for (const p of loaded.problems) warnings.push(`${prefix}${p.file.split("\\").join("/")} couldn't be read: ${p.message}`);
   // GitHub lists repository paths; codeRefs are relative to the project. Files outside the project don't count.
   const changed = opts.input.changed.filter((p) => !prefix || p.startsWith(prefix)).map((p) => p.slice(prefix.length));
-  const files = new Map([...loaded.paths].map(([id, path]) => [id, `${prefix}${path}`]));
+  // Repository paths, with / on every platform: they're links on GitHub.
+  const files = new Map([...loaded.paths].map(([id, path]) => [id, `${prefix}${path.split("\\").join("/")}`]));
   const report = prReport({
     keys: groundworkKeys(opts.input.body, ...opts.input.commits),
     changedPaths: changed,
@@ -61,6 +69,7 @@ export function runCiPrCommand(
     files,
     linkBase: opts.linkBase,
     results,
+    notes: warnings,
   });
-  return { code: 0, lines: [JSON.stringify(report, null, 2)] };
+  return { code: 0, lines: [JSON.stringify({ ...report, warnings }, null, 2)] };
 }

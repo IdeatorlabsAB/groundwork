@@ -262,7 +262,7 @@ function fakeExec(over: (c: ExecCall) => { code: number; stdout: string; stderr:
     const g = args.indexOf("groundwork");
     const rest = args.slice(g + 1);
     if (rest[0] === "ci" && rest[1] === "pr") {
-      const flag = (name: string) => rest.flatMap((a, i) => (a === name ? [rest[i + 1]] : []));
+      const flag = (name: string) => rest.flatMap((a, i) => (a === name ? [rest[i + 1]] : a.startsWith(`${name}=`) ? [a.slice(name.length + 1)] : []));
       const out = runCiPrCommand(opts.env.GROUNDWORK_DIR!, {
         input: JSON.parse(readFileSync(flag("--input")[0], "utf8")),
         junit: flag("--junit"),
@@ -311,7 +311,7 @@ describe("the Action's local mode", () => {
     expect(execs[0]).toMatchObject({ cmd: "npx", args: expect.arrayContaining(["-y", "-p", `groundwork-mcp@${version}`, "groundwork", "ci", "pr"]) });
     expect(execs[0].cwd.startsWith(ws)).toBe(false);
     expect(execs[0].env.GROUNDWORK_DIR).toBe(ws);
-    expect(execs[0].args).toContain(`https://github.com/acme/app/blob/${"a".repeat(40)}/`);
+    expect(execs[0].args).toContain(`--link-base=https://github.com/acme/app/blob/${"a".repeat(40)}/`);
   });
 
   it("local mode makes no request to the Groundwork URL", async () => {
@@ -355,7 +355,7 @@ describe("the Action's local mode", () => {
     const { exec, calls: execs } = fakeExec();
     await run(localEnv(LOCAL_PR, ws, { INPUT_JUNIT: "junit.xml", "INPUT_WORKING-DIRECTORY": "apps/web" }).env, fetch, exec);
     expect(execs[0].env.GROUNDWORK_DIR).toBe(project);
-    expect(execs[0].args).toEqual(expect.arrayContaining(["--junit", join(ws, "junit.xml"), "--path-prefix", "apps/web/"]));
+    expect(execs[0].args).toEqual(expect.arrayContaining([`--junit=${join(ws, "junit.xml")}`, "--path-prefix=apps/web/"]));
   });
 
   it("local mode pushes results on the default branch", async () => {
@@ -383,8 +383,38 @@ describe("the Action's local mode", () => {
     const ws = workspace();
     const { fetch, calls } = fakeFetch(prRoutes());
     const { exec } = fakeExec(() => ({ code: 1, stdout: "", stderr: "npm ERR! network" }));
-    expect(await run(localEnv(LOCAL_PR, ws, { "INPUT_FAIL-ON-GAPS": "true" }).env, fetch, exec)).toBe(0);
+    expect(await run(localEnv(LOCAL_PR, ws).env, fetch, exec)).toBe(0);
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("with fail-on-gaps, a check that couldn't run fails the job", async () => {
+    const ws = workspace();
+    const { fetch } = fakeFetch(prRoutes());
+    const { exec } = fakeExec(() => ({ code: 1, stdout: "", stderr: "No groundwork/config.yml in /x" }));
+    expect(await run(localEnv(LOCAL_PR, ws, { "INPUT_FAIL-ON-GAPS": "true" }).env, fetch, exec)).toBe(1);
+  });
+
+  it("an older package without ci pr says to set groundwork-version", async () => {
+    const ws = workspace();
+    const { fetch } = fakeFetch(prRoutes());
+    const { exec } = fakeExec(() => ({ code: 1, stdout: "", stderr: "Unknown option '--input'" }));
+    const logs: string[] = [];
+    const spy = console.log;
+    console.log = (m: string) => void logs.push(String(m));
+    try {
+      await run(localEnv(LOCAL_PR, ws).env, fetch, exec);
+    } finally {
+      console.log = spy;
+    }
+    expect(logs.join("\n")).toContain("groundwork-version");
+  });
+
+  it("the package runs without the workflow's tokens", async () => {
+    const ws = workspace();
+    const { fetch } = fakeFetch(prRoutes());
+    const { exec, calls: execs } = fakeExec();
+    await run(localEnv(LOCAL_PR, ws).env, fetch, exec);
+    expect(Object.keys(execs[0].env).filter((k) => k.startsWith("INPUT_"))).toEqual([]);
   });
 
   it("falls back to the latest package when the Action's own version isn't published", async () => {

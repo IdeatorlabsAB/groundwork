@@ -98,7 +98,13 @@ describe("prReport", () => {
     const c = items();
     c.requirements = c.requirements.map((r) => (r.id === "REQ-0002" ? { ...r, title: "Evil | ![x](https://evil.test/x.png)" } : r));
     const md = report(["REQ-0002"], [], c).markdown;
-    expect(md).toContain("Evil \\| \\!\\[x\\]\\(https://evil.test/x.png\\)");
+    expect(md).toContain("Evil \\| \\!\\[x\\]\\(https:\u200b//evil.test/x.png\\)");
+  });
+
+  it("doesn't let a bare URL in a title become a link", () => {
+    const c = items();
+    c.requirements = c.requirements.map((r) => (r.id === "REQ-0002" ? { ...r, title: "See https://evil.example/x" } : r));
+    expect(report(["REQ-0002"], [], c).markdown).not.toContain("https://evil.example");
   });
 
   it("doesn't let a title mention people or hide a comment marker", () => {

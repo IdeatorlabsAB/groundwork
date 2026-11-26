@@ -146,3 +146,5 @@ jobs:
 - **Pull requests from forks** get a read-only token, so the comment can't be posted. The gaps still go to the job summary and the `gaps` output.
 - **When the command line can't run** (no network to npm, say), the Action warns and leaves `gaps` unset. It doesn't fail the job.
 - **A ruleset that covers every branch** must allow `groundwork-results`.
+- **Use a released tag** (`@v0.9.0`). It runs the `groundwork-mcp` of the same version. From `@main`, set `groundwork-version` to a published version that has `groundwork ci pr` (0.9.0 or later).
+- **With `fail-on-gaps`, a check that couldn't run fails the job**, e.g. no `groundwork/` in `working-directory`, or npm unreachable. Without it, that's a warning.
