@@ -121,7 +121,6 @@ export function outgoing(kind: Kind, item: AnyItem): string[] {
         ...(r.stakeholderIds ?? []),
         ...(r.obsoletedBy ?? []),
         ...(r.replaces ?? []),
-        ...(r.riskIds ?? []),
       ];
     }
     case "risk":
@@ -1553,7 +1552,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       inputSchema: { id: itemId },
       annotations: { destructiveHint: true },
     },
-    write((_s, state, _c, { id }: { id: string }) => {
+    write((s, state, _c, { id }: { id: string }) => {
       const hit = find(state, id);
       if (!hit) throw new UserError(`No item with id ${id}.`);
       if (hit.kind === "requirement") {
@@ -1565,6 +1564,13 @@ export function buildServer({ root }: ServerOptions): McpServer {
             `${orphaned.map((r) => `${r.id} "${r.title}"`).join(", ")} only fulfil${orphaned.length === 1 ? "s" : ""} "${hit.item.title}". Link ${orphaned.length === 1 ? "it" : "them"} to another stakeholder requirement or delete ${orphaned.length === 1 ? "it" : "them"} first.`,
           );
         }
+      }
+      if (hit.kind === "risk") {
+        // Like untagging a released version: deleting the risk would change what that release recorded.
+        const r = hit.item as Risk;
+        const product = s.catalogue.products.find((p) => p.id === r.product);
+        const released = r.versions.find((v) => product?.versions.find((x) => x.version === v)?.status === "released");
+        if (released) throw new UserError(`"${released}" is released, so "${r.title}" is part of its record and can't be deleted.`);
       }
       const change =
         hit.kind === "insight"

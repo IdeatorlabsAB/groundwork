@@ -215,3 +215,24 @@ describe("record_baseline with risks", () => {
     expect(error).toBe("mitigationIds: INS-0001 is an insight, not a requirement.");
   });
 });
+
+describe("review fixes", () => {
+  it("delete_item refuses a risk tagged for a released version", async () => {
+    const client = await connect();
+    const id = await withRisk(client, { versions: ["1.1"] });
+    writeFileSync(join(root, riskFile()), read(riskFile()).replace('versions:\n  - "1.1"', 'versions:\n  - "1.0"'));
+    expect((await call(client, "delete_item", { id })).error).toBe('"1.0" is released, so "Invoice total wrong" is part of its record and can\'t be deleted.');
+    expect(readdirSync(join(root, "groundwork/risks"))).toHaveLength(1);
+  });
+
+  it("get_item lists a risk's mitigation once in linkedFrom terms, not as an outgoing link of the requirement", async () => {
+    const client = await connect();
+    const id = await withRisk(client);
+    await call(client, "link_items", { id, linkTo: ["REQ-0002"] });
+    const req = (await call(client, "get_item", { id: "REQ-0002" })).data;
+    expect(req.linksTo.map((x: { id: string }) => x.id)).not.toContain(id);
+    expect(req.linkedFrom.map((x: { id: string }) => x.id)).toEqual([id]);
+    const risk = (await call(client, "get_item", { id })).data;
+    expect(risk.linkedFrom.map((x: { id: string }) => x.id)).toEqual([]);
+  });
+});
