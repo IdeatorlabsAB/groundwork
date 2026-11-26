@@ -4,6 +4,8 @@ import { validate, type Problem } from "./validate";
 import { catalogueOf, productOf } from "./catalogue";
 import { loadResults } from "./results";
 import { loadRecords } from "./signoff";
+import { isRunOf } from "../core/match-tests";
+import type { CodeTestResult } from "../core/junit";
 
 /**
  * Moving a project into the Groundwork web app: send every item to its /api/import endpoint, then mark the folder
@@ -56,6 +58,7 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
   });
   items.risks = items.risks.map((r) => (r.product && titles.has(r.product) ? { ...r, product: titles.get(r.product)!, productId: r.product } : r));
   const results = loadResults(root, config);
+  const linked = items.requirements.flatMap((r) => r.codeTests ?? []);
   const { records } = loadRecords(root);
   return {
     format: BUNDLE_FORMAT,
@@ -67,12 +70,32 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
     items,
     versions: loaded.products.flatMap((p) => p.versions.map((v) => ({ productId: p.id, product: p.title, ...v }))),
     records,
-    // Runs from outside CI never count as evidence, so they aren't sent.
-    codeRuns: results.codeRuns.filter((r) => r.source === "ci"),
+    // Runs from outside CI never count as evidence, so they aren't sent. Each run keeps the results of linked tests,
+    // and one result for every other file in it, so the web app still knows which files ran (a linked test missing from
+    // a newer run of its file was deleted), and a big project's runs stay well under the import's size cap.
+    codeRuns: results.codeRuns.filter((r) => r.source === "ci").map((r) => trimRun(r, linked)),
     testRuns: results.testRuns.map((r) => ({ ...r, productId: r.product, product: titles.get(r.product) ?? r.product })),
     dryRun: Boolean(opts.dryRun),
     overwrite: Boolean(opts.overwrite),
   };
+}
+
+/** A CI run with only what readiness reads: linked tests' results, and one result for each other file it ran. */
+function trimRun<R extends { results: CodeTestResult[] }>(run: R, linked: { path: string; name: string }[]): R {
+  const out: CodeTestResult[] = [];
+  const files = new Set<string>();
+  for (const res of run.results) {
+    if (linked.some((t) => isRunOf(t, res))) {
+      out.push(res);
+      files.add(res.path);
+    }
+  }
+  for (const res of run.results) {
+    if (files.has(res.path)) continue;
+    out.push(res);
+    files.add(res.path);
+  }
+  return { ...run, results: out };
 }
 
 export async function runImport(opts: {

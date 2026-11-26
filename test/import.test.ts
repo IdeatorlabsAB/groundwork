@@ -67,6 +67,31 @@ describe("groundwork import", () => {
     expect(b.codeRuns.map((r) => r.id)).toEqual(["ci-run"]);
   });
 
+  it("sends each CI run's linked tests, and one result per other file, so big projects fit", () => {
+    mkdirSync(join(root, "groundwork", "results", "ci"), { recursive: true });
+    const results = [
+      { path: "test/import-audit.test.ts", name: "import audit > REQ-0003 records who, when and which file", status: "passed" },
+      ...Array.from({ length: 3000 }, (_, i) => ({ path: "test/import-audit.test.ts", name: `other ${i}`, status: "passed" })),
+      ...Array.from({ length: 3000 }, (_, i) => ({ path: `test/f${i % 30}.test.ts`, name: `t ${i}`, status: "passed" })),
+    ];
+    for (let n = 0; n < 30; n++) {
+      const at = new Date(Date.UTC(2026, 10, 1, 0, n)).toISOString();
+      writeFileSync(
+        join(root, `groundwork/results/ci/20261101T00${String(n).padStart(2, "0")}00Z-abc1234-j.json`),
+        JSON.stringify({ id: `run-${n}`, commitSha: "abc1234def", ref: "refs/heads/main", at, source: "ci", defaultBranch: true, totals: { passed: 6001, failed: 0, skipped: 0 }, results }),
+      );
+    }
+    const b = buildBundle(root, { dryRun: true });
+    expect(b.codeRuns).toHaveLength(30);
+    const run = b.codeRuns[0];
+    // The linked test, and one result for each of the 31 test files, so the web app knows which files ran.
+    expect(run.results.filter((r) => r.name.startsWith("import audit"))).toHaveLength(1);
+    expect(new Set(run.results.map((r) => r.path)).size).toBe(31);
+    expect(run.results).toHaveLength(31);
+    expect(run.totals.passed).toBe(6001);
+    expect(JSON.stringify(b).length).toBeLessThan(1_000_000);
+  });
+
   it("sends a requirement without a product as the only product's", () => {
     const b = buildBundle(root, { dryRun: true });
     expect(b.items.requirements.filter((r) => r.kind === "solution").every((r) => r.product === "Acme app")).toBe(true);
