@@ -2,6 +2,7 @@ import { readConfig, writeConfig } from "./config";
 import { load } from "./files";
 import { validate, type Problem } from "./validate";
 import { catalogueOf } from "./catalogue";
+import { loadResults } from "./results";
 
 /**
  * Moving a project into the Groundwork web app: send every item to its /api/import endpoint, then mark the folder
@@ -45,6 +46,12 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
   if (risks.length) {
     throw new ImportError(
       `This folder has ${risks.length} risk${risks.length === 1 ? "" : "s"}, and the web app's import doesn't carry risks yet. Wait for the groundwork-mcp release that migrates them, so nothing is lost.`,
+    );
+  }
+  const results = loadResults(root, config);
+  if (results.codeRuns.length || results.testRuns.length) {
+    throw new ImportError(
+      "This folder has test results, and the web app's import doesn't carry them yet. Wait for the groundwork-mcp release that migrates them, so nothing is lost.",
     );
   }
   // The web app knows products by name: send each requirement's product as its title, not its id (PRD-0001).

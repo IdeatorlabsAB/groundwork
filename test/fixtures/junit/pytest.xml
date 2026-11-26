@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="2" time="0.1"><testcase classname="tests.test_billing" name="test_discount" time="0.001" /><testcase classname="tests.test_billing" name="test_rounding" time="0.002"><error message="boom">Traceback</error></testcase></testsuite></testsuites>

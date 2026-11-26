@@ -18,3 +18,6 @@ export const sameCodeTest = (a: Pick<CodeTestLink, "path" | "name">, b: Pick<Cod
 
 /** Solution requirements that can still change take tests. Tests are written while it's built, so in delivery still does. */
 export const takesTests = (r: Requirement) => kindOf(r) === "solution" && r.status !== "obsolete";
+
+/** "qase ACME-12", "testrail C5": how tools and messages name a case. */
+export const caseLabel = (t: CaseRef) => `${t.tool} ${t.project ? `${t.project}-` : ""}${t.id}`;

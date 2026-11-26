@@ -11,6 +11,7 @@ import { migrate, planMigration, type MigrationPlan } from "./store/migrate";
 import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
 import { runReleaseCommand, runReportCommand } from "./release-cli";
+import { runResultsCommand } from "./store/results-cli";
 import { ImportError, runImport } from "./store/import";
 
 declare const __VERSION__: string;
@@ -35,6 +36,9 @@ Usage:
                                        Correct a released version (recorded with the reason)
   groundwork report release [product] <version> [--json]
                                        Print a version's release report as Markdown
+  groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]
+                                       Record a CI run's results for the tests requirements link
+                                       to; --push commits them to the results branch (in CI)
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -239,7 +243,11 @@ async function main(): Promise<number> {
       "remove-obsolete": { type: "string" },
       token: { type: "string" },
       "dry-run": { type: "boolean" },
-      overwrite: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
+      overwrite: { type: "boolean" },
+      commit: { type: "string" },
+      ref: { type: "string" },
+      push: { type: "boolean" },
+      at: { type: "string" }, help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" } },
   });
   const [cmd, arg] = positionals;
   const list = (v: string | undefined) => (v === undefined ? undefined : v.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean));
@@ -283,6 +291,11 @@ async function main(): Promise<number> {
       return cmdMigrate(Boolean(values["dry-run"]));
     case "renumber":
       return cmdRenumber(values.against);
+    case "results": {
+      const files = positionals.slice(2);
+      if (arg !== "add" || !files.length) return console.error("Usage: groundwork results add <junit file or glob>… [--push] [--commit <sha>] [--ref <ref>]"), 1;
+      return print(await runResultsCommand(findRoot(), process.cwd(), { files, commit: values.commit, ref: values.ref, push: Boolean(values.push), at: values.at }));
+    }
     case "trace":
       if (!arg) return console.error("Usage: groundwork trace <ID>"), 1;
       return cmdTrace(arg.toUpperCase());

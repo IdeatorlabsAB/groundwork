@@ -149,6 +149,7 @@ describe("local MCP server", () => {
         "release_requirements",
         "release_version",
         "record_experiment_results",
+        "record_test_results",
         "search_items",
         "send_back_requirement",
         "start_experiment",

@@ -1,0 +1,8 @@
+<testsuites>
+  <testsuite name="outer">
+    <testsuite name="inner" file="src/a.test.ts">
+      <testcase name="works" classname="ignored" file="./src/a.test.ts" />
+    </testsuite>
+    <testcase name="top" classname="src/b.test.ts" />
+  </testsuite>
+</testsuites>

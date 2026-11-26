@@ -8,7 +8,10 @@
 - `trace_code` lists the requirements and risks a set of files touches, by their `codeRefs`. Agents call it before planning a change.
 - A new `groundwork-risk` skill for spotting and scoring risks while planning, in a baseline, or in a risk analysis.
 - **Tests, linked both ways.** Solution requirements record the automated tests that verify them (`link_code_tests`, `unlink_code_tests`: a file and the test's full name) and cases in any test-management tool, such as Qase, TestRail or Xray (`link_test_cases`, `unlink_test_cases`: tool, case id, title, project, URL). `search_items` finds requirements by test name or case id. Tests linked before a requirement shipped stay part of its release record.
-- `groundwork import` refuses a folder with risks until the web app's import carries them, so nothing is dropped.
+- **Test results in the repository.** `groundwork results add <junit>… --push`, run in CI on the default branch, records the JUnit results of the test files your requirements link to and commits them to a `groundwork-results` branch, without touching the checked-out branch. It works in shallow single-branch checkouts and in monorepos, and retries when parallel jobs push at once. Runs from outside CI don't count as evidence.
+- `record_test_results` records a test-management run (Qase, TestRail, …) for a product version, in `groundwork/results/tools/`. `get_item` on a solution requirement shows whether its tests passed, judged as the web app does.
+- New `config.yml` keys `defaultBranch` and `resultsBranch`. New dependency: `fast-xml-parser`.
+- `groundwork import` refuses a folder with risks or test results until the web app's import carries them, so nothing is dropped.
 - Needs Node.js 22 or newer. Node 20 reached end of life in April 2026, and CI no longer tests it.
 
 ## 0.8.0

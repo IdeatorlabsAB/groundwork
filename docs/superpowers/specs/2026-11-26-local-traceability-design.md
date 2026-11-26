@@ -77,6 +77,7 @@ When a team moves to the web app later, `groundwork import --to <web app>` carri
 
 ### CI results (PR 3)
 
+- *(Revised while planning PR 3: results live in `results/ci/` and `results/tools/` subfolders, CI runs only on the results branch, test-tool runs in the working tree. See SPEC "Results".)*
 - `groundwork results add <junit globs…> [--commit <sha>] [--ref <ref>]` parses JUnit (port `junit.ts`, `match-tests.ts`) and writes **`groundwork/results/<at>-<shortsha>.json`**: `{ id, commitSha, ref, at, source: "ci", results: [{ path, name, status }] }`. This matches the web app's `CodeRun`. Only tests linked to a requirement are kept, so files stay small. `--all` keeps every test.
 - Test-management runs: MCP tool `record_test_results` (web app name) writes `groundwork/results/<at>-<tool>-<runId>.json`: `{ source: "test-tool", tool, project, id, title, url?, product, version, results: [{ id, status, endTime }], recordedAt, recordedBy, via? }`. This matches the generalised `RecordedTestRun`, recorded against a product version as the web app records it on a release.
 - Reading: port `latestCodeResults` with the same `CODE_RUN_WINDOW` (30 newest default-branch runs) and `testStatus`. Only runs whose `ref` is the default branch count for code tests (`defaultBranch` in `config.yml`, defaulting to `main`).
