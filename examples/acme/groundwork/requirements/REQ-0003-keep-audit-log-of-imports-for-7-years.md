@@ -8,6 +8,17 @@ stakeholderIds:
   - REQ-0004
 riskIds:
   - RSK-0001
+codeTests:
+  - path: test/import-audit.test.ts
+    name: import audit > REQ-0003 records who, when and which file
+    linkedAt: 2026-11-27T10:00:00.000Z
+    linkedBy: sam
+testCases:
+  - tool: testrail
+    id: C101
+    title: Audit log keeps 7 years of imports
+    linkedAt: 2026-11-27T10:00:00.000Z
+    linkedBy: sam
 acceptanceCriteria:
   - Each import records who, when and which file
   - Logs are kept for 7 years

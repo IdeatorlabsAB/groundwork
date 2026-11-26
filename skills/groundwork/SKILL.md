@@ -71,6 +71,14 @@ Use this when the user wants the existing behaviour of a product written down, f
 
 `record_baseline` makes the hypotheses validated and the requirements approved by the named person, and releases the solution requirements in the version. The approver must be a person who can approve, not a viewer. It takes no `findingIds` or `replaces`. It warns when a title matches a requirement or risk already in the area. Risks get `origin: existing-product` and are tagged for the baseline version. Without product files (`catalogue: legacy`), run `groundwork migrate` first.
 
+## Tests
+
+Every solution requirement should be verified by tests, and the links go both ways.
+
+- **Tests in the repository.** After writing them, call `link_code_tests` with each test's file and the full name the runner reports. Put the requirement's id in the test's name, e.g. `"import > REQ-0042 keeps templates"`, so anyone reading the test can trace it. When you rename or delete a test, unlink the old name and link the new one.
+- **Cases in a test-management tool** (Qase, TestRail, Xray, …). When the tool is connected, write cases there from the requirement's acceptance criteria, then call `link_test_cases` with the tool, the case id as the tool shows it, the title, the project (when case ids restart per project) and the case's URL. When the tool isn't connected, skip this and say so. Never claim a case exists without the tool.
+- Only solution requirements take tests. A test linked before its requirement shipped is part of that release's record and can't be unlinked. New tests can always be linked, including to baseline requirements.
+
 ## Releasing
 
 Only solution requirements belong to releases. Stakeholder needs count as met through the solution requirements that fulfil them.

@@ -61,6 +61,8 @@ Required fields are in bold.
 **Requirement** (`requirements/`, `REQ-`): what is needed before building, in two layers.
 **`title`**, **`kind`** (`stakeholder` | `solution`; files without it are read as `solution`), **`story`**, **`acceptanceCriteria`** (a list), **`status`** (`draft` | `awaiting-approval` | `approved` | `in-delivery` | `obsolete`), `stakeholder` (stakeholder requirements: who has the need), `stakeholderIds` (solution requirements: **required**, the stakeholder requirements it fulfils), `product` (solution requirements), `priority` (`must` | `should` | `could`), `findingIds`, `insightIds`, `hypothesisIds`, `origin` (`tender` | `regulation` | `contract` | `customer-need` | `existing-product`) and `originNote`, `codeRefs` (where the behaviour lives: a repo-relative path, optionally with `#symbol` or `:line`, up to 50), `approver`, `approvedBy`, `approvedAt`, `recordedBy` (who entered an approval given by someone else), `approvalNote`, `replaces` (approved requirements this one replaces), `plannedFor`, `releasedIn`, `releasedAt`, `releasedBy`, `obsoletePlannedFor`, `obsoletedIn` (solution requirements only, versions of its product; see below), `obsoletedBy`, `obsoletedAt`, `madeObsoleteBy` (the person who made it obsolete), `tickets` (solution requirements; see below), `productArea`, `createdAt`, `updatedAt`.
 
+`codeTests` and `testCases` (solution requirements; see "Tests" below): the tests that verify it.
+
 `riskIds` (set by the tools): the risks this requirement mitigates. It mirrors each risk's `mitigationIds`.
 
 **Risk** (`risks/`, `RSK-`): what could go wrong with the product, for the people who use it or depend on it.
@@ -123,6 +125,12 @@ These rules live in the core library, so every Groundwork tool applies them the 
   - It warns when a title matches a requirement already in the area.
   - A release report of a version that holds only baseline requirements is called a baseline report and counts requirements per area.
 - **Code references.** `validate` warns `codeRefs: <path> doesn't exist` when the path of a code reference isn't in the repository. Inferred hypotheses aren't asked for insights.
+- **Tests.** A solution requirement lists the tests that verify it.
+  - `codeTests`: automated tests in the repository, `{ path, name, linkedAt, linkedBy }`. `path` is repo-relative (no `..`, no leading `/`). `name` is the full name the test runner reports, so CI results can be matched on path and name. A test is identified by path and name.
+  - `testCases`: cases in any test-management tool, `{ tool, id, title, project?, url?, linkedAt, linkedBy }`. `tool` is lowercase (`qase`, `testrail`, `xray`, …). `id` is the case id as the tool shows it, as text. A case is identified by tool, project and id, ignoring case, so the same number in two tools or two projects is two cases.
+  - Tests are linked with `link_code_tests` and `link_test_cases`, and unlinked with `unlink_code_tests` and `unlink_test_cases`. Linking a case again refreshes its title and url and keeps when it was first linked.
+  - Only solution requirements that aren't obsolete take tests. A test linked before its requirement shipped (`linkedAt` up to `releasedAt`) is part of that release's record and can't be unlinked.
+  - `validate` reports tests without the fields that identify them, and tests on a stakeholder requirement, as errors. It warns about a code test whose file doesn't exist and a case linked twice.
 - **Tickets.** A solution requirement's `tickets` lists the tickets that implement it, in any tracker: `{ tracker, key, url?, title?, state?, done?, linkedAt, linkedBy, syncedAt? }`.
   - `tracker` is lowercase (`linear`, `jira`, `github`, …). A ticket is identified by tracker and key, ignoring case.
   - `state` is the tracker's own status name, and `done` says whether it's finished.
