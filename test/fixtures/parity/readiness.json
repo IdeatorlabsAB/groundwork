@@ -1,0 +1,97 @@
+{
+  "_about": "Shared with centropic-prototype. Each scenario is a release's scope; both repos must give these blockers, word for word. Change both together.",
+  "scenarios": [
+    {
+      "name": "all clear",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "approved", "codeTests": [{ "path": "test/a.test.ts", "name": "a" }] }],
+      "risks": [{ "id": "K1", "title": "Wrong total", "probability": 5, "severity": 5, "residualProbability": 1, "residualSeverity": 2, "mitigationIds": ["R1"] }],
+      "scope": { "requirements": ["R1"], "risks": ["K1"] },
+      "tests": { "results": [], "code": [{ "path": "test/a.test.ts", "name": "a", "status": "passed" }] },
+      "blockers": []
+    },
+    {
+      "name": "unscored risk",
+      "requirements": [],
+      "risks": [{ "id": "K1", "title": "Wrong total", "probability": 0, "severity": 3, "mitigationIds": [] }],
+      "scope": { "requirements": [], "risks": ["K1"] },
+      "tests": "unchecked",
+      "blockers": [{ "type": "unscored-risk", "refId": "K1", "message": "Risk \"Wrong total\" has a score the risk matrix can't place" }]
+    },
+    {
+      "name": "high risk without a mitigation",
+      "requirements": [],
+      "risks": [{ "id": "K1", "title": "Wrong total", "probability": 5, "severity": 5, "mitigationIds": [] }],
+      "scope": { "requirements": [], "risks": ["K1"] },
+      "tests": "unchecked",
+      "blockers": [{ "type": "missing-mitigation", "refId": "K1", "message": "Risk \"Wrong total\" has no mitigating requirement" }]
+    },
+    {
+      "name": "draft mitigation, outside the scope",
+      "requirements": [{ "id": "R9", "title": "Recheck totals", "status": "draft" }],
+      "risks": [{ "id": "K1", "title": "Wrong total", "probability": 5, "severity": 5, "residualProbability": 1, "residualSeverity": 1, "mitigationIds": ["R9"] }],
+      "scope": { "requirements": [], "risks": ["K1"] },
+      "tests": "unchecked",
+      "blockers": [{ "type": "unapproved-mitigation", "refId": "K1", "message": "Risk \"Wrong total\": mitigating requirement \"Recheck totals\" isn't approved" }]
+    },
+    {
+      "name": "residual still high, and one not scored",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "approved" }],
+      "risks": [
+        { "id": "K1", "title": "Wrong total", "probability": 5, "severity": 5, "residualProbability": 4, "residualSeverity": 5, "mitigationIds": ["R1"] },
+        { "id": "K2", "title": "Lost invoice", "probability": 5, "severity": 5, "mitigationIds": ["R1"] }
+      ],
+      "scope": { "requirements": [], "risks": ["K1", "K2"] },
+      "tests": "unchecked",
+      "blockers": [
+        { "type": "unmitigated-risk", "refId": "K1", "message": "Risk \"Wrong total\": residual risk is still high" },
+        { "type": "unmitigated-risk", "refId": "K2", "message": "Risk \"Lost invoice\": residual risk hasn't been scored" }
+      ]
+    },
+    {
+      "name": "mitigation shipping in the release whose tests failed",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "approved", "codeTests": [{ "path": "test/a.test.ts", "name": "a" }] }],
+      "risks": [{ "id": "K1", "title": "Wrong total", "probability": 5, "severity": 5, "residualProbability": 1, "residualSeverity": 2, "mitigationIds": ["R1"] }],
+      "scope": { "requirements": ["R1"], "risks": ["K1"] },
+      "tests": { "results": [], "code": [{ "path": "test/a.test.ts", "name": "a", "status": "failed" }] },
+      "blockers": [
+        { "type": "untested-mitigation", "refId": "K1", "message": "Risk \"Wrong total\": mitigating requirement \"Totals\" isn't tested" },
+        { "type": "failed-code-test", "refId": "R1", "message": "Requirement \"Totals\": code tests failed in CI: test/a.test.ts › a" }
+      ]
+    },
+    {
+      "name": "unapproved requirement in scope, with no tests",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "awaiting-approval" }],
+      "risks": [],
+      "scope": { "requirements": ["R1"], "risks": [] },
+      "tests": { "results": [], "code": [] },
+      "blockers": [
+        { "type": "unapproved-requirement", "refId": "R1", "message": "Requirement \"Totals\" isn't approved" },
+        { "type": "missing-tests", "refId": "R1", "message": "Requirement \"Totals\" has no linked tests" }
+      ]
+    },
+    {
+      "name": "code test that hasn't run, and a skipped one",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "approved", "codeTests": [{ "path": "test/a.test.ts", "name": "a" }, { "path": "test/a.test.ts", "name": "b" }] }],
+      "risks": [],
+      "scope": { "requirements": ["R1"], "risks": [] },
+      "tests": { "results": [], "code": [{ "path": "test/a.test.ts", "name": "b", "status": "skipped" }] },
+      "blockers": [{ "type": "no-ci-run", "refId": "R1", "message": "Requirement \"Totals\": code tests haven't run in CI on the default branch: test/a.test.ts › a, test/a.test.ts › b" }]
+    },
+    {
+      "name": "test-management cases failed and not run",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "in-delivery", "testCases": [{ "tool": "qase", "project": "ACME", "id": "12", "title": "T" }, { "tool": "testrail", "id": "C5", "title": "U" }] }],
+      "risks": [],
+      "scope": { "requirements": ["R1"], "risks": [] },
+      "tests": { "results": [{ "tool": "qase", "project": "ACME", "id": "12", "runId": "7", "status": "failed", "endTime": "2026-11-20T10:00:00Z" }], "code": [] },
+      "blockers": [{ "type": "untested-requirement", "refId": "R1", "message": "Requirement \"Totals\" isn't tested: ACME-12 failed, C5 not run" }]
+    },
+    {
+      "name": "tests that couldn't be judged",
+      "requirements": [{ "id": "R1", "title": "Totals", "status": "approved", "codeTests": [{ "path": "test/a.test.ts", "name": "a" }] }],
+      "risks": [],
+      "scope": { "requirements": ["R1"], "risks": [] },
+      "tests": null,
+      "blockers": [{ "type": "untested-requirement", "refId": "R1", "message": "Requirement \"Totals\": couldn't judge its tests" }]
+    }
+  ]
+}

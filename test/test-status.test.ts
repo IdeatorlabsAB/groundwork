@@ -70,6 +70,6 @@ describe("testStatus", () => {
 describe("describeUntested", () => {
   it("describeUntested labels cases from any tool", () => {
     const r = { ...req([12]), testCases: [{ tool: "testrail", id: "C5", title: "Rail", linkedAt: "", linkedBy: "" }, ...req([12]).testCases!] };
-    expect(describeUntested(testStatus(r, [res(12, "failed", "2026-11-20T10:00:00+00:00")]))).toBe("testrail C5 not run, qase ACME-12 failed");
+    expect(describeUntested(testStatus(r, [res(12, "failed", "2026-11-20T10:00:00+00:00")]))).toBe("C5 not run, ACME-12 failed");
   });
 });
