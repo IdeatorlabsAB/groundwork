@@ -266,3 +266,66 @@ describe("results add --push, after the review", () => {
     expect(out.lines).toContain("--push needs a git repository with an origin remote; this folder isn't in one.");
   });
 });
+
+/** GitLab and Bitbucket check out the commit, not the branch, and name the branch and commit in their own variables. */
+describe("results add on GitLab and Bitbucket", () => {
+  const detached = (s: ReturnType<typeof setup>) => git(s.ci, "checkout", "-q", "--detach", "HEAD");
+  const latest = (s: ReturnType<typeof setup>) => {
+    const name = readdirSync(join(s.root, "groundwork/results/ci"))[0];
+    return { name, data: JSON.parse(readFileSync(join(s.root, "groundwork/results/ci", name), "utf8")) };
+  };
+  const base = { CI: "true", HOME: process.env.HOME, GIT_AUTHOR_NAME: undefined };
+
+  it("a GitLab run on the default branch counts, from a detached checkout", async () => {
+    const s = setup();
+    detached(s);
+    const env = { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_COMMIT_BRANCH: "trunk", CI_DEFAULT_BRANCH: "trunk", CI_PIPELINE_ID: "88", CI_JOB_NAME: "test" };
+    await run(s, { env });
+    const { name, data } = latest(s);
+    expect(data).toMatchObject({ source: "ci", commitSha: s.sha, ref: "refs/heads/trunk", defaultBranch: true });
+    expect(name).toMatch(new RegExp(`^20261127T101500Z-${s.sha.slice(0, 7)}-88-test-[0-9a-f]{6}\\.json$`));
+  });
+
+  it("a GitLab merge request run doesn't count", async () => {
+    const s = setup();
+    detached(s);
+    const env = { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_DEFAULT_BRANCH: "main", CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: "feature" };
+    await run(s, { env });
+    expect(latest(s).data).toMatchObject({ ref: "refs/heads/feature", defaultBranch: false });
+  });
+
+  it("a Bitbucket run on the default branch counts, from a detached checkout", async () => {
+    const s = setup();
+    detached(s);
+    const env = { ...base, BITBUCKET_COMMIT: s.sha, BITBUCKET_BRANCH: "main", BITBUCKET_BUILD_NUMBER: "17", BITBUCKET_STEP_UUID: "{abc}" };
+    await run(s, { env });
+    const { name, data } = latest(s);
+    expect(data).toMatchObject({ source: "ci", commitSha: s.sha, ref: "refs/heads/main", defaultBranch: true });
+    expect(name).toMatch(new RegExp(`^20261127T101500Z-${s.sha.slice(0, 7)}-17-[0-9a-f]{6}\\.json$`));
+  });
+
+  it("a Bitbucket run on another branch doesn't count", async () => {
+    const s = setup();
+    detached(s);
+    await run(s, { env: { ...base, BITBUCKET_COMMIT: s.sha, BITBUCKET_BRANCH: "feature", BITBUCKET_BUILD_NUMBER: "18" } });
+    expect(latest(s).data).toMatchObject({ ref: "refs/heads/feature", defaultBranch: false });
+  });
+
+  it("--push works from a detached checkout", async () => {
+    const s = setup();
+    detached(s);
+    const out = await run(s, { push: true, env: { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_COMMIT_BRANCH: "main", CI_DEFAULT_BRANCH: "main" } });
+    expect(out.code).toBe(0);
+    expect(branchFiles(s.origin)).toHaveLength(1);
+  });
+
+  it("a declined push outside GitHub doesn't give GitHub advice", async () => {
+    const s = setup();
+    execFileSync("git", ["config", "receive.denyCreate", "true"], { cwd: s.origin });
+    writeFileSync(join(s.origin, "hooks", "pre-receive"), "#!/bin/sh\necho declined >&2\nexit 1\n", { mode: 0o755 });
+    const out = await run(s, { push: true, env: { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_COMMIT_BRANCH: "main", CI_DEFAULT_BRANCH: "main" } });
+    expect(out.code).toBe(1);
+    expect(out.lines[0]).not.toMatch(/GitHub/);
+    expect(out.lines[0]).toMatch(/push access/);
+  });
+});
