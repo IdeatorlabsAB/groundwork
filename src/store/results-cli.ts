@@ -141,6 +141,42 @@ function defaultBranchOf(env: Env, configured: string): string {
   return configured;
 }
 
+/**
+ * The commit, branch, default branch and job name the CI says it ran on. GitLab and Bitbucket check out the commit rather
+ * than the branch, so git alone can't tell; their variables can. Undefined parts fall back to git and config.yml.
+ */
+function ciContext(env: Env): { host: "github" | "gitlab" | "bitbucket" | "other"; commit?: string; ref?: string; defaultBranch?: string; job?: string } {
+  const heads = (b: string | undefined) => (b ? `refs/heads/${b}` : undefined);
+  if (env.GITHUB_ACTIONS || env.GITHUB_SHA || env.GITHUB_REF)
+    return { host: "github", commit: env.GITHUB_SHA, ref: env.GITHUB_REF, job: env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? "1"}-${env.GITHUB_JOB ?? "job"}` : undefined };
+  // GITLAB_CI only: Woodpecker and Drone also set CI_COMMIT_SHA and CI_COMMIT_BRANCH, with other meanings.
+  if (env.GITLAB_CI)
+    return {
+      host: "gitlab",
+      commit: env.CI_COMMIT_SHA,
+      // A merge request run is never the default branch, whatever its source branch is called.
+      ref: env.CI_MERGE_REQUEST_IID ? `refs/merge-requests/${env.CI_MERGE_REQUEST_IID}/head` : env.CI_COMMIT_TAG ? `refs/tags/${env.CI_COMMIT_TAG}` : heads(env.CI_COMMIT_BRANCH),
+      defaultBranch: env.CI_DEFAULT_BRANCH || undefined,
+      job: env.CI_PIPELINE_ID ? `${env.CI_PIPELINE_ID}-${env.CI_JOB_NAME ?? "job"}` : undefined,
+    };
+  // Bitbucket has no variable for the default branch: config.yml's defaultBranch (main) says it.
+  if (env.BITBUCKET_COMMIT)
+    return {
+      host: "bitbucket",
+      commit: env.BITBUCKET_COMMIT,
+      ref: env.BITBUCKET_PR_ID ? `refs/pull-requests/${env.BITBUCKET_PR_ID}/from` : env.BITBUCKET_TAG ? `refs/tags/${env.BITBUCKET_TAG}` : heads(env.BITBUCKET_BRANCH),
+      job: env.BITBUCKET_BUILD_NUMBER,
+    };
+  return { host: "other" };
+}
+
+const PUSH_ADVICE: Record<ReturnType<typeof ciContext>["host"], string> = {
+  github: "In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow BRANCH.",
+  gitlab: "In GitLab CI the job needs push access: allow Git push requests for the job token (Settings → CI/CD → Job token permissions), or set origin to a URL with an access token that has write_repository. BRANCH must not be protected against it.",
+  bitbucket: "Bitbucket Pipelines can push to their own repository unless branch restrictions stop it: allow pushes to BRANCH.",
+  other: "The job needs push access to origin, and BRANCH must not be protected against it.",
+};
+
 const branchOf = (ref: string | null) => (ref ? ref.replace(/^refs\/heads\//, "") : null);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -162,8 +198,9 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
   const config = readConfig(root);
   const { resultsBranch, defaultBranch } = branchesOf(config);
   const kept = keepLinked(all, load(root).items.requirements);
-  const ref = opts.ref ?? env.GITHUB_REF ?? gitOr(root, env, ["symbolic-ref", "-q", "HEAD"]) ?? null;
-  const commitSha = opts.commit ?? env.GITHUB_SHA ?? gitOr(root, env, ["rev-parse", "HEAD"]) ?? "0000000";
+  const ci = ciContext(env);
+  const ref = opts.ref ?? ci.ref ?? gitOr(root, env, ["symbolic-ref", "-q", "HEAD"]) ?? null;
+  const commitSha = opts.commit ?? ci.commit ?? gitOr(root, env, ["rev-parse", "HEAD"]) ?? "0000000";
   // CI=false or CI=0 means not in CI, whatever a tool exported it for.
   const source = env.CI && !/^(false|0)$/i.test(env.CI) ? "ci" : "local";
   const runData: StoredCodeRun = {
@@ -172,7 +209,7 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     ref,
     at: opts.at ?? new Date().toISOString(),
     source,
-    defaultBranch: branchOf(ref) === defaultBranchOf(env, defaultBranch),
+    defaultBranch: branchOf(ref) === (ci.defaultBranch ?? defaultBranchOf(env, defaultBranch)),
     totals: {
       passed: all.filter((r) => r.status === "passed").length,
       failed: all.filter((r) => r.status === "failed").length,
@@ -182,7 +219,7 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
   };
   // Matrix legs share run id, attempt and job name, so a random part keeps two runs in the same second apart.
   const random = randomBytes(3).toString("hex");
-  const job = env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? "1"}-${env.GITHUB_JOB ?? "job"}-${random}` : random;
+  const job = ci.job ? `${ci.job}-${random}` : random;
   const rel = codeRunPath(runData, job);
   const linkedFiles = new Set(kept.map((r) => r.path)).size;
   const what = `${plural(kept.length, "result")} from ${plural(linkedFiles, "linked test file")} (${all.length} in the reports).`;
@@ -197,10 +234,10 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     return { code: 1, lines };
   }
   try {
-    await pushResult(root, posix.normalize(rel), `${JSON.stringify(runData, null, 2)}\n`, { branch: resultsBranch, message: `Groundwork results: ${rel}`, env, beforePush: opts.beforePush });
+    await pushResult(root, posix.normalize(rel), `${JSON.stringify(runData, null, 2)}\n`, { branch: resultsBranch, message: `Groundwork results: ${rel} [skip ci]`, env, beforePush: opts.beforePush });
   } catch (e) {
     if (!(e instanceof PushError)) throw e;
-    lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow ${resultsBranch}.`);
+    lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. ${PUSH_ADVICE[ci.host].replace("BRANCH", resultsBranch)}`);
     return { code: 1, lines };
   }
   lines.push(`Recorded ${rel} on ${resultsBranch}: ${what}`, ...local);

@@ -1,0 +1,42 @@
+# Groundwork in Bitbucket Pipelines, without a Groundwork account.
+#
+# Copy this into bitbucket-pipelines.yml, or the groundwork lines into your own steps. Your tests must write a JUnit XML
+# report (here test-results/junit.xml).
+#
+# Bitbucket Pipelines can push to their own repository without a token, so test results are saved to the
+# groundwork-results branch as they are. If branch restrictions cover every branch, allow pushes to groundwork-results.
+#
+# Bitbucket doesn't tell pipelines the default branch: Groundwork assumes main. If yours is another, set it in
+# groundwork/config.yml, e.g. defaultBranch: master, and rename main below.
+#
+# Bitbucket doesn't give pipelines the pull request's description, so name the requirements a pull request delivers
+# in a commit message, with a line like: Groundwork: REQ-0042, RSK-0007
+
+image: node:22
+
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: Tests and Groundwork check
+          clone:
+            depth: full # the whole history, to find where the branches meet
+          script:
+            - npm ci
+            - npx vitest run --reporter=junit --outputFile=test-results/junit.xml # your tests, writing JUnit XML
+            - git fetch -q origin "+refs/heads/$BITBUCKET_PR_DESTINATION_BRANCH:refs/remotes/origin/$BITBUCKET_PR_DESTINATION_BRANCH"
+            - npx -y -p groundwork-mcp@0.9.1 groundwork validate --against "origin/$BITBUCKET_PR_DESTINATION_BRANCH"
+            # The traceability gaps, in the step log. Remove --fail-on-gaps to only report them.
+            - npx -y -p groundwork-mcp@0.9.1 groundwork ci pr --against "origin/$BITBUCKET_PR_DESTINATION_BRANCH" --junit test-results/junit.xml --markdown --fail-on-gaps
+
+  branches:
+    main: # your default branch
+      - step:
+          name: Tests, recorded as release evidence
+          script:
+            - npm ci
+            - npx vitest run --reporter=junit --outputFile=test-results/junit.xml
+          # after-script runs when tests fail too, so failing runs are recorded. Bitbucket doesn't fail the step when an
+          # after-script command fails: if results stop appearing on groundwork-results, read this step's log.
+          after-script:
+            - npx -y -p groundwork-mcp@0.9.1 groundwork results add test-results/junit.xml --push

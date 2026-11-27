@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **GitLab, Bitbucket and other CI.** `results add` reads the commit and branch from GitLab's and Bitbucket's own variables (`CI_COMMIT_SHA`, `CI_COMMIT_BRANCH`, `CI_DEFAULT_BRANCH`; `BITBUCKET_COMMIT`, `BITBUCKET_BRANCH`). Before, their detached checkouts meant a run on the default branch never counted as evidence. When a push is refused, the advice is for the CI it ran in.
+- `groundwork ci pr --against <branch>` builds the pull request report from git: the commits since the target branch, and the files changed. `--body` adds the description, `--markdown` prints only the comment, and `--fail-on-gaps` exits 1 when there are gaps.
+- Ready-to-copy pipelines in `examples/ci/` for GitLab CI and Bitbucket Pipelines. A test runs their commands.
+
 - **A new README**, written around what Groundwork is now: traceability from requirements to the release sign-off, kept in your repository. The package and plugin descriptions say the same.
 - `groundwork release <version> --withdraw --reason "…"` withdraws a sign-off from the command line (owners). On a signed-off version, the CLI's refusal names it, and messages that suggest correcting a release say to withdraw its sign-off first. Combinations that don't make sense (`--sign-off` with `--shipped` or `--correct`, `--justification` with `--correct`) are refused.
 - A release, sign-off or withdrawal lists the sign-off record among the files it changed, so agents commit it.

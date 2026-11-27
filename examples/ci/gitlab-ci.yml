@@ -1,0 +1,63 @@
+# Groundwork in GitLab CI, without a Groundwork account.
+#
+# Copy this into .gitlab-ci.yml, or the two groundwork jobs into your own pipeline. Your test job must write a JUnit
+# XML report (here junit.xml) and keep it as an artifact, so the groundwork jobs get it.
+#
+# One-time setup, so the default-branch job can save test results to the groundwork-results branch. Either:
+#   - Settings → CI/CD → Job token permissions: turn on "Allow Git push requests to the repository" (GitLab.com, and
+#     GitLab 18.4 or newer). Nothing else is needed: the job pushes with its own token.
+#   - Or, where that setting isn't available: create an access token with the write_repository scope (a project access
+#     token, or a personal one for a bot user), and save it under Settings → CI/CD → Variables as
+#     GROUNDWORK_PUSH_TOKEN, masked.
+# If groundwork-results is a protected branch, allow pushes to it.
+
+# Merge request pipelines for merge requests, branch pipelines otherwise, never both for the same push.
+# The results branch holds only Groundwork's results: no pipeline for it.
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "groundwork-results"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+stages: [test, groundwork]
+
+test:
+  stage: test
+  image: node:22
+  script:
+    - npm ci
+    - npx vitest run --reporter=junit --outputFile=junit.xml # your tests, writing JUnit XML
+  artifacts:
+    when: always # keep the report when tests fail too
+    paths: [junit.xml]
+
+# On a merge request: broken links, clashing ids, and the traceability gaps, in the job log. The job fails on gaps;
+# remove --fail-on-gaps to only report them. Name the requirements a merge request delivers in its description or a
+# commit message, with a line like: Groundwork: REQ-0042, RSK-0007 (GitLab passes on only the first 2,700 characters
+# of a description, so in a long one put that line near the top).
+groundwork-check:
+  stage: groundwork
+  image: node:22
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+  variables:
+    GIT_DEPTH: 0 # the whole history, to find where the branches meet
+  script:
+    - git fetch -q origin "+refs/heads/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME:refs/remotes/origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - npx -y -p groundwork-mcp@0.9.1 groundwork validate --against "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - npx -y -p groundwork-mcp@0.9.1 groundwork ci pr --against "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --body "$CI_MERGE_REQUEST_DESCRIPTION" --junit junit.xml --markdown --fail-on-gaps
+
+# On the default branch: the test results of linked tests, saved as release evidence on groundwork-results.
+groundwork-results:
+  stage: groundwork
+  image: node:22
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always # record failing runs too
+  script:
+    - git remote set-url origin "${CI_SERVER_PROTOCOL}://gitlab-ci-token:${GROUNDWORK_PUSH_TOKEN:-$CI_JOB_TOKEN}@${CI_SERVER_URL#*://}/${CI_PROJECT_PATH}.git"
+    - npx -y -p groundwork-mcp@0.9.1 groundwork results add junit.xml --push

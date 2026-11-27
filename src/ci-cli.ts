@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { JunitError, parseJunit, type CodeTestResult } from "./core/junit";
 import { groundworkKeys, prReport } from "./core/pr-report";
@@ -16,7 +17,41 @@ export interface PrInput {
   changed: string[];
 }
 
-type Out = { code: number; lines: string[] };
+/** `report`: the lines are the report, to print as output even when the exit code is 1 for gaps. */
+type Out = { code: number; lines: string[]; report?: true };
+
+const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 50 * 1024 * 1024 });
+
+/**
+ * The pull request from git, for CI without a GitHub API to ask (GitLab, Bitbucket, …): the commits on HEAD since
+ * `against`, the files changed since they diverged (repository paths), and the project's folder in the repository.
+ */
+export function prInputFromGit(root: string, against: string, body: string): { input: PrInput; pathPrefix: string } {
+  try {
+    git(root, ["rev-parse", "--git-dir"]);
+  } catch {
+    throw new Error(`${root} isn't a git repository, so there's nothing to compare with ${against}.`);
+  }
+  try {
+    git(root, ["rev-parse", "--verify", "--quiet", `${against}^{commit}`]);
+  } catch {
+    throw new Error(
+      `${against} isn't in this checkout. In CI, pass origin/<branch> and fetch it first: git fetch origin "+refs/heads/<branch>:refs/remotes/origin/<branch>", with enough history to find where the branches meet.`,
+    );
+  }
+  const commits = git(root, ["log", "--format=%B%x00", `${against}..HEAD`])
+    .split("\0")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  let changed: string[];
+  try {
+    // -z: file names exactly as they are, not quoted and escaped.
+    changed = git(root, ["diff", "-z", "--name-only", "--no-renames", `${against}...HEAD`]).split("\0").filter(Boolean);
+  } catch {
+    throw new Error(`Can't find where HEAD and ${against} meet. The checkout's history is too short: fetch more of it (in GitLab, GIT_DEPTH: 0; in Bitbucket, clone depth: full).`);
+  }
+  return { input: { body, commits, changed }, pathPrefix: git(root, ["rev-parse", "--show-prefix"]).trim() };
+}
 
 const isInput = (v: unknown): v is PrInput => {
   const x = v as Partial<PrInput> | null;
@@ -33,6 +68,10 @@ export function runCiPrCommand(
     linkBase?: string;
     /** The project's folder in the repository, e.g. "apps/web/"; empty when groundwork/ is at the root. */
     pathPrefix?: string;
+    /** "markdown": only the comment, for a CI log. */
+    format?: "json" | "markdown";
+    /** Exit 1 when there are gaps, to fail the pipeline. */
+    failOnGaps?: boolean;
   },
 ): Out {
   if (!isInput(opts.input)) return { code: 1, lines: ['The input must be { "body": "…", "commits": ["…"], "changed": ["path"] }.'] };
@@ -72,5 +111,6 @@ export function runCiPrCommand(
     pathPrefix: prefix,
     notes: warnings,
   });
-  return { code: 0, lines: [JSON.stringify({ ...report, warnings }, null, 2)] };
+  const code = opts.failOnGaps && report.gaps.length ? 1 : 0;
+  return { code, report: true, lines: [opts.format === "markdown" ? report.markdown : JSON.stringify({ ...report, warnings }, null, 2)] };
 }

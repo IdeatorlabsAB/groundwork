@@ -15,7 +15,7 @@ import { outgoing } from "./mcp/server";
 import { runMcp } from "./mcp/run";
 import { runCheckCommand, runReleaseCommand, runReportCommand } from "./release-cli";
 import { runResultsCommand } from "./store/results-cli";
-import { runCiPrCommand } from "./ci-cli";
+import { prInputFromGit, runCiPrCommand } from "./ci-cli";
 import { ImportError, runImport } from "./store/import";
 
 declare const __VERSION__: string;
@@ -55,6 +55,8 @@ Usage:
                                        does (use it in CI before releasing)
   groundwork ci pr --input <pr.json> [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>]
                                        The pull request report as JSON, for the GitHub Action
+  groundwork ci pr --against origin/<target branch> [--body <text>] [--junit <file>]… [--markdown]
+                   [--fail-on-gaps]    The same, from git: for GitLab, Bitbucket and other CI
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
   groundwork import --to <web app url> Move this project into the Groundwork web app
@@ -262,6 +264,9 @@ async function main(): Promise<number> {
       format: { type: "string" },
       justification: { type: "string" },
       input: { type: "string" },
+      body: { type: "string" },
+      markdown: { type: "boolean" },
+      "fail-on-gaps": { type: "boolean" },
       junit: { type: "string", multiple: true },
       "link-base": { type: "string" },
       "path-prefix": { type: "string" },
@@ -276,8 +281,9 @@ async function main(): Promise<number> {
   const list = (v: string | undefined) => (v === undefined ? undefined : v.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean));
   /** [product] <version>: the version is the last positional; a product before it is optional. */
   const productVersion = (rest: string[]) => (rest.length > 1 ? { product: rest[0], version: rest[1] } : { version: rest[0] });
-  const print = (out: { code: number; lines: string[] }) => {
-    for (const l of out.lines) (out.code ? console.error : console.log)(out.code ? red(l) : l);
+  const print = (out: { code: number; lines: string[]; report?: true }) => {
+    const failed = out.code && !out.report;
+    for (const l of out.lines) (failed ? console.error : console.log)(failed ? red(l) : l);
     return out.code;
   };
   if (values.version) return console.log(VERSION), 0;
@@ -318,14 +324,29 @@ async function main(): Promise<number> {
     case "renumber":
       return cmdRenumber(values.against);
     case "ci": {
-      if (arg !== "pr" || !values.input) return console.error("Usage: groundwork ci pr --input <pr.json> [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>]"), 1;
+      const usage = "Usage: groundwork ci pr (--input <pr.json> | --against origin/<target branch> [--body <text>]) [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>] [--markdown] [--fail-on-gaps]";
+      if (arg !== "pr" || !values.input === !values.against) return console.error(usage), 1;
+      const root = findRoot();
       let input: unknown;
-      try {
-        input = JSON.parse(readFileSync(values.input, "utf8"));
-      } catch (e) {
-        return console.error(`Can't read ${values.input}: ${(e as Error).message}`), 1;
+      let pathPrefix = values["path-prefix"];
+      if (values.input) {
+        try {
+          input = JSON.parse(readFileSync(values.input, "utf8"));
+        } catch (e) {
+          return console.error(`Can't read ${values.input}: ${(e as Error).message}`), 1;
+        }
+      } else {
+        try {
+          const fromGit = prInputFromGit(root, values.against!, values.body ?? "");
+          input = fromGit.input;
+          pathPrefix ??= fromGit.pathPrefix;
+        } catch (e) {
+          return console.error((e as Error).message), 1;
+        }
       }
-      return print(runCiPrCommand(findRoot(), { input: input as never, junit: values.junit, linkBase: values["link-base"], pathPrefix: values["path-prefix"] }));
+      return print(
+        runCiPrCommand(root, { input: input as never, junit: values.junit, linkBase: values["link-base"], pathPrefix, format: values.markdown ? "markdown" : "json", failOnGaps: Boolean(values["fail-on-gaps"]) }),
+      );
     }
     case "check": {
       const pv = productVersion(positionals.slice(2));

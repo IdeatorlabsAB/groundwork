@@ -151,6 +151,23 @@ The [Groundwork Action](action/README.md#without-a-groundwork-account-local-mode
 - run: npx -y -p groundwork-mcp groundwork validate --against origin/${{ github.base_ref }}
 ```
 
+### GitLab, Bitbucket and other CI
+
+Groundwork works with any git host. Only the Action is GitHub's. Elsewhere, the same steps are a few lines in your pipeline, and two examples are ready to copy:
+
+- **[`examples/ci/gitlab-ci.yml`](examples/ci/gitlab-ci.yml)**:
+  - on a merge request, `validate` and the traceability report in the job log;
+  - on the default branch, the test results recorded as evidence.
+  - It pushes with the job's own token once you allow that (Settings → CI/CD → Job token permissions), or with an access token that has `write_repository`.
+- **[`examples/ci/bitbucket-pipelines.yml`](examples/ci/bitbucket-pipelines.yml)**: the same for Bitbucket Pipelines, which can push to their own repository without a token.
+
+```sh
+groundwork ci pr --against origin/main --markdown --fail-on-gaps   # the report, from the commits and files since main
+groundwork results add junit.xml --push                            # on the default branch
+```
+
+`results add` reads the commit and branch from GitHub's, GitLab's or Bitbucket's own variables, because GitLab and Bitbucket check out a commit rather than a branch. What you don't get outside GitHub is the comment posted on the merge request: the report goes to the job log, and `--fail-on-gaps` fails the job.
+
 ## Releasing
 
 Ask *"What's blocking 1.1?"*, or run `groundwork check release 1.1`. It lists, with the web app's rules:
@@ -253,6 +270,7 @@ npx -p groundwork-mcp groundwork <command>
 | `report release <version>` | The traceability report, as Markdown or CSV, or the risk register |
 | `results add <junit>… [--push]` | Record a CI run's results for linked tests |
 | `ci pr --input <pr.json>` | The pull request report, for the GitHub Action |
+| `ci pr --against <branch> [--markdown] [--fail-on-gaps]` | The same report from git, for GitLab, Bitbucket and other CI |
 | `import --to <url>` | Move the project into the web app |
 
 `groundwork --help` lists every option.

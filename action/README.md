@@ -69,7 +69,7 @@ This matters most when every merge deploys: the release sign-off judges the test
 - **Release readiness** counts results uploaded from the default branch: on a push, a schedule or a manual run. Each linked test counts its result from the newest such run that includes it. A test that a newer run of its file no longer has (deleted or renamed) stops counting.
 - **The pull request comment** uses the results that job sent, and only reports on the test files in them. If your tests run in several jobs, run the Action once, in a job that runs after all of them (`needs:`), with every report. With one Action per job, the single comment shows whichever job finished last.
 
-## GitLab CI and other CI
+## GitLab CI and other CI, with a Groundwork account
 
 The Action only wraps three HTTP calls, so any CI can make them with `curl`. Each one takes a JSON body and `Authorization: Bearer <CI token>`:
 
@@ -110,7 +110,9 @@ groundwork:
       fi
 ```
 
-This needs the project's merge method to be **Merge commit**, which writes the "See merge request" line. The keys are read from the merge commit message, so put the `Groundwork:` trailer there. Add `%{description}` to the project's merge commit template, or write the trailer in the merge request's title or a commit. The ticket is recorded as `group/project#12`.
+In **Bitbucket Pipelines**, the test-results call is the same, with `$BITBUCKET_COMMIT` and `$BITBUCKET_BRANCH` in place of GitLab's variables, in a `branches:` pipeline for your default branch.
+
+This needs the GitLab project's merge method to be **Merge commit**, which writes the "See merge request" line. The keys are read from the merge commit message, so put the `Groundwork:` trailer there. Add `%{description}` to the project's merge commit template, or write the trailer in the merge request's title or a commit. The ticket is recorded as `group/project#12`.
 
 ## Without a Groundwork account (local mode)
 
@@ -148,3 +150,11 @@ jobs:
 - **A ruleset that covers every branch** must allow `groundwork-results`.
 - **Use a released tag** (`@v0.9.0`). It runs the `groundwork-mcp` of the same version. From `@main`, set `groundwork-version` to a published version that has `groundwork ci pr` (0.9.0 or later).
 - **With `fail-on-gaps`, a check that couldn't run fails the job**, e.g. no `groundwork/` in `working-directory`, or npm unreachable. Without it, that's a warning.
+
+### GitLab, Bitbucket and other CI, without an account
+
+The Action is GitHub's, but local mode's two jobs are plain commands that run in any CI. [`examples/ci/gitlab-ci.yml`](../examples/ci/gitlab-ci.yml) and [`examples/ci/bitbucket-pipelines.yml`](../examples/ci/bitbucket-pipelines.yml) are ready to copy:
+
+- **On a merge request,** `groundwork ci pr --against origin/<target> --markdown --fail-on-gaps` prints the report in the job log, and fails the job on gaps. Nothing posts it as a comment.
+- **On the default branch,** `groundwork results add <junit> --push` records the results.
+
