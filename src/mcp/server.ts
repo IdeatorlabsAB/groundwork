@@ -273,7 +273,7 @@ class Session {
   /** The product a product-level change is for: the named one, or the only one. */
   targetProduct(value: string | undefined): Product {
     const products = this.catalogue.products;
-    if (!products.length && this.catalogue.legacy) throw new UserError('Products are still in config.yml. Run "groundwork migrate" first, then add risks.');
+    if (!products.length && this.catalogue.legacy) throw new UserError('Products are still in config.yml. Run "groundwork migrate" first.');
     if (!products.length) throw new UserError("Add a product first with add_products.");
     if (value) {
       const p = findProduct(this.catalogue, value);
@@ -792,7 +792,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
     write((s, state, c, { requirements }: { requirements: z.infer<typeof requirementInput>[] }) => {
       let next = state;
       const created: Requirement[] = [];
-      const derived: ops.DerivedRequirement[] = [];
       const warnings: string[] = [];
       for (const r of requirements) {
         const problem = layerProblem(r);
@@ -805,8 +804,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         const product = s.product(r.product);
         s.checkReplaces(state, r.replaces, { kind: r.kind, product });
         const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
+        // One at a time, so ids follow the order given whether or not a requirement has findings.
         if (r.findingIds.length) {
-          derived.push(base);
+          const [after, many] = apply(next, ops.addRequirements(next, c, [base]));
+          next = after;
+          created.push(...many);
         } else {
           const { findingIds: _unused, ...direct } = base;
           void _unused;
@@ -814,11 +816,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
           next = after;
           created.push(one);
         }
-      }
-      if (derived.length) {
-        const [after, many] = apply(next, ops.addRequirements(next, c, derived));
-        next = after;
-        created.push(...many);
       }
       return { state: next, result: { created: created.map((x) => s.summary("requirement", x)), ...(warnings.length ? { warnings } : {}) } };
     }),

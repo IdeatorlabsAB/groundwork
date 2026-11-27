@@ -76,7 +76,9 @@ export function renderRecord(record: SignOffRecord, status: ReportStatus): strin
 
   lines.push("", "## Readiness", "");
   // Without a record, the blockers are today's, not what was checked when it went out.
-  if (status === "legacy" || status === "withdrawn") lines.push(record.blockers.length ? "Not checked at release. As the files are today, these would block it:" : "Not checked at release. As the files are today, nothing would block it.", "");
+  const today = record.blockers.length ? "these would block it:" : "nothing would block it.";
+  if (status === "legacy") lines.push(`Not checked at release. As the files are today, ${today}`, "");
+  if (status === "withdrawn") lines.push(`Its sign-off was withdrawn. As the files are today, ${today}`, "");
   if (!record.blockers.length && status !== "legacy" && status !== "withdrawn") lines.push("No blockers.");
   for (const b of record.blockers) lines.push(`- ${b.message}`);
   return lines.join("\n") + "\n";

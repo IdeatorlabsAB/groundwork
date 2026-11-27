@@ -156,9 +156,10 @@ const GAP_TEXT: Record<Gap["type"], (g: Gap) => string> = {
 
 /** A link target: each path segment encoded, so brackets and spaces in file names don't end the link early. */
 function linkUrl(link: string): string {
+  // Paths are raw file names, never already encoded: a % in one is a literal %.
+  const enc = (seg: string) => encodeURIComponent(seg).replace(/[()!'*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
   const m = /^(https?:\/\/[^/]+)(\/.*)?$/.exec(link);
-  if (!m) return encodeURIComponent(link);
-  return m[1] + (m[2] ?? "").split("/").map((seg) => encodeURIComponent(decodeURIComponent(seg)).replace(/[()!'*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join("/");
+  return m ? m[1] + (m[2] ?? "").split("/").map(enc).join("/") : link.split("/").map(enc).join("/");
 }
 
 /** Inline code that can't be broken out of with a backtick. */

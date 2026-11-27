@@ -186,13 +186,13 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
   const rel = codeRunPath(runData, job);
   const linkedFiles = new Set(kept.map((r) => r.path)).size;
   const what = `${plural(kept.length, "result")} from ${plural(linkedFiles, "linked test file")} (${all.length} in the reports).`;
-  lines.push(opts.push ? `Recorded ${rel} on ${resultsBranch}: ${what}` : `Wrote ${rel}: ${what}`);
-  if (source === "local") lines.push("Not in CI: this run won't count as evidence.");
+  const local = source === "local" ? ["Not in CI: this run won't count as evidence."] : [];
   if (!opts.push) {
     writeResult(root, rel, runData);
+    lines.push(`Wrote ${rel}: ${what}`, ...local);
     return { code: 0, lines };
   }
-  if (!gitOr(root, env, ["rev-parse", "--git-dir"])) {
+  if (!gitOr(root, env, ["rev-parse", "--git-dir"]) || !gitOr(root, env, ["remote", "get-url", "origin"])) {
     lines.push("--push needs a git repository with an origin remote; this folder isn't in one.");
     return { code: 1, lines };
   }
@@ -203,6 +203,7 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow ${resultsBranch}.`);
     return { code: 1, lines };
   }
+  lines.push(`Recorded ${rel} on ${resultsBranch}: ${what}`, ...local);
   lines.push(`Pushed to ${resultsBranch}.`);
   return { code: 0, lines };
 }

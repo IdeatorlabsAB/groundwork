@@ -76,7 +76,7 @@ Groundwork follows the way you already build with an agent:
 4. **CI results.** On your default branch, CI records the test results of linked tests in the repository, as evidence.
 5. **Release.** Groundwork checks the version, and an owner signs it off. The sign-off record and its report never change afterwards.
 
-Agents never approve requirements, accept a risk or sign a release off on their own. People do, and Groundwork records who and when.
+Agents are told never to approve requirements, accept a risk or sign a release off on their own: people decide, and Groundwork records who and when. Locally, tools act as the person in `GROUNDWORK_USER` (or your git user), so make your own decisions yourself. The web app enforces it with roles.
 
 ## Requirements
 
@@ -289,10 +289,11 @@ npx -p groundwork-mcp groundwork import --to https://your-groundwork-app
 Everything moves, with its links: the evidence; requirements, the baseline included, with their tickets, tests and cases; risks with their mitigations and scores; versions, as releases; CI and test-tool results; and sign-off records, word for word. The web app's own release check then gives every version the same verdict as `groundwork check release`.
 
 - **Ids stay the same.** `REQ-0042` stays `REQ-0042`, so the `Groundwork:` trailers in your git history still point at the right items. If the workspace already has one of those keys, the import refuses and lists them; import into a new workspace.
+- **Older releases stay honest.** A version released before Groundwork had sign-off records arrives released and locked, marked as never verified.
 - **Owners only, when there are releases,** because only owners sign releases off in the web app.
 - **Safe to repeat.** Running it again skips what's already there and finishes an import that stopped half-way. `--overwrite` replaces items, never signed-off releases.
 
-Afterwards `config.yml` says `migrated:`, so the local tools only read, and the command prints how to point your agent at the web app. With Claude Code, install the `groundwork-cloud` plugin instead of `groundwork` (`/plugin install groundwork-cloud@groundwork`) and put the token in `.claude/settings.local.json` as `{ "env": { "GROUNDWORK_TOKEN": "gw_…" } }`. With Codex, run `codex mcp remove groundwork` and add to `~/.codex/config.toml`:
+Afterwards `config.yml` says `migrated:`, so the local tools only read, and the command prints how to point your agent at the web app. With Claude Code, install the `groundwork-cloud` plugin instead of `groundwork` (`/plugin install groundwork-cloud@groundwork`) and put the token in each repository's `.claude/settings.local.json`, which git ignores: `{ "env": { "GROUNDWORK_TOKEN": "gw_…" } }`. Add `"GROUNDWORK_URL"` there for any address but `https://groundwork.ideatorlabs.com`. With Codex, run `codex mcp remove groundwork` and add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.groundwork]

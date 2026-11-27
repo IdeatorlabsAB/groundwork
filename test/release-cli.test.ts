@@ -170,3 +170,15 @@ describe("groundwork release, polished", () => {
     expect(runReportCommand(root, { version: "1.0" }).lines.join("\n")).toContain("Not checked at release. As the files are today, these would block it:");
   });
 });
+
+describe("groundwork release, after the review", () => {
+  it("a withdrawn version's report says what the files say now, not that it was never checked", () => {
+    runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    runReleaseCommand(root, { version: "1.0", withdraw: true, reason: "x" });
+    expect(runReportCommand(root, { version: "1.0" }).lines.join("\n")).toContain("Its sign-off was withdrawn. As the files are today,");
+  });
+
+  it("--withdraw refuses options it doesn't use", () => {
+    expect(runReleaseCommand(root, { version: "1.0", withdraw: true, reason: "x", justification: "y" }).lines).toEqual(["--withdraw takes only --reason."]);
+  });
+});

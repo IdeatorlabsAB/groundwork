@@ -252,3 +252,17 @@ describe("fetching results before a sign-off", () => {
     expect(fetchResults(dir, readConfig(dir))).toEqual({ fetched: false, commit: null });
   });
 });
+
+describe("results add --push, after the review", () => {
+  it("says it recorded the run only once the push worked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-noorigin-push-"));
+    dirs.push(dir);
+    execFileSync("git", ["init", "-q", dir]);
+    writeConfig(dir, { schemaVersion: 2, name: "Acme", productAreas: [], products: [], people: [] });
+    writeFileSync(join(dir, "junit.xml"), JUNIT);
+    const out = await runResultsCommand(dir, dir, { files: ["junit.xml"], env: { CI: "true" }, push: true });
+    expect(out.code).toBe(1);
+    expect(out.lines.join("\n")).not.toContain("Recorded");
+    expect(out.lines).toContain("--push needs a git repository with an origin remote; this folder isn't in one.");
+  });
+});

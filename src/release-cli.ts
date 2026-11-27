@@ -91,7 +91,8 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
   }
   // Withdrawing takes a --reason of its own.
   if (args.withdraw) {
-    if (args.shipped !== undefined || args.correct || args.signOff) return { code: 1, lines: ["--withdraw takes only --reason: leave out --shipped, --correct and --sign-off."] };
+    if (args.shipped !== undefined || args.correct || args.signOff || args.justification !== undefined || args.removed !== undefined || args.moveRest !== undefined || args.add !== undefined || args.remove !== undefined)
+      return { code: 1, lines: ["--withdraw takes only --reason."] };
     return withdrawCommand(root, args, actor);
   }
   // A release can't be undone, so ambiguous commands are refused rather than guessed.

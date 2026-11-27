@@ -100,7 +100,7 @@ describe("risks, validation and ids", () => {
     writeConfig(root, { schemaVersion: 1, name: "Acme", productAreas: [], products: ["Acme app"], people: [{ id: "sam", name: "Sam", role: "owner" }] });
     rmSync(join(root, "groundwork/products"), { recursive: true, force: true });
     const { error } = await call(await connect(), "add_risks", { risks: [{ title: "A", probability: 1, severity: 1 }] });
-    expect(error).toBe('Products are still in config.yml. Run "groundwork migrate" first, then add risks.');
+    expect(error).toBe('Products are still in config.yml. Run "groundwork migrate" first.');
   });
 
   it("unlinking the last code test clears the field, as with cases", async () => {
@@ -139,5 +139,32 @@ describe("the CLI's item labels", () => {
     const { defaultMatrix } = await import("../src/core/risk");
     expect(itemTags("risk", { id: "RSK-0001", title: "A", probability: 5, severity: 5, residualProbability: 1, residualSeverity: 2 } as never, defaultMatrix())).toEqual(["high", "residual low"]);
     expect(itemTags("requirement", { id: "REQ-0001", title: "A", kind: "solution", status: "approved" } as never, defaultMatrix())).toEqual(["solution", "approved"]);
+  });
+});
+
+describe("after the review", () => {
+  it("requirements with and without findings keep the order given", async () => {
+    const req = (title: string, findingIds: string[]) => ({ kind: "solution", title, story: `The app shall do ${title}.`, acceptanceCriteria: ["Done"], stakeholderIds: ["REQ-0001"], findingIds });
+    write("groundwork/findings/FND-0001-f.md", renderItem({ id: "FND-0001", title: "F", statement: "Users want it.", insightIds: [], createdAt: "x" }));
+    const out = await call(await connect(), "add_requirements", { requirements: [req("A", ["FND-0001"]), req("B", [])] });
+    expect(out.error).toBeUndefined();
+    const { data } = out;
+    expect(data.created.map((x: { id: string; title: string }) => `${x.id} ${x.title}`)).toEqual(["REQ-0004 A", "REQ-0005 B"]);
+  });
+
+  it("a pre-0.6 folder's message fits any tool", async () => {
+    writeConfig(root, { schemaVersion: 1, name: "Acme", productAreas: [], products: ["Acme app"], people: [{ id: "sam", name: "Sam", role: "owner" }] });
+    rmSync(join(root, "groundwork/products"), { recursive: true, force: true });
+    const { error } = await call(await connect(), "release_version", { version: "1.0", shipped: [] });
+    expect(error).toBe('Products are still in config.yml. Run "groundwork migrate" first.');
+  });
+
+  it("PR comment links survive a stray % in a file name", async () => {
+    const { prReport } = await import("../src/core/pr-report");
+    const { defaultMatrix } = await import("../src/core/risk");
+    const items = load(root).items;
+    const files = new Map([["REQ-0002", "groundwork/requirements/REQ-0002 100%.md"]]);
+    const md = prReport({ keys: ["REQ-0002"], changedPaths: [], items, matrix: defaultMatrix(), files, linkBase: "https://github.com/o/r/blob/abc/" }).markdown;
+    expect(md).toContain("(https://github.com/o/r/blob/abc/groundwork/requirements/REQ-0002%20100%25.md)");
   });
 });
