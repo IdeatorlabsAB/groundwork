@@ -26,6 +26,8 @@ export function fetchResults(root: string, config: Config): { fetched: boolean; 
   let warning: string | undefined;
   try {
     run(["rev-parse", "--git-dir"]);
+    // No origin, no results branch to fetch: nothing to warn about.
+    run(["remote", "get-url", "origin"]);
   } catch {
     return { fetched: false, commit: null };
   }
