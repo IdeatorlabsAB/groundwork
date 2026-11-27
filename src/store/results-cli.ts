@@ -173,7 +173,7 @@ function ciContext(env: Env): { host: "github" | "gitlab" | "bitbucket" | "other
 const PUSH_ADVICE: Record<ReturnType<typeof ciContext>["host"], string> = {
   github: "In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow BRANCH.",
   gitlab: "In GitLab CI the job needs push access: allow Git push requests for the job token (Settings → CI/CD → Job token permissions), or set origin to a URL with an access token that has write_repository. BRANCH must not be protected against it.",
-  bitbucket: "In Bitbucket Pipelines the job needs push access to the repository (an access token with write permission), and branch restrictions must allow BRANCH.",
+  bitbucket: "Bitbucket Pipelines can push to their own repository unless branch restrictions stop it: allow pushes to BRANCH.",
   other: "The job needs push access to origin, and BRANCH must not be protected against it.",
 };
 
