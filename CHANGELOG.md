@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1
 
 - **GitLab, Bitbucket and other CI.** `results add` reads the commit and branch from GitLab's and Bitbucket's own variables (`CI_COMMIT_SHA`, `CI_COMMIT_BRANCH`, `CI_DEFAULT_BRANCH`; `BITBUCKET_COMMIT`, `BITBUCKET_BRANCH`). Before, their detached checkouts meant a run on the default branch never counted as evidence. When a push is refused, the advice is for the CI it ran in.
 - `groundwork ci pr --against <branch>` builds the pull request report from git: the commits since the target branch, and the files changed. `--body` adds the description, `--markdown` prints only the comment, and `--fail-on-gaps` exits 1 when there are gaps.
