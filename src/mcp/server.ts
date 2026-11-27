@@ -105,7 +105,7 @@ function find(s: State, id: string): { kind: Kind; item: AnyItem } | undefined {
  * was made obsolete in a version, or (for a stakeholder requirement) a released solution requirement meets it.
  */
 export function releaseRecordReason(requirements: Requirement[], r: Requirement): string | undefined {
-  const fix = "Add a new requirement that replaces it, or fix the record with correct_release.";
+  const fix = "Add a new requirement that replaces it, or correct the release with correct_release (withdraw its sign-off first if it has one).";
   if (r.releasedIn) return `"${r.title}" shipped in ${r.releasedIn}, so it's part of that release's record and can't be changed. ${fix}`;
   if (r.obsoletedIn) return `"${r.title}" was made obsolete in ${r.obsoletedIn}, so it's part of that release's record and can't be changed. ${fix}`;
   const versions = [...new Set(requirements.filter((x) => x.releasedIn && x.stakeholderIds?.includes(r.id)).map((x) => x.releasedIn!))];
@@ -525,17 +525,19 @@ export function buildServer({ root }: ServerOptions): McpServer {
    * items get readable ids, and only the files that changed are written.
    */
   const write =
-    <A>(fn: (s: Session, state: State, ctx: ops.Ctx, args: A) => { state: State; result: unknown; products?: Product[] }) =>
+    <A>(fn: (s: Session, state: State, ctx: ops.Ctx, args: A) => { state: State; result: unknown; products?: Product[]; files?: string[] }) =>
     async (args: A): Promise<Result> => {
       try {
         const s = open();
         const refused = refusal(s);
         if (refused) return fail(refused);
         if (!isInitialized(root)) writeConfig(root, s.config);
-        const { state, result, products } = fn(s, s.loaded.items, s.ctx(), args);
+        const { state, result, products, files: written } = fn(s, s.loaded.items, s.ctx(), args);
         const { items, renamed } = assignIds(s.loaded.items, state);
         const files = save(root, s.loaded, items);
         for (const p of products ?? []) files.push(writeProduct(root, p, s.loaded.paths.get(p.id)));
+        // Files the tool wrote itself, e.g. a sign-off record: listed so the agent commits them too.
+        files.push(...(written ?? []));
         let text = JSON.stringify({ ...(result as object), filesChanged: files }, null, 2);
         renamed.forEach((to, from) => (text = text.split(from).join(to)));
         return { content: [{ type: "text", text }] };
@@ -1569,6 +1571,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       return {
         state: next,
         products: [signed.product],
+        files: [signed.file],
         result: {
           released: `${p.title} ${a.version}`,
           signOff: { file: signed.file, blockers: signed.record.blockers },
@@ -1619,7 +1622,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       if (active) throw new UserError(`${p.title} ${a.version} is already signed off (${active.file}).`);
       const signed = prepareSignOff({ root, config: s.config, state, catalogue: s.catalogue, product: p, version: a.version, actor: s.actor, now: c.now, justification: a.overrideJustification });
       commitSignOff(root, signed);
-      return { state, products: [signed.product], result: { signOff: { file: signed.file, kind: signed.record.kind, blockers: signed.record.blockers }, ...(signed.warnings.length ? { warnings: signed.warnings } : {}) } };
+      return { state, products: [signed.product], files: [signed.file], result: { signOff: { file: signed.file, kind: signed.record.kind, blockers: signed.record.blockers }, ...(signed.warnings.length ? { warnings: signed.warnings } : {}) } };
     }),
   );
 
@@ -1637,7 +1640,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const active = activeRecord(loadRecords(root).records, p.id, a.version);
       if (!active) throw new UserError(`${p.title} ${a.version} has no sign-off to withdraw.`);
       withdrawRecord(root, active.file, c.actor, a.reason, c.now);
-      return { state, result: { withdrawn: active.file, next: "Correct the release if needed (correct_release, release_requirements), then sign it off again with sign_off_release." } };
+      return { state, files: [active.file], result: { withdrawn: active.file, next: "Correct the release if needed (correct_release, release_requirements), then sign it off again with sign_off_release." } };
     }),
   );
 

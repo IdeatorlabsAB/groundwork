@@ -75,7 +75,9 @@ export function renderRecord(record: SignOffRecord, status: ReportStatus): strin
   }
 
   lines.push("", "## Readiness", "");
-  if (!record.blockers.length) lines.push("No blockers.");
+  // Without a record, the blockers are today's, not what was checked when it went out.
+  if (status === "legacy" || status === "withdrawn") lines.push(record.blockers.length ? "Not checked at release. As the files are today, these would block it:" : "Not checked at release. As the files are today, nothing would block it.", "");
+  if (!record.blockers.length && status !== "legacy" && status !== "withdrawn") lines.push("No blockers.");
   for (const b of record.blockers) lines.push(`- ${b.message}`);
   return lines.join("\n") + "\n";
 }

@@ -341,3 +341,18 @@ describe("final review fixes", () => {
     rmSync(other, { recursive: true, force: true });
   });
 });
+
+describe("release tools, polished", () => {
+  it("release_version and withdraw_release list the record among the files changed", async () => {
+    const client = await ready();
+    const rel = await call(client, "release_version", { version: "1.1", shipped: ["REQ-0002"] });
+    expect(rel.data.filesChanged).toContain("groundwork/releases/PRD-0001-1-1-1.json");
+    const w = await call(client, "withdraw_release", { version: "1.1", reason: "x" });
+    expect(w.data.filesChanged).toEqual(["groundwork/releases/PRD-0001-1-1-1.json"]);
+  });
+
+  it("a shipped requirement's lock says to withdraw a sign-off first", async () => {
+    const { error } = await call(await connect(), "update_item", { id: "REQ-0003", patch: { title: "x" } });
+    expect(error).toContain("withdraw its sign-off first if it has one");
+  });
+});

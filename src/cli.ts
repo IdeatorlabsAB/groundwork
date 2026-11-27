@@ -39,6 +39,8 @@ Usage:
                                        --justification "…"
   groundwork release [product] <version> --sign-off [--justification "…"]
                                        Sign off a version released before sign-off records
+  groundwork release [product] <version> --withdraw --reason "…"
+                                       Withdraw a version's sign-off (owners), to correct it
   groundwork release [product] <version> --correct --reason "…" [--add ID] [--remove ID]
                     [--add-obsolete ID] [--remove-obsolete ID] [--move-rest <version>]
                                        Correct a released version (recorded with the reason)
@@ -264,6 +266,7 @@ async function main(): Promise<number> {
       "link-base": { type: "string" },
       "path-prefix": { type: "string" },
       "sign-off": { type: "boolean" },
+      withdraw: { type: "boolean" },
       table: { type: "string" },
       ref: { type: "string" },
       push: { type: "boolean" },
@@ -301,6 +304,7 @@ async function main(): Promise<number> {
           removeObsolete: list(values["remove-obsolete"]),
           justification: values.justification,
           signOff: Boolean(values["sign-off"]),
+          withdraw: Boolean(values.withdraw),
         }),
       );
     }
