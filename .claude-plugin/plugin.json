@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Traceability for software built with agents, in your repo: requirements, risks, tickets, tests, CI results and release sign-off, kept as linked files by your own coding agent over MCP.",
   "author": {
     "name": "The Groundwork Authors",

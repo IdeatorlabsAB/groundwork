@@ -135,7 +135,7 @@ The [Groundwork Action](action/README.md#without-a-groundwork-account-local-mode
 - **On the default branch** it records the JUnit results, as above.
 
 ```yaml
-- uses: IdeatorlabsAB/groundwork/action@v0.9.0
+- uses: IdeatorlabsAB/groundwork/action@v0.9.1
   if: ${{ !cancelled() }}
   with:
     mode: local
