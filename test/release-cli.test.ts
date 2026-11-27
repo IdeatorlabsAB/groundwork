@@ -85,7 +85,7 @@ describe("groundwork release through the gate", () => {
   it("--correct on a signed-off version is refused", () => {
     runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
     const out = runReleaseCommand(root, { version: "1.0", correct: true, reason: "x", remove: ["REQ-0002"], moveRest: "1.1" });
-    expect(out).toEqual({ code: 1, lines: ["Acme app 1.0 is signed off (groundwork/releases/PRD-0001-1-0-1.json). Withdraw the sign-off first (withdraw_release), then sign off again."] });
+    expect(out).toEqual({ code: 1, lines: ['Acme app 1.0 is signed off (groundwork/releases/PRD-0001-1-0-1.json). Withdraw the sign-off first (groundwork release 1.0 --withdraw --reason "…"), then sign off again.'] });
   });
 
   it("--sign-off signs off a version released before sign-off records", () => {
@@ -133,5 +133,52 @@ describe("groundwork release refuses ambiguous commands", () => {
     expect(runReleaseCommand(root, { version: "1.0" }).lines.join(" ")).toMatch(/--shipped/);
     expect(runReleaseCommand(root, { version: "1.0", correct: true, reason: "x", shipped: ["REQ-0002"] }).code).toBe(1);
     expect(load(root).products[0].versions[0].status).toBe("planned");
+  });
+});
+
+describe("groundwork release, polished", () => {
+  it("--withdraw withdraws a sign-off from the command line, owners only, with a reason", () => {
+    runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    expect(runReleaseCommand(root, { version: "1.0", withdraw: true }).lines).toEqual(['Say why: --withdraw --reason "…".']);
+    const out = runReleaseCommand(root, { version: "1.0", withdraw: true, reason: "REQ-0002 was behind a flag" });
+    expect(out.code).toBe(0);
+    expect(out.lines.at(-1)).toBe("Withdrawn: groundwork/releases/PRD-0001-1-0-1.json. Correct the release if needed, then sign it off again: groundwork release 1.0 --sign-off");
+  });
+
+  it("on a signed-off version, --correct says how to withdraw from the command line", () => {
+    runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    const out = runReleaseCommand(root, { version: "1.0", correct: true, reason: "x", remove: ["REQ-0002"], moveRest: "1.1" });
+    expect(out.lines).toEqual(['Acme app 1.0 is signed off (groundwork/releases/PRD-0001-1-0-1.json). Withdraw the sign-off first (groundwork release 1.0 --withdraw --reason "…"), then sign off again.']);
+  });
+
+  it("refuses --sign-off with --shipped or --correct, and --justification with --correct", () => {
+    expect(runReleaseCommand(root, { version: "1.0", signOff: true, shipped: ["REQ-0002"] }).lines).toEqual(["--sign-off is for a version that's already released; leave out --shipped and --correct."]);
+    expect(runReleaseCommand(root, { version: "1.0", correct: true, reason: "x", justification: "y" }).lines).toEqual(["--justification is for releasing or signing off, not for a correction."]);
+  });
+
+  it("lists the sign-off record among the files changed", () => {
+    const out = runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    expect(out.lines.find((l) => l.startsWith("Released. Files changed:"))).toContain("groundwork/releases/PRD-0001-1-0-1.json");
+  });
+
+  it("a legacy report says its blockers weren't checked at release", () => {
+    runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    rmSync(join(root, "groundwork/releases"), { recursive: true, force: true });
+    const loaded = load(root);
+    const p = loaded.products[0];
+    writeProduct(root, { ...p, versions: p.versions.map(({ signOff: _s, ...v }) => (void _s, v)) }, loaded.paths.get(p.id));
+    expect(runReportCommand(root, { version: "1.0" }).lines.join("\n")).toContain("Not checked at release. As the files are today, these would block it:");
+  });
+});
+
+describe("groundwork release, after the review", () => {
+  it("a withdrawn version's report says what the files say now, not that it was never checked", () => {
+    runReleaseCommand(root, { version: "1.0", shipped: ["REQ-0002"], justification: "Pilot release." });
+    runReleaseCommand(root, { version: "1.0", withdraw: true, reason: "x" });
+    expect(runReportCommand(root, { version: "1.0" }).lines.join("\n")).toContain("Its sign-off was withdrawn. As the files are today,");
+  });
+
+  it("--withdraw refuses options it doesn't use", () => {
+    expect(runReleaseCommand(root, { version: "1.0", withdraw: true, reason: "x", justification: "y" }).lines).toEqual(["--withdraw takes only --reason."]);
   });
 });

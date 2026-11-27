@@ -1,3 +1,4 @@
+import { RISK_COLUMNS, riskRegisterRows, toCsv, TRACEABILITY_COLUMNS, traceabilityRows } from "./core/report-rows";
 import { catalogueOf, findProduct, type Catalogue } from "./store/catalogue";
 import { readConfig, resolveActor } from "./store/config";
 import { load, save } from "./store/files";
@@ -6,10 +7,23 @@ import { correctRelease, ReleaseError, releaseReport, releaseVersion, renderRele
 import { renderRecord, reportView } from "./store/report";
 import { commitSignOff, GateError, lockMessage, prepareSignOff } from "./store/signing";
 import { checkRelease } from "./store/check";
-import { activeRecord, loadRecords } from "./store/signoff";
+import { activeRecord, loadRecords, withdrawRecord } from "./store/signoff";
 
 /** The gate's refusal, with the CLI's way to override it. */
 const cliGate = (e: GateError) => e.message.replace("Or an owner can release it anyway with overrideJustification.", 'Or an owner can release it anyway: add --justification "…".').split("\n");
+
+function withdrawCommand(root: string, args: ReleaseArgs, actor: ReturnType<typeof resolveActor>): Out {
+  if (actor.person?.role !== "owner") return { code: 1, lines: ["Only an owner can withdraw a sign-off."] };
+  if (!args.reason?.trim()) return { code: 1, lines: ['Say why: --withdraw --reason "…".'] };
+  const config = readConfig(root);
+  const loaded = load(root);
+  const p = productFor(catalogueOf(config, loaded.products), args.product);
+  if (typeof p === "string") return { code: 1, lines: [p] };
+  const active = activeRecord(loadRecords(root).records, p.id, args.version);
+  if (!active) return { code: 1, lines: [`${p.title} ${args.version} has no sign-off to withdraw.`] };
+  withdrawRecord(root, active.file, actor.id, args.reason.trim(), new Date().toISOString());
+  return { code: 0, lines: [`Withdrawn: ${active.file}. Correct the release if needed, then sign it off again: groundwork release ${args.version} --sign-off`] };
+}
 
 function signOffCommand(root: string, args: ReleaseArgs, actor: ReturnType<typeof resolveActor>): Out {
   const config = readConfig(root);
@@ -32,7 +46,6 @@ function signOffCommand(root: string, args: ReleaseArgs, actor: ReturnType<typeo
     throw e;
   }
 }
-import { RISK_COLUMNS, riskRegisterRows, toCsv, TRACEABILITY_COLUMNS, traceabilityRows } from "./core/report-rows";
 
 /**
  * `groundwork release` and `groundwork report release`, as functions that return their output, so they can be
@@ -55,6 +68,8 @@ export interface ReleaseArgs {
   justification?: string;
   /** Sign off a version that's already released (released before sign-off records, or after a withdrawal). */
   signOff?: boolean;
+  /** Withdraw the version's sign-off (owners only, with --reason). */
+  withdraw?: boolean;
 }
 
 type Out = { code: number; lines: string[] };
@@ -74,12 +89,20 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
   if (!actor.person) {
     return { code: 1, lines: [`Releasing is recorded with who did it, so it needs a person from groundwork/config.yml people (owner or editor). You're "${actor.id}": set GROUNDWORK_USER, or add your git email there.`] };
   }
+  // Withdrawing takes a --reason of its own.
+  if (args.withdraw) {
+    if (args.shipped !== undefined || args.correct || args.signOff || args.justification !== undefined || args.removed !== undefined || args.moveRest !== undefined || args.add !== undefined || args.remove !== undefined)
+      return { code: 1, lines: ["--withdraw takes only --reason."] };
+    return withdrawCommand(root, args, actor);
+  }
   // A release can't be undone, so ambiguous commands are refused rather than guessed.
   const correctionFlags = [args.reason, args.add, args.remove, args.addObsolete, args.removeObsolete].some((x) => x !== undefined);
   if (!args.correct && correctionFlags) return { code: 1, lines: ["--reason, --add, --remove, --add-obsolete and --remove-obsolete are for corrections: add --correct."] };
   if (args.correct && (args.shipped !== undefined || args.removed !== undefined)) {
     return { code: 1, lines: ["--shipped and --removed are for releasing; a correction uses --add, --remove, --add-obsolete and --remove-obsolete."] };
   }
+  if (args.signOff && (args.shipped !== undefined || args.correct)) return { code: 1, lines: ["--sign-off is for a version that's already released; leave out --shipped and --correct."] };
+  if (args.justification !== undefined && args.correct) return { code: 1, lines: ["--justification is for releasing or signing off, not for a correction."] };
   if (args.signOff) return signOffCommand(root, args, actor);
   if (!args.correct && args.shipped === undefined) return { code: 1, lines: ['Say what shipped: --shipped REQ-0001,REQ-0002 (or --shipped "" to release a version with nothing in it).'] };
   const loaded = load(root);
@@ -88,7 +111,7 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
   if (typeof p === "string") return { code: 1, lines: [p] };
   const now = new Date().toISOString();
   if (args.correct) {
-    const locked = lockMessage(root, p, args.version);
+    const locked = lockMessage(root, p, args.version, `groundwork release ${args.version} --withdraw --reason "…"`);
     if (locked) return { code: 1, lines: [locked] };
   }
   try {
@@ -122,6 +145,7 @@ export function runReleaseCommand(root: string, args: ReleaseArgs): Out {
     if (signed) commitSignOff(root, signed);
     const files = save(root, loaded, next);
     files.push(writeProduct(root, signed?.product ?? out.product, productPath));
+    if (signed) files.push(signed.file);
     const report = renderReleaseReport(releaseReport(out.requirements, after, out.product, args.version));
     return {
       code: 0,

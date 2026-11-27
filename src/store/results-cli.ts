@@ -164,7 +164,8 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
   const kept = keepLinked(all, load(root).items.requirements);
   const ref = opts.ref ?? env.GITHUB_REF ?? gitOr(root, env, ["symbolic-ref", "-q", "HEAD"]) ?? null;
   const commitSha = opts.commit ?? env.GITHUB_SHA ?? gitOr(root, env, ["rev-parse", "HEAD"]) ?? "0000000";
-  const source = env.CI ? "ci" : "local";
+  // CI=false or CI=0 means not in CI, whatever a tool exported it for.
+  const source = env.CI && !/^(false|0)$/i.test(env.CI) ? "ci" : "local";
   const runData: StoredCodeRun = {
     id: randomUUID(),
     commitSha,
@@ -184,11 +185,16 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
   const job = env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? "1"}-${env.GITHUB_JOB ?? "job"}-${random}` : random;
   const rel = codeRunPath(runData, job);
   const linkedFiles = new Set(kept.map((r) => r.path)).size;
-  lines.push(`Wrote ${rel}: ${plural(kept.length, "result")} from ${plural(linkedFiles, "linked test file")} (${all.length} in the reports).`);
-  if (source === "local") lines.push("Not in CI: this run won't count as evidence.");
+  const what = `${plural(kept.length, "result")} from ${plural(linkedFiles, "linked test file")} (${all.length} in the reports).`;
+  const local = source === "local" ? ["Not in CI: this run won't count as evidence."] : [];
   if (!opts.push) {
     writeResult(root, rel, runData);
+    lines.push(`Wrote ${rel}: ${what}`, ...local);
     return { code: 0, lines };
+  }
+  if (!gitOr(root, env, ["rev-parse", "--git-dir"]) || !gitOr(root, env, ["remote", "get-url", "origin"])) {
+    lines.push("--push needs a git repository with an origin remote; this folder isn't in one.");
+    return { code: 1, lines };
   }
   try {
     await pushResult(root, posix.normalize(rel), `${JSON.stringify(runData, null, 2)}\n`, { branch: resultsBranch, message: `Groundwork results: ${rel}`, env, beforePush: opts.beforePush });
@@ -197,6 +203,7 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow ${resultsBranch}.`);
     return { code: 1, lines };
   }
+  lines.push(`Recorded ${rel} on ${resultsBranch}: ${what}`, ...local);
   lines.push(`Pushed to ${resultsBranch}.`);
   return { code: 0, lines };
 }

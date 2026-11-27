@@ -191,6 +191,15 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
           checkVersions(r, err, warn);
           const codeTests = r.codeTests as unknown;
           const cases = r.testCases as unknown;
+          if (codeTests !== undefined && !Array.isArray(codeTests)) err("codeTests must be a list");
+          if (cases !== undefined && !Array.isArray(cases)) err("testCases must be a list");
+          // Without linkedAt a link can't be told apart from what shipped, so it could always be unlinked.
+          for (const t of (Array.isArray(codeTests) ? codeTests : []) as Partial<CodeTestLink>[]) {
+            if (t && typeof t.path === "string" && typeof t.name === "string" && !t.linkedAt) warn(`codeTests: ${t.path} "${t.name}" has no linkedAt, so it can't be told apart from what shipped`);
+          }
+          for (const t of (Array.isArray(cases) ? cases : []) as Partial<TestCaseLink>[]) {
+            if (t && typeof t.tool === "string" && typeof t.id === "string" && !t.linkedAt) warn(`testCases: ${t.tool} ${t.id} has no linkedAt, so it can't be told apart from what shipped`);
+          }
           if ((Array.isArray(codeTests) && codeTests.length) || (Array.isArray(cases) && cases.length)) {
             if (kindOf(r) === "stakeholder") err("tests on a stakeholder requirement: link them to the solution requirements that fulfil it");
           }
@@ -236,6 +245,11 @@ export function validate(loaded: Loaded, config: Config, opts: { root?: string }
         case "risk": {
           const k = item as unknown as Risk;
           link("mitigationIds", "requirement", k.mitigationIds);
+          for (const id of k.mitigationIds ?? []) {
+            const r = s.requirements.find((x) => x.id === id);
+            if (r && !(r.riskIds ?? []).includes(k.id)) err(`mitigationIds: ${id} doesn't list ${k.id} in its riskIds`);
+          }
+          if (!k.product && loaded.products.length) warn("no product: set product, so its versions can be checked");
           for (const field of ["probability", "severity", "residualProbability", "residualSeverity"] as const) {
             const v = k[field];
             if (typeof v === "number" && (!Number.isInteger(v) || v < 1 || v > matrix.size)) {

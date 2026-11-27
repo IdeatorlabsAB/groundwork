@@ -69,6 +69,7 @@ export function runCiPrCommand(
     files,
     linkBase: opts.linkBase,
     results,
+    pathPrefix: prefix,
     notes: warnings,
   });
   return { code: 0, lines: [JSON.stringify({ ...report, warnings }, null, 2)] };

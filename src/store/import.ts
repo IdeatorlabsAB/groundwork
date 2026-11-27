@@ -70,10 +70,10 @@ export function buildBundle(root: string, opts: { dryRun?: boolean; overwrite?: 
     items,
     versions: loaded.products.flatMap((p) => p.versions.map((v) => ({ productId: p.id, product: p.title, ...v }))),
     records,
-    // Runs from outside CI never count as evidence, so they aren't sent. Each run keeps the results of linked tests,
+    // Only runs that count are sent: from CI, on the default branch. Each run keeps the results of linked tests,
     // and one result for every other file in it, so the web app still knows which files ran (a linked test missing from
     // a newer run of its file was deleted), and a big project's runs stay well under the import's size cap.
-    codeRuns: results.codeRuns.filter((r) => r.source === "ci").map((r) => trimRun(r, linked)),
+    codeRuns: results.codeRuns.filter((r) => r.source === "ci" && r.defaultBranch).map((r) => trimRun(r, linked)),
     testRuns: results.testRuns.map((r) => ({ ...r, productId: r.product, product: titles.get(r.product) ?? r.product })),
     dryRun: Boolean(opts.dryRun),
     overwrite: Boolean(opts.overwrite),

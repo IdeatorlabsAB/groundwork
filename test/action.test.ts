@@ -434,3 +434,25 @@ describe("the Action's local mode", () => {
     expect(execs).toEqual([]);
   });
 });
+
+describe("the Action, polished", () => {
+  it("accepts mode in any case", async () => {
+    const ws = workspace();
+    const { fetch } = fakeFetch(prRoutes());
+    const { exec, calls: execs } = fakeExec();
+    await run(localEnv(LOCAL_PR, ws, { INPUT_MODE: "Local" }).env, fetch, exec);
+    expect(execs).toHaveLength(1);
+  });
+
+  it("escapes % in messages to the workflow log", async () => {
+    const lines: string[] = [];
+    const spy = console.log;
+    console.log = (m: string) => void lines.push(String(m));
+    try {
+      await run(env({}, { INPUT_TOKEN: "", INPUT_MODE: "100%" }).env, fakeFetch({}).fetch);
+    } finally {
+      console.log = spy;
+    }
+    expect(lines.join("\n")).toContain("100%25");
+  });
+});

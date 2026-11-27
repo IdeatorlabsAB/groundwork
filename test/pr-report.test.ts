@@ -156,3 +156,17 @@ describe("prReport with this PR's test results", () => {
     expect(withResults(undefined).gaps).toEqual([]);
   });
 });
+
+describe("prReport, polished", () => {
+  it("a file name with brackets keeps its link whole", () => {
+    const f = new Map(files);
+    f.set("REQ-0002", "groundwork/requirements/REQ-0002-a (draft).md");
+    const md = prReport({ keys: ["REQ-0002"], changedPaths: [], items: items(), matrix: defaultMatrix(), files: f, linkBase: LINK }).markdown;
+    expect(md).toContain(`(${LINK}groundwork/requirements/REQ-0002-a%20%28draft%29.md)`);
+  });
+
+  it("changed paths in the comment are the repository's, in a subfolder project", () => {
+    const md = prReport({ keys: [], changedPaths: ["src/import/csv.ts"], items: items(), matrix: defaultMatrix(), files, pathPrefix: "apps/web/" }).markdown;
+    expect(md).toContain("`apps/web/src/import/csv.ts`");
+  });
+});

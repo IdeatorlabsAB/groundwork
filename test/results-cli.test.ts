@@ -217,3 +217,52 @@ describe("groundwork results add --push", () => {
     expect(out.lines.at(-1)).toMatch(/^Couldn't push results to groundwork-results: fatal: .+\. In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow groundwork-results\.$/);
   });
 });
+
+describe("results add, polished", () => {
+  it("--push says where it recorded the run, not that it wrote a file", async () => {
+    const s = setup();
+    const out = await run(s, { push: true });
+    expect(out.lines[0]).toMatch(/^Recorded groundwork\/results\/ci\/.+\.json on groundwork-results: 2 results from 1 linked test file \(3 in the reports\)\.$/);
+  });
+
+  it("--push outside a git repository says so", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-nogit-push-"));
+    dirs.push(dir);
+    writeConfig(dir, { schemaVersion: 2, name: "Acme", productAreas: [], products: [], people: [] });
+    writeFileSync(join(dir, "junit.xml"), JUNIT);
+    const out = await runResultsCommand(dir, dir, { files: ["junit.xml"], env: { CI: "true" }, push: true });
+    expect(out).toEqual({ code: 1, lines: expect.arrayContaining(["--push needs a git repository with an origin remote; this folder isn't in one."]) });
+  });
+
+  it("CI=false isn't CI", async () => {
+    const s = setup();
+    await run(s, { env: { ...s.env, CI: "false" } });
+    const file = readdirSync(join(s.root, "groundwork/results/ci"))[0];
+    expect(JSON.parse(readFileSync(join(s.root, "groundwork/results/ci", file), "utf8")).source).toBe("local");
+  });
+});
+
+describe("fetching results before a sign-off", () => {
+  it("a repository without an origin gets no fetch warning", async () => {
+    const { fetchResults } = await import("../src/store/signing");
+    const dir = mkdtempSync(join(tmpdir(), "gw-noorigin-"));
+    dirs.push(dir);
+    execFileSync("git", ["init", "-q", dir]);
+    writeConfig(dir, { schemaVersion: 2, name: "Acme", productAreas: [], products: [], people: [] });
+    expect(fetchResults(dir, readConfig(dir))).toEqual({ fetched: false, commit: null });
+  });
+});
+
+describe("results add --push, after the review", () => {
+  it("says it recorded the run only once the push worked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-noorigin-push-"));
+    dirs.push(dir);
+    execFileSync("git", ["init", "-q", dir]);
+    writeConfig(dir, { schemaVersion: 2, name: "Acme", productAreas: [], products: [], people: [] });
+    writeFileSync(join(dir, "junit.xml"), JUNIT);
+    const out = await runResultsCommand(dir, dir, { files: ["junit.xml"], env: { CI: "true" }, push: true });
+    expect(out.code).toBe(1);
+    expect(out.lines.join("\n")).not.toContain("Recorded");
+    expect(out.lines).toContain("--push needs a git repository with an origin remote; this folder isn't in one.");
+  });
+});

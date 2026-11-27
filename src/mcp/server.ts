@@ -105,7 +105,7 @@ function find(s: State, id: string): { kind: Kind; item: AnyItem } | undefined {
  * was made obsolete in a version, or (for a stakeholder requirement) a released solution requirement meets it.
  */
 export function releaseRecordReason(requirements: Requirement[], r: Requirement): string | undefined {
-  const fix = "Add a new requirement that replaces it, or fix the record with correct_release.";
+  const fix = "Add a new requirement that replaces it, or correct the release with correct_release (withdraw its sign-off first if it has one).";
   if (r.releasedIn) return `"${r.title}" shipped in ${r.releasedIn}, so it's part of that release's record and can't be changed. ${fix}`;
   if (r.obsoletedIn) return `"${r.title}" was made obsolete in ${r.obsoletedIn}, so it's part of that release's record and can't be changed. ${fix}`;
   const versions = [...new Set(requirements.filter((x) => x.releasedIn && x.stakeholderIds?.includes(r.id)).map((x) => x.releasedIn!))];
@@ -273,6 +273,7 @@ class Session {
   /** The product a product-level change is for: the named one, or the only one. */
   targetProduct(value: string | undefined): Product {
     const products = this.catalogue.products;
+    if (!products.length && this.catalogue.legacy) throw new UserError('Products are still in config.yml. Run "groundwork migrate" first.');
     if (!products.length) throw new UserError("Add a product first with add_products.");
     if (value) {
       const p = findProduct(this.catalogue, value);
@@ -428,7 +429,9 @@ class Session {
 
   ctx(): ops.Ctx {
     // Temporary ids; the store swaps them for readable ones (INS-0008…) when it saves.
-    return { actor: this.actor.id, now: new Date().toISOString(), newId: () => `new-${randomUUID()}` };
+    // A sequence number in each temporary id, so the store numbers new items in the order they were made.
+    let seq = 0;
+    return { actor: this.actor.id, now: new Date().toISOString(), newId: () => `new-${String(++seq).padStart(6, "0")}-${randomUUID()}` };
   }
 
   canEdit() {
@@ -522,17 +525,19 @@ export function buildServer({ root }: ServerOptions): McpServer {
    * items get readable ids, and only the files that changed are written.
    */
   const write =
-    <A>(fn: (s: Session, state: State, ctx: ops.Ctx, args: A) => { state: State; result: unknown; products?: Product[] }) =>
+    <A>(fn: (s: Session, state: State, ctx: ops.Ctx, args: A) => { state: State; result: unknown; products?: Product[]; files?: string[] }) =>
     async (args: A): Promise<Result> => {
       try {
         const s = open();
         const refused = refusal(s);
         if (refused) return fail(refused);
         if (!isInitialized(root)) writeConfig(root, s.config);
-        const { state, result, products } = fn(s, s.loaded.items, s.ctx(), args);
+        const { state, result, products, files: written } = fn(s, s.loaded.items, s.ctx(), args);
         const { items, renamed } = assignIds(s.loaded.items, state);
         const files = save(root, s.loaded, items);
         for (const p of products ?? []) files.push(writeProduct(root, p, s.loaded.paths.get(p.id)));
+        // Files the tool wrote itself, e.g. a sign-off record: listed so the agent commits them too.
+        files.push(...(written ?? []));
         let text = JSON.stringify({ ...(result as object), filesChanged: files }, null, 2);
         renamed.forEach((to, from) => (text = text.split(from).join(to)));
         return { content: [{ type: "text", text }] };
@@ -596,10 +601,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         status: z.string().max(40).optional().describe("Only items with this status, e.g. draft, testing, running, awaiting-approval."),
         area: z.string().max(100).optional().describe("Only items in this product area (label or id)."),
         limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0).describe("Skip this many matches first, to page through more than 100."),
       },
       annotations: { readOnlyHint: true },
     },
-    read((s, { kind, query, status, area, limit }: { kind?: Kind; query?: string; status?: string; area?: string; limit: number }) => {
+    read((s, { kind, query, status, area, limit, offset }: { kind?: Kind; query?: string; status?: string; area?: string; limit: number; offset: number }) => {
       const areaId = s.area(area);
       const words = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
       const out: ReturnType<Session["summary"]>[] = [];
@@ -613,10 +619,10 @@ export function buildServer({ root }: ServerOptions): McpServer {
             if (!words.every((w) => text.includes(w))) continue;
           }
           total++;
-          if (out.length < limit) out.push(s.summary(k, item));
+          if (total > offset && out.length < limit) out.push(s.summary(k, item));
         }
       }
-      return { total, shown: out.length, items: out };
+      return { total, shown: out.length, offset, items: out };
     }),
   );
 
@@ -786,7 +792,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
     write((s, state, c, { requirements }: { requirements: z.infer<typeof requirementInput>[] }) => {
       let next = state;
       const created: Requirement[] = [];
-      const derived: ops.DerivedRequirement[] = [];
       const warnings: string[] = [];
       for (const r of requirements) {
         const problem = layerProblem(r);
@@ -799,8 +804,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         const product = s.product(r.product);
         s.checkReplaces(state, r.replaces, { kind: r.kind, product });
         const base = { ...r, ...(product ? { product } : {}), productArea: s.area(r.productArea), aiGenerated: true };
+        // One at a time, so ids follow the order given whether or not a requirement has findings.
         if (r.findingIds.length) {
-          derived.push(base);
+          const [after, many] = apply(next, ops.addRequirements(next, c, [base]));
+          next = after;
+          created.push(...many);
         } else {
           const { findingIds: _unused, ...direct } = base;
           void _unused;
@@ -808,11 +816,6 @@ export function buildServer({ root }: ServerOptions): McpServer {
           next = after;
           created.push(one);
         }
-      }
-      if (derived.length) {
-        const [after, many] = apply(next, ops.addRequirements(next, c, derived));
-        next = after;
-        created.push(...many);
       }
       return { state: next, result: { created: created.map((x) => s.summary("requirement", x)), ...(warnings.length ? { warnings } : {}) } };
     }),
@@ -1565,6 +1568,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       return {
         state: next,
         products: [signed.product],
+        files: [signed.file],
         result: {
           released: `${p.title} ${a.version}`,
           signOff: { file: signed.file, blockers: signed.record.blockers },
@@ -1615,7 +1619,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       if (active) throw new UserError(`${p.title} ${a.version} is already signed off (${active.file}).`);
       const signed = prepareSignOff({ root, config: s.config, state, catalogue: s.catalogue, product: p, version: a.version, actor: s.actor, now: c.now, justification: a.overrideJustification });
       commitSignOff(root, signed);
-      return { state, products: [signed.product], result: { signOff: { file: signed.file, kind: signed.record.kind, blockers: signed.record.blockers }, ...(signed.warnings.length ? { warnings: signed.warnings } : {}) } };
+      return { state, products: [signed.product], files: [signed.file], result: { signOff: { file: signed.file, kind: signed.record.kind, blockers: signed.record.blockers }, ...(signed.warnings.length ? { warnings: signed.warnings } : {}) } };
     }),
   );
 
@@ -1633,7 +1637,7 @@ export function buildServer({ root }: ServerOptions): McpServer {
       const active = activeRecord(loadRecords(root).records, p.id, a.version);
       if (!active) throw new UserError(`${p.title} ${a.version} has no sign-off to withdraw.`);
       withdrawRecord(root, active.file, c.actor, a.reason, c.now);
-      return { state, result: { withdrawn: active.file, next: "Correct the release if needed (correct_release, release_requirements), then sign it off again with sign_off_release." } };
+      return { state, files: [active.file], result: { withdrawn: active.file, next: "Correct the release if needed (correct_release, release_requirements), then sign it off again with sign_off_release." } };
     }),
   );
 

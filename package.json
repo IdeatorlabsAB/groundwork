@@ -1,7 +1,7 @@
 {
   "name": "groundwork-mcp",
   "version": "0.9.0",
-  "description": "Keep product evidence (insights, hypotheses, experiments, findings, requirements) as linked Markdown files in your repo, written by your own coding agent over MCP.",
+  "description": "Traceability for software built with agents, in your repo: requirements, risks, tickets, tests, CI results and release sign-off, kept as linked files by your own coding agent over MCP.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -30,6 +30,9 @@
     "product-discovery",
     "requirements",
     "traceability",
+    "risk-management",
+    "release-management",
+    "test-traceability",
     "hypotheses",
     "experiments"
   ],

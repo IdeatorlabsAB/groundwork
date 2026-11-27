@@ -151,9 +151,11 @@ export function assignIds(before: Collections, after: Collections): { items: Col
   const known = new Set(ITEM_COLLECTIONS.flatMap((k) => (before[k] as { id: string }[]).map((x) => x.id)));
   const alloc = idAllocator(before);
   const renamed = new Map<string, string>();
+  // In the order they were made: temporary ids carry a sequence number (new-000001-…); others keep their list order.
+  const seq = (id: string) => Number(/^new-(\d+)-/.exec(id)?.[1] ?? Number.MAX_SAFE_INTEGER);
   for (const key of ITEM_COLLECTIONS) {
-    // The operations put new items first, newest batch first; within a batch, in the order given.
-    for (const x of after[key] as { id: string }[]) if (!known.has(x.id) && !LOCAL_ID.test(x.id)) renamed.set(x.id, alloc(KIND_OF[key]));
+    const fresh = (after[key] as { id: string }[]).filter((x) => !known.has(x.id) && !LOCAL_ID.test(x.id));
+    for (const x of [...fresh].sort((a, b) => seq(a.id) - seq(b.id))) renamed.set(x.id, alloc(KIND_OF[key]));
   }
   if (!renamed.size) return { items: after, renamed };
   const map = (id: string) => renamed.get(id) ?? id;

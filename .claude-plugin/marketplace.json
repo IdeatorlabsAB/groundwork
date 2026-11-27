@@ -8,7 +8,7 @@
     {
       "name": "groundwork",
       "source": "./",
-      "description": "Product evidence as linked files in your repo: insights, hypotheses, experiments, findings and requirements, written by your own agent.",
+      "description": "Traceability in your repo: requirements, risks, tickets, tests, CI results and release sign-off, written by your own agent.",
       "category": "productivity"
     },
     {

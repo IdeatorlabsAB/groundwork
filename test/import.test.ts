@@ -92,6 +92,14 @@ describe("groundwork import", () => {
     expect(JSON.stringify(b).length).toBeLessThan(1_000_000);
   });
 
+  it("sends only CI runs from the default branch, the ones that count", () => {
+    mkdirSync(join(root, "groundwork", "results", "ci"), { recursive: true });
+    const run = (id: string, defaultBranch: boolean) => ({ id, commitSha: "abc1234def", ref: defaultBranch ? "refs/heads/main" : "refs/pull/7/merge", at: "2026-11-27T10:00:00.000Z", source: "ci", defaultBranch, totals: { passed: 0, failed: 0, skipped: 0 }, results: [] });
+    writeFileSync(join(root, "groundwork/results/ci/20261127T100000Z-abc1234-main.json"), JSON.stringify(run("main", true)));
+    writeFileSync(join(root, "groundwork/results/ci/20261127T110000Z-abc1234-pr.json"), JSON.stringify(run("pr", false)));
+    expect(buildBundle(root, { dryRun: true }).codeRuns.map((r) => r.id)).toEqual(["main"]);
+  });
+
   it("sends a requirement without a product as the only product's", () => {
     const b = buildBundle(root, { dryRun: true });
     expect(b.items.requirements.filter((r) => r.kind === "solution").every((r) => r.product === "Acme app")).toBe(true);

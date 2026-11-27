@@ -54,10 +54,11 @@ function ownVersion() {
 /** `process.env`-style inputs in; the exit code out. `fetchImpl` and `exec` are replaceable for tests. */
 export async function run(env, fetchImpl = fetch, exec = defaultExec) {
   const input = (name) => (env[`INPUT_${name.toUpperCase()}`] ?? "").trim();
-  const log = (level, msg) => console.log(`::${level}::${msg.replace(/\r?\n/g, "%0A")}`);
+  // Workflow commands read % as an escape, so it's escaped first, then newlines.
+  const log = (level, msg) => console.log(`::${level}::${msg.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`);
   const output = (name, value) => env.GITHUB_OUTPUT && appendFileSync(env.GITHUB_OUTPUT, `${name}=${value}\n`);
 
-  const mode = input("mode") || "cloud";
+  const mode = (input("mode") || "cloud").toLowerCase();
   if (mode !== "cloud" && mode !== "local") {
     log("warning", `Groundwork: mode is cloud or local, not "${mode}".`);
     return 0;

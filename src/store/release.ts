@@ -96,7 +96,7 @@ export function releaseVersion(requirements: Requirement[], catalogue: Catalogue
   const v = versionOf(p, version);
   if (v.status === "released") {
     throw new ReleaseError(
-      `${p.title} ${version} is already released. To fix it, use correct_release; to add requirements that shipped in it later, use release_requirements.`,
+      `${p.title} ${version} is already released. To fix it, use correct_release; to add requirements that shipped in it later, use release_requirements (withdraw its sign-off first, if it has one).`,
     );
   }
   const { planned, removals } = pendingRelease(requirements, p, version, catalogue);

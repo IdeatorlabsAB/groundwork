@@ -26,6 +26,8 @@ export function fetchResults(root: string, config: Config): { fetched: boolean; 
   let warning: string | undefined;
   try {
     run(["rev-parse", "--git-dir"]);
+    // No origin, no results branch to fetch: nothing to warn about.
+    run(["remote", "get-url", "origin"]);
   } catch {
     return { fetched: false, commit: null };
   }
@@ -50,10 +52,10 @@ export function lockedBy(root: string, product: Product, version: string): strin
   return activeRecord(loadRecords(root).records, product.id, version)?.file;
 }
 
-/** "Acme app 1.0 is signed off (…). Withdraw the sign-off first …", or nothing. */
-export function lockMessage(root: string, product: Product, version: string): string | undefined {
+/** "Acme app 1.0 is signed off (…). Withdraw the sign-off first …", or nothing. `how` names the way to withdraw. */
+export function lockMessage(root: string, product: Product, version: string, how = "withdraw_release"): string | undefined {
   const file = lockedBy(root, product, version);
-  return file ? `${product.title} ${version} is signed off (${file}). Withdraw the sign-off first (withdraw_release), then sign off again.` : undefined;
+  return file ? `${product.title} ${version} is signed off (${file}). Withdraw the sign-off first (${how}), then sign off again.` : undefined;
 }
 
 export interface PreparedSignOff {

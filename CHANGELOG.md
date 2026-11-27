@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **A new README**, written around what Groundwork is now: traceability from requirements to the release sign-off, kept in your repository. The package and plugin descriptions say the same.
+- `groundwork release <version> --withdraw --reason "…"` withdraws a sign-off from the command line (owners). On a signed-off version, the CLI's refusal names it, and messages that suggest correcting a release say to withdraw its sign-off first. Combinations that don't make sense (`--sign-off` with `--shipped` or `--correct`, `--justification` with `--correct`) are refused.
+- A release, sign-off or withdrawal lists the sign-off record among the files it changed, so agents commit it.
+- The report of a version released before sign-off records, or withdrawn, says its blockers weren't checked at release.
+- `validate` reports a mitigation the requirement doesn't list back, and warns about a risk without a product and a test link without `linkedAt`.
+- Items added together get ids in the order given. `search_items` takes `offset`, to page past 100 matches. `groundwork list` and `trace` show a risk's level.
+- `results add --push` says where it recorded the run, and needs a git repository. `CI=false` isn't CI. No fetch warning before a sign-off in a repository without a remote.
+- PR comments keep links to files with brackets or spaces whole, and show repository paths in a subfolder project. The Action takes `mode` in any case.
+- `groundwork import` sends only CI runs from the default branch, the ones that count, so pull-request runs can't push a bundle over the size cap.
+
 ## 0.9.0
 
 - **Risks.** A new kind, `RSK`, in `groundwork/risks/`: hazard, harm, probability and severity on a 3×3 or 5×5 matrix (`riskMatrix` in `config.yml`, 5×5 by default), residual scores, category (security or domain), and the versions it affects. Levels are derived, never stored. Same fields and rules as the Groundwork web app, so a later import carries them across.
