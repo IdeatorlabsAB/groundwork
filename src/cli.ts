@@ -55,7 +55,7 @@ Usage:
                                        does (use it in CI before releasing)
   groundwork ci pr --input <pr.json> [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>]
                                        The pull request report as JSON, for the GitHub Action
-  groundwork ci pr --against <target branch> [--body <text>] [--junit <file>]… [--markdown]
+  groundwork ci pr --against origin/<target branch> [--body <text>] [--junit <file>]… [--markdown]
                    [--fail-on-gaps]    The same, from git: for GitLab, Bitbucket and other CI
   groundwork trace <ID>                Show the evidence chain behind an item, e.g. REQ-0003
   groundwork list [kind]               List items, optionally only one kind
@@ -324,7 +324,7 @@ async function main(): Promise<number> {
     case "renumber":
       return cmdRenumber(values.against);
     case "ci": {
-      const usage = "Usage: groundwork ci pr (--input <pr.json> | --against <target branch> [--body <text>]) [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>] [--markdown] [--fail-on-gaps]";
+      const usage = "Usage: groundwork ci pr (--input <pr.json> | --against origin/<target branch> [--body <text>]) [--junit <file>]… [--link-base <url>] [--path-prefix <dir/>] [--markdown] [--fail-on-gaps]";
       if (arg !== "pr" || !values.input === !values.against) return console.error(usage), 1;
       const root = findRoot();
       let input: unknown;

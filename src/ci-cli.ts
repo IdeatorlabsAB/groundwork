@@ -28,15 +28,28 @@ const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, en
  */
 export function prInputFromGit(root: string, against: string, body: string): { input: PrInput; pathPrefix: string } {
   try {
+    git(root, ["rev-parse", "--git-dir"]);
+  } catch {
+    throw new Error(`${root} isn't a git repository, so there's nothing to compare with ${against}.`);
+  }
+  try {
     git(root, ["rev-parse", "--verify", "--quiet", `${against}^{commit}`]);
   } catch {
-    throw new Error(`${against} isn't in this checkout. Fetch it first, e.g. git fetch origin <branch>, with enough history to find where the branches meet.`);
+    throw new Error(
+      `${against} isn't in this checkout. In CI, pass origin/<branch> and fetch it first: git fetch origin "+refs/heads/<branch>:refs/remotes/origin/<branch>", with enough history to find where the branches meet.`,
+    );
   }
   const commits = git(root, ["log", "--format=%B%x00", `${against}..HEAD`])
     .split("\0")
     .map((m) => m.trim())
     .filter(Boolean);
-  const changed = git(root, ["diff", "--name-only", "--no-renames", `${against}...HEAD`]).split("\n").filter(Boolean);
+  let changed: string[];
+  try {
+    // -z: file names exactly as they are, not quoted and escaped.
+    changed = git(root, ["diff", "-z", "--name-only", "--no-renames", `${against}...HEAD`]).split("\0").filter(Boolean);
+  } catch {
+    throw new Error(`Can't find where HEAD and ${against} meet. The checkout's history is too short: fetch more of it (in GitLab, GIT_DEPTH: 0; in Bitbucket, clone depth: full).`);
+  }
   return { input: { body, commits, changed }, pathPrefix: git(root, ["rev-parse", "--show-prefix"]).trim() };
 }
 

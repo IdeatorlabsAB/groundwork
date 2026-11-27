@@ -149,23 +149,30 @@ function ciContext(env: Env): { host: "github" | "gitlab" | "bitbucket" | "other
   const heads = (b: string | undefined) => (b ? `refs/heads/${b}` : undefined);
   if (env.GITHUB_ACTIONS || env.GITHUB_SHA || env.GITHUB_REF)
     return { host: "github", commit: env.GITHUB_SHA, ref: env.GITHUB_REF, job: env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? "1"}-${env.GITHUB_JOB ?? "job"}` : undefined };
-  if (env.GITLAB_CI || env.CI_COMMIT_SHA)
+  // GITLAB_CI only: Woodpecker and Drone also set CI_COMMIT_SHA and CI_COMMIT_BRANCH, with other meanings.
+  if (env.GITLAB_CI)
     return {
       host: "gitlab",
       commit: env.CI_COMMIT_SHA,
-      // CI_COMMIT_BRANCH is set only in branch pipelines; a merge request pipeline names its source branch instead.
-      ref: heads(env.CI_COMMIT_BRANCH || env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME),
+      // A merge request run is never the default branch, whatever its source branch is called.
+      ref: env.CI_MERGE_REQUEST_IID ? `refs/merge-requests/${env.CI_MERGE_REQUEST_IID}/head` : env.CI_COMMIT_TAG ? `refs/tags/${env.CI_COMMIT_TAG}` : heads(env.CI_COMMIT_BRANCH),
       defaultBranch: env.CI_DEFAULT_BRANCH || undefined,
       job: env.CI_PIPELINE_ID ? `${env.CI_PIPELINE_ID}-${env.CI_JOB_NAME ?? "job"}` : undefined,
     };
   // Bitbucket has no variable for the default branch: config.yml's defaultBranch (main) says it.
-  if (env.BITBUCKET_COMMIT) return { host: "bitbucket", commit: env.BITBUCKET_COMMIT, ref: heads(env.BITBUCKET_BRANCH), job: env.BITBUCKET_BUILD_NUMBER };
+  if (env.BITBUCKET_COMMIT)
+    return {
+      host: "bitbucket",
+      commit: env.BITBUCKET_COMMIT,
+      ref: env.BITBUCKET_PR_ID ? `refs/pull-requests/${env.BITBUCKET_PR_ID}/from` : env.BITBUCKET_TAG ? `refs/tags/${env.BITBUCKET_TAG}` : heads(env.BITBUCKET_BRANCH),
+      job: env.BITBUCKET_BUILD_NUMBER,
+    };
   return { host: "other" };
 }
 
 const PUSH_ADVICE: Record<ReturnType<typeof ciContext>["host"], string> = {
   github: "In GitHub Actions the job needs permissions: contents: write, and a ruleset that covers every branch must allow BRANCH.",
-  gitlab: "In GitLab CI the job needs push access: an origin URL with a project access token that has write_repository, and BRANCH must not be protected against it.",
+  gitlab: "In GitLab CI the job needs push access: allow Git push requests for the job token (Settings → CI/CD → Job token permissions), or set origin to a URL with an access token that has write_repository. BRANCH must not be protected against it.",
   bitbucket: "In Bitbucket Pipelines the job needs push access to the repository (an access token with write permission), and branch restrictions must allow BRANCH.",
   other: "The job needs push access to origin, and BRANCH must not be protected against it.",
 };
@@ -227,7 +234,7 @@ export async function runResultsCommand(root: string, cwd: string, opts: Results
     return { code: 1, lines };
   }
   try {
-    await pushResult(root, posix.normalize(rel), `${JSON.stringify(runData, null, 2)}\n`, { branch: resultsBranch, message: `Groundwork results: ${rel}`, env, beforePush: opts.beforePush });
+    await pushResult(root, posix.normalize(rel), `${JSON.stringify(runData, null, 2)}\n`, { branch: resultsBranch, message: `Groundwork results: ${rel} [skip ci]`, env, beforePush: opts.beforePush });
   } catch (e) {
     if (!(e instanceof PushError)) throw e;
     lines.push(`Couldn't push results to ${resultsBranch}: ${e.message}. ${PUSH_ADVICE[ci.host].replace("BRANCH", resultsBranch)}`);

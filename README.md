@@ -158,7 +158,7 @@ Groundwork works with any git host. Only the Action is GitHub's. Elsewhere, the 
 - **[`examples/ci/gitlab-ci.yml`](examples/ci/gitlab-ci.yml)**:
   - on a merge request, `validate` and the traceability report in the job log;
   - on the default branch, the test results recorded as evidence.
-  - It needs a project access token with `write_repository`.
+  - It pushes with the job's own token once you allow that (Settings → CI/CD → Job token permissions), or with an access token that has `write_repository`.
 - **[`examples/ci/bitbucket-pipelines.yml`](examples/ci/bitbucket-pipelines.yml)**: the same for Bitbucket Pipelines, which can push to their own repository without a token.
 
 ```sh

@@ -92,7 +92,7 @@ describe("examples/ci/gitlab-ci.yml", () => {
     writeFileSync(join(p.ci, "junit.xml"), JUNIT);
     const env = { GITLAB_CI: "true", CI_MERGE_REQUEST_TARGET_BRANCH_NAME: "main", CI_MERGE_REQUEST_DESCRIPTION: "", CI_COMMIT_SHA: p.sha, GIT_COMMITTER_NAME: "T", GIT_COMMITTER_EMAIL: "t@example.com" };
     const out = runScript(yml["groundwork-check"].script, p.ci, env);
-    expect(out.at(-1)!.status).toBe(1);
+    expect(out.map((o) => o.status)).toEqual([0, 0, 1]);
     expect(out.at(-1)!.output).toContain("REQ-0003");
   });
 
@@ -100,7 +100,7 @@ describe("examples/ci/gitlab-ci.yml", () => {
     const p = project("gl-main", "main");
     writeFileSync(join(p.ci, "junit.xml"), JUNIT);
     // The token URL the job sets goes to the local origin instead.
-    const url = "https://groundwork:glpat-secret@gitlab.example.com/acme/app.git";
+    const url = "https://gitlab-ci-token:glpat-secret@gitlab.example.com/acme/app.git";
     const env = {
       GITLAB_CI: "true",
       CI_COMMIT_SHA: p.sha,
@@ -109,7 +109,8 @@ describe("examples/ci/gitlab-ci.yml", () => {
       CI_PIPELINE_ID: "88",
       CI_JOB_NAME: "groundwork-results",
       GROUNDWORK_PUSH_TOKEN: "glpat-secret",
-      CI_SERVER_HOST: "gitlab.example.com",
+      CI_SERVER_PROTOCOL: "https",
+      CI_SERVER_URL: "https://gitlab.example.com",
       CI_PROJECT_PATH: "acme/app",
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: `url.file://${p.origin}.insteadOf`,
@@ -121,6 +122,26 @@ describe("examples/ci/gitlab-ci.yml", () => {
     expect(files).toHaveLength(1);
     const run = JSON.parse(git(p.origin, "show", `groundwork-results:${files[0]}`));
     expect(run).toMatchObject({ source: "ci", commitSha: p.sha, ref: "refs/heads/main", defaultBranch: true });
+  });
+
+  it("without a push token, the job pushes with its own job token", () => {
+    const p = project("gl-job-token", "main");
+    writeFileSync(join(p.ci, "junit.xml"), JUNIT);
+    const env = {
+      GITLAB_CI: "true",
+      CI_COMMIT_SHA: p.sha,
+      CI_COMMIT_BRANCH: "main",
+      CI_DEFAULT_BRANCH: "main",
+      CI_JOB_TOKEN: "job-token",
+      CI_SERVER_PROTOCOL: "https",
+      CI_SERVER_URL: "https://gitlab.example.com:8443/gitlab",
+      CI_PROJECT_PATH: "acme/app",
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: `url.file://${p.origin}.insteadOf`,
+      GIT_CONFIG_VALUE_0: "https://gitlab-ci-token:job-token@gitlab.example.com:8443/gitlab/acme/app.git",
+    };
+    expect(runScript(yml["groundwork-results"].script, p.ci, env).map((o) => o.status)).toEqual([0, 0]);
+    expect(results(p.origin)).toHaveLength(1);
   });
 
   it("no pipeline runs for the results branch", () => {

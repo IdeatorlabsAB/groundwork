@@ -161,3 +161,32 @@ describe("ci pr output", () => {
     expect(runCiPrCommand(mkdtempSync(join(tmpdir(), "gw-ci-none-")), { input: { body: "", commits: [], changed: [] } }).report).toBeUndefined();
   });
 });
+
+describe("ci pr --against, after the review", () => {
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  it("lists file names with accents as they are", () => {
+    const top = mkdtempSync(join(tmpdir(), "gw-ci-utf-"));
+    try {
+      git(top, "init", "-q", "-b", "main");
+      git(top, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "--allow-empty", "-m", "base");
+      git(top, "checkout", "-q", "-b", "feature");
+      cpSync(join(__dirname, "../examples/acme/groundwork"), join(top, "groundwork"), { recursive: true });
+      writeFileSync(join(top, "café.ts"), "x\n");
+      git(top, "add", "-A");
+      git(top, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "x");
+      expect(prInputFromGit(top, "main", "").input.changed).toContain("café.ts");
+    } finally {
+      rmSync(top, { recursive: true, force: true });
+    }
+  });
+
+  it("an unknown target says to pass origin/<branch>, and outside git says so", () => {
+    const empty = mkdtempSync(join(tmpdir(), "gw-ci-nogit-"));
+    try {
+      expect(() => prInputFromGit(empty, "origin/main", "")).toThrow(/isn't a git repository/);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+    expect(() => prInputFromGit(join(__dirname, ".."), "nope-branch", "")).toThrow(/origin\/<branch>/);
+  });
+});

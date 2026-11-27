@@ -291,7 +291,7 @@ describe("results add on GitLab and Bitbucket", () => {
     detached(s);
     const env = { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_DEFAULT_BRANCH: "main", CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: "feature" };
     await run(s, { env });
-    expect(latest(s).data).toMatchObject({ ref: "refs/heads/feature", defaultBranch: false });
+    expect(latest(s).data).toMatchObject({ defaultBranch: false });
   });
 
   it("a Bitbucket run on the default branch counts, from a detached checkout", async () => {
@@ -327,5 +327,41 @@ describe("results add on GitLab and Bitbucket", () => {
     expect(out.code).toBe(1);
     expect(out.lines[0]).not.toMatch(/GitHub/);
     expect(out.lines[0]).toMatch(/push access/);
+  });
+});
+
+describe("results add on other CI, after the review", () => {
+  const base = { CI: "true", HOME: process.env.HOME, GIT_AUTHOR_NAME: undefined };
+  const latest = (s: ReturnType<typeof setup>) => JSON.parse(readFileSync(join(s.root, "groundwork/results/ci", readdirSync(join(s.root, "groundwork/results/ci"))[0]), "utf8"));
+  const detached = (s: ReturnType<typeof setup>) => git(s.ci, "checkout", "-q", "--detach", "HEAD");
+
+  it("CI_COMMIT_SHA without GITLAB_CI isn't GitLab: a Woodpecker pull request into main doesn't count", async () => {
+    const s = setup();
+    detached(s);
+    await run(s, { env: { ...base, CI_COMMIT_SHA: s.sha, CI_COMMIT_BRANCH: "main", CI_PIPELINE_EVENT: "pull_request" } });
+    expect(latest(s).defaultBranch).toBe(false);
+  });
+
+  it("a GitLab merge request run never counts, even from a branch named like the default", async () => {
+    const s = setup();
+    detached(s);
+    await run(s, { env: { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_DEFAULT_BRANCH: "main", CI_MERGE_REQUEST_IID: "12", CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: "main" } });
+    expect(latest(s)).toMatchObject({ ref: "refs/merge-requests/12/head", defaultBranch: false });
+  });
+
+  it("a Bitbucket pull request run never counts, even from a branch named like the default", async () => {
+    const s = setup();
+    detached(s);
+    await run(s, { env: { ...base, BITBUCKET_COMMIT: s.sha, BITBUCKET_BRANCH: "main", BITBUCKET_PR_ID: "7" } });
+    expect(latest(s)).toMatchObject({ ref: "refs/pull-requests/7/from", defaultBranch: false });
+  });
+
+  it("--push from a detached GitLab checkout records the branch, and the commit skips CI", async () => {
+    const s = setup();
+    detached(s);
+    await run(s, { push: true, env: { ...base, GITLAB_CI: "true", CI_COMMIT_SHA: s.sha, CI_COMMIT_BRANCH: "main", CI_DEFAULT_BRANCH: "main" } });
+    const [file] = branchFiles(s.origin);
+    expect(JSON.parse(git(s.origin, "show", `groundwork-results:${file}`))).toMatchObject({ ref: "refs/heads/main", defaultBranch: true });
+    expect(git(s.origin, "log", "-1", "--format=%B", "groundwork-results")).toContain("[skip ci]");
   });
 });

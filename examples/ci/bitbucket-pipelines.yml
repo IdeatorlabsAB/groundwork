@@ -24,7 +24,7 @@ pipelines:
           script:
             - npm ci
             - npx vitest run --reporter=junit --outputFile=test-results/junit.xml # your tests, writing JUnit XML
-            - git fetch -q origin "$BITBUCKET_PR_DESTINATION_BRANCH"
+            - git fetch -q origin "+refs/heads/$BITBUCKET_PR_DESTINATION_BRANCH:refs/remotes/origin/$BITBUCKET_PR_DESTINATION_BRANCH"
             - npx -y -p groundwork-mcp@0.9.1 groundwork validate --against "origin/$BITBUCKET_PR_DESTINATION_BRANCH"
             # The traceability gaps, in the step log. Remove --fail-on-gaps to only report them.
             - npx -y -p groundwork-mcp@0.9.1 groundwork ci pr --against "origin/$BITBUCKET_PR_DESTINATION_BRANCH" --junit test-results/junit.xml --markdown --fail-on-gaps
@@ -36,5 +36,7 @@ pipelines:
           script:
             - npm ci
             - npx vitest run --reporter=junit --outputFile=test-results/junit.xml
-          after-script: # runs when tests fail too, so failing runs are recorded
+          # after-script runs when tests fail too, so failing runs are recorded. Bitbucket doesn't fail the step when an
+          # after-script command fails: if results stop appearing on groundwork-results, read this step's log.
+          after-script:
             - npx -y -p groundwork-mcp@0.9.1 groundwork results add test-results/junit.xml --push
