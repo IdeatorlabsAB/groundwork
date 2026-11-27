@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { itemTags } from "./core/labels";
+import type { RiskMatrix } from "./core/types";
 import { KIND, type Kind } from "./core/schemas";
 import type { Requirement } from "./core/types";
 import { kindOf } from "./core/requirements";
-import { ConfigError, DIR, findRoot, isInitialized, readConfig, writeConfig } from "./store/config";
+import { ConfigError, DIR, findRoot, isInitialized, matrixOf, readConfig, writeConfig } from "./store/config";
 import { COLLECTIONS, load, slug, type Loaded } from "./store/files";
 import { validate } from "./store/validate";
 import { clashProblems, GitError, renumber } from "./store/branches";
@@ -78,12 +80,8 @@ function index(loaded: Loaded) {
   return byId;
 }
 
-function label(kind: Kind, item: Item) {
-  const tags = [
-    kind === "requirement" ? kindOf(item as unknown as Requirement) : undefined,
-    item.status,
-    item.verdict && item.verdict !== item.status ? item.verdict : undefined,
-  ].filter(Boolean);
+function label(kind: Kind, item: Item, matrix: RiskMatrix) {
+  const tags = itemTags(kind, item, matrix);
   return `${bold(item.id)} ${item.title}${tags.length ? dim(` (${tags.join(", ")})`) : ""}`;
 }
 
@@ -156,13 +154,14 @@ function cmdMigrate(dryRun: boolean) {
 
 function cmdTrace(id: string) {
   const loaded = load(findRoot());
+  const matrix = matrixOf(readConfig(findRoot()));
   const byId = index(loaded);
   const root = byId.get(id);
   if (!root) {
     console.error(red(`No item with id ${id}.`));
     return 1;
   }
-  console.log(label(root.kind, root.item));
+  console.log(label(root.kind, root.item, matrix));
   const seen = new Set([id]);
   const walk = (cur: string, prefix: string) => {
     const hit = byId.get(cur)!;
@@ -171,7 +170,7 @@ function cmdTrace(id: string) {
       const last = i === next.length - 1;
       const child = byId.get(x)!;
       const again = seen.has(x);
-      console.log(`${prefix}${last ? "└─ " : "├─ "}${dim(child.kind)} ${label(child.kind, child.item)}${again ? dim(" (shown above)") : ""}`);
+      console.log(`${prefix}${last ? "└─ " : "├─ "}${dim(child.kind)} ${label(child.kind, child.item, matrix)}${again ? dim(" (shown above)") : ""}`);
       if (!again) {
         seen.add(x);
         walk(x, prefix + (last ? "   " : "│  "));
@@ -190,11 +189,12 @@ function cmdList(kind?: string) {
     return 1;
   }
   const loaded = load(findRoot());
+  const matrix = matrixOf(readConfig(findRoot()));
   for (const k of kind ? [kind as Kind] : KIND.options) {
     const items = loaded.items[COLLECTIONS[k]] as Item[];
     if (!items.length) continue;
     console.log(bold(`${COLLECTIONS[k]} (${items.length})`));
-    for (const item of [...items].sort((a, b) => a.id.localeCompare(b.id))) console.log(`  ${label(k, item)}`);
+    for (const item of [...items].sort((a, b) => a.id.localeCompare(b.id))) console.log(`  ${label(k, item, matrix)}`);
   }
   return 0;
 }

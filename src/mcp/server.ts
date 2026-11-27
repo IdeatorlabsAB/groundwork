@@ -273,6 +273,7 @@ class Session {
   /** The product a product-level change is for: the named one, or the only one. */
   targetProduct(value: string | undefined): Product {
     const products = this.catalogue.products;
+    if (!products.length && this.catalogue.legacy) throw new UserError('Products are still in config.yml. Run "groundwork migrate" first, then add risks.');
     if (!products.length) throw new UserError("Add a product first with add_products.");
     if (value) {
       const p = findProduct(this.catalogue, value);
@@ -428,7 +429,9 @@ class Session {
 
   ctx(): ops.Ctx {
     // Temporary ids; the store swaps them for readable ones (INS-0008…) when it saves.
-    return { actor: this.actor.id, now: new Date().toISOString(), newId: () => `new-${randomUUID()}` };
+    // A sequence number in each temporary id, so the store numbers new items in the order they were made.
+    let seq = 0;
+    return { actor: this.actor.id, now: new Date().toISOString(), newId: () => `new-${String(++seq).padStart(6, "0")}-${randomUUID()}` };
   }
 
   canEdit() {
@@ -596,10 +599,11 @@ export function buildServer({ root }: ServerOptions): McpServer {
         status: z.string().max(40).optional().describe("Only items with this status, e.g. draft, testing, running, awaiting-approval."),
         area: z.string().max(100).optional().describe("Only items in this product area (label or id)."),
         limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0).describe("Skip this many matches first, to page through more than 100."),
       },
       annotations: { readOnlyHint: true },
     },
-    read((s, { kind, query, status, area, limit }: { kind?: Kind; query?: string; status?: string; area?: string; limit: number }) => {
+    read((s, { kind, query, status, area, limit, offset }: { kind?: Kind; query?: string; status?: string; area?: string; limit: number; offset: number }) => {
       const areaId = s.area(area);
       const words = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
       const out: ReturnType<Session["summary"]>[] = [];
@@ -613,10 +617,10 @@ export function buildServer({ root }: ServerOptions): McpServer {
             if (!words.every((w) => text.includes(w))) continue;
           }
           total++;
-          if (out.length < limit) out.push(s.summary(k, item));
+          if (total > offset && out.length < limit) out.push(s.summary(k, item));
         }
       }
-      return { total, shown: out.length, items: out };
+      return { total, shown: out.length, offset, items: out };
     }),
   );
 

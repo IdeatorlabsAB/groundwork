@@ -633,7 +633,7 @@ export function unlinkCodeTests(s: Collections, c: Ctx, requirementId: string, t
   if (!req || kept.length === list.length) return nothing(0);
   return {
     next: {
-      requirements: s.requirements.map((r) => (r === req ? { ...r, codeTests: kept, updatedAt: c.now } : r)),
+      requirements: s.requirements.map((r) => (r === req ? { ...r, codeTests: kept.length ? kept : undefined, updatedAt: c.now } : r)),
       activity: [log(c, "requirement", `unlinked ${list.length - kept.length === 1 ? "a code test" : `${list.length - kept.length} code tests`} from "${req.title}"`, req.id), ...s.activity],
     },
     result: list.length - kept.length,
