@@ -39,7 +39,7 @@ describe("groundwork ci pr", () => {
     const loaded = load(root);
     save(root, loaded, { ...loaded.items, requirements: loaded.items.requirements.map((r) => (r.id === "REQ-0003" ? { ...r, status: "approved" as const, codeRefs: ["src/import"] } : r)) });
     const r = json(runCiPrCommand(root, { input: { body: "", commits: [], changed: ["apps/web/src/import/csv.ts", "other/src/import/x.ts"] }, pathPrefix: "apps/web/", linkBase: "https://github.com/acme/app/blob/abc/" }));
-    expect(r.gaps).toContainEqual({ type: "unnamed-approved-change", key: "REQ-0003", title: "Keep audit log of imports for 7 years", paths: ["src/import/csv.ts"] });
+    expect(r.gaps).toContainEqual({ type: "unnamed-approved-change", key: "REQ-0003", title: "Keep audit log of imports for 7 years", paths: ["apps/web/src/import/csv.ts"] });
     expect(r.touched[0].link).toBe("https://github.com/acme/app/blob/abc/apps/web/groundwork/requirements/REQ-0003-keep-audit-log-of-imports-for-7-years.md");
   });
 

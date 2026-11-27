@@ -73,10 +73,12 @@ export function prReport(input: {
   /** e.g. https://github.com/acme/app/blob/<sha>/ */
   linkBase?: string;
   results?: CodeTestResult[];
+  /** The project's folder in the repository ("apps/web/"), so changed paths in the comment are the repository's. */
+  pathPrefix?: string;
   /** Said in the comment: e.g. a JUnit report that couldn't be read, or files in groundwork/ that couldn't. */
   notes?: string[];
 }): PrReport {
-  const { keys, changedPaths, items, matrix, files, linkBase, results, notes = [] } = input;
+  const { keys, changedPaths, items, matrix, files, linkBase, results, notes = [], pathPrefix = "" } = input;
   const reqs = items.requirements.filter((r) => r.status !== "obsolete");
   const ref = (kind: ItemRef["kind"], x: Requirement | Risk): ItemRef => {
     const file = files.get(x.id);
@@ -122,7 +124,7 @@ export function prReport(input: {
     }
   }
   for (const r of touchedReqs) {
-    if (MITIGATION_OK.includes(r.status) && !namedReqs.includes(r)) gaps.push({ type: "unnamed-approved-change", key: r.id, title: r.title, paths: hits(r.codeRefs) });
+    if (MITIGATION_OK.includes(r.status) && !namedReqs.includes(r)) gaps.push({ type: "unnamed-approved-change", key: r.id, title: r.title, paths: hits(r.codeRefs).map((p) => `${pathPrefix}${p}`) });
   }
   for (const r of new Set([...namedRisks, ...touchedRisks])) {
     if (initialLevel(matrix, r) === "high" && !r.mitigationIds.length) gaps.push({ type: "unmitigated-high-risk", key: r.id, title: r.title });
@@ -152,6 +154,13 @@ const GAP_TEXT: Record<Gap["type"], (g: Gap) => string> = {
   "code-tests-not-run": (g) => `**${g.key}** ${text(g.title)}: tests didn't run in this PR: ${testList(g)}.`,
 };
 
+/** A link target: each path segment encoded, so brackets and spaces in file names don't end the link early. */
+function linkUrl(link: string): string {
+  const m = /^(https?:\/\/[^/]+)(\/.*)?$/.exec(link);
+  if (!m) return encodeURIComponent(link);
+  return m[1] + (m[2] ?? "").split("/").map((seg) => encodeURIComponent(decodeURIComponent(seg)).replace(/[()!'*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join("/");
+}
+
 /** Inline code that can't be broken out of with a backtick. */
 const code = (s: string) => `\`${s.replace(/`/g, "'").replace(/\s+/g, " ")}\``;
 const testList = (g: Gap) => ((g as Extract<Gap, { tests: string[] }>).tests ?? []).map(code).join(", ");
@@ -162,7 +171,7 @@ function markdown(named: ItemRef[], touched: ItemRef[], unknownKeys: string[], g
   if (rows.length) {
     lines.push("### Linked", "", "| Key | Item | Why |", "| --- | --- | --- |");
     for (const r of rows) {
-      const item = r.link ? `[${text(r.title)}](${encodeURI(r.link)})` : r.file ? `${text(r.title)} (${code(r.file)})` : text(r.title);
+      const item = r.link ? `[${text(r.title)}](${linkUrl(r.link)})` : r.file ? `${text(r.title)} (${code(r.file)})` : text(r.title);
       lines.push(`| ${r.key} | ${item} | ${r.how} |`);
     }
   } else {
