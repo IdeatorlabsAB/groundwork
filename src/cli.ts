@@ -21,7 +21,7 @@ import { ImportError, runImport } from "./store/import";
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
 
-const HELP = `groundwork ${VERSION}: product evidence as linked files in your repo
+const HELP = `groundwork ${VERSION}: traceability for software built with agents, in your repo
 
 Usage:
   groundwork init [--name <product>]   Create groundwork/config.yml in this folder

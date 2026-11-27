@@ -1,38 +1,36 @@
 # Groundwork
 
-**Your product evidence, in your repo, written by your own agent.**
+**Traceability for software built with agents, kept in your repository.**
 
-Groundwork lets Claude Code (or any MCP agent) keep customer insights, hypotheses, experiments, findings and requirements as linked Markdown files in a `groundwork/` folder, next to your code. It's where your team keeps the *why*: who needs what, what the solution shall do, and the evidence behind it. Your agent writes requirements before it builds, and every requirement traces back to the stakeholder needs, findings and customer quotes behind it.
+Your coding agent writes the code. Groundwork has it also keep the record of why the code exists and how you know it works. Before it builds, it records the requirements. While it builds, it records the risks, the tickets, the code and the tests that verify each requirement. Before a version ships, Groundwork checks the chain end to end and signs the release off in a frozen report.
 
 ```
-insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ requirement
-"I gave up    "Guided import   pilot, 10      "activation    "Guided CSV
- after 20      will lift        accounts:      61% vs 38%"    import"
- minutes"      activation"      validated"
+why ──▶ requirements ──▶ tickets ──▶ code ──▶ tests ──▶ risks ──▶ CI results ──▶ release report
 ```
 
-- **No account, no API keys, no server.** Your agent does the thinking. Groundwork checks the data, keeps links valid and computes experiment verdicts.
-- **Plain files.** Read them, diff them, review them in pull requests, and keep them as long as you like.
-- **Traceability.** Ask "why are we building this?" and get the full evidence chain, or check it in CI with `groundwork validate`.
-- **Works with your branches.** Everyone works on their own clone, and Groundwork catches and fixes id clashes before you merge.
+Everything is plain Markdown and JSON in a `groundwork/` folder next to your code, written through an MCP server any agent can use (Claude Code, Codex, …).
 
-Working in a regulated industry, or need people to review and sign off what agents record? See [Groundwork for teams](#groundwork-for-teams): the same workflow, kept in a web app with CI, risk registers and release sign-off.
+- **No account, no server, no API keys.** Your agent does the thinking. Groundwork keeps the data valid, the links intact and the rules applied.
+- **Reviewable like code.** Requirements, risks and release records are files: diff them, review them in pull requests, keep them as long as you need.
+- **Release evidence, not just docs.** `groundwork check release` tells you what blocks a version: unmitigated high risks, unapproved requirements, tests that are missing, failing or haven't run. Releasing freezes a sign-off record and a traceability report you can hand to an auditor, e.g. for EU MDR technical documentation.
+- **Built for regulated teams, useful for any team.** Medical devices, healthcare, finance: anywhere a release has to show what shipped, why, and how it was checked.
+- **Grows with you.** When the team needs review inboxes, roles and PDFs, move to the [Groundwork web app](#moving-to-the-web-app) with nothing lost and every id unchanged.
 
-## Quickstart (2 minutes)
+## Quickstart
 
 ### Claude Code
 
-In your project folder:
-
-```sh
-claude mcp add groundwork -- npx -y groundwork-mcp
-```
-
-Or install the plugin, which adds the MCP server and a skill that teaches Claude when to use it:
+Install the plugin. It adds the MCP server and the skills that teach Claude when to use it:
 
 ```
 /plugin marketplace add IdeatorlabsAB/groundwork
 /plugin install groundwork@groundwork
+```
+
+Or add only the MCP server, in your project folder:
+
+```sh
+claude mcp add groundwork -- npx -y groundwork-mcp
 ```
 
 ### Codex
@@ -41,153 +39,155 @@ Or install the plugin, which adds the MCP server and a skill that teaches Claude
 codex mcp add groundwork -- npx -y groundwork-mcp
 ```
 
-Or add it to `~/.codex/config.toml` by hand:
-
-```toml
-[mcp_servers.groundwork]
-command = "npx"
-args = ["-y", "groundwork-mcp"]
-```
-
-To teach Codex when to use it, copy the skill into your repo:
+To teach Codex when to use it, copy the skills into your repository:
 
 ```sh
-mkdir -p .agents/skills/groundwork
-curl -fsSL https://raw.githubusercontent.com/IdeatorlabsAB/groundwork/main/skills/groundwork/SKILL.md -o .agents/skills/groundwork/SKILL.md
+for s in groundwork groundwork-risk groundwork-write-requirement; do
+  mkdir -p .agents/skills/$s
+  curl -fsSL https://raw.githubusercontent.com/IdeatorlabsAB/groundwork/main/skills/$s/SKILL.md -o .agents/skills/$s/SKILL.md
+done
 ```
 
 Start `codex` in your project folder, so Groundwork finds the project.
 
-### Then
+### Then talk to your agent
 
-Talk to your agent as you normally would:
-
-> Here are my notes from three customer interviews. Log the pains as insights.
+> Set up Groundwork for the Clinicare web app, with areas Scheduling and Prescriptions, and a first version 1.0.
 >
-> Draft a hypothesis from the onboarding insights, with a success metric.
+> Let's add a feature to book appointments. *(In plan mode, the agent writes the requirements and risks first.)*
 >
-> The pilot finished: activation went from 38% to 61%, support tickets stayed at 11 a week. Record it and write up the finding.
->
-> Why are we building the guided import?
->
-> Let's add a feature to book appointments. *(In plan mode, the agent writes the requirements first.)*
+> Here's our tender spec (docs/tender.pdf). Turn its requirements into Groundwork requirements.
 >
 > Maria approved REQ-0004 in sprint planning. Record it.
+>
+> What's blocking 1.0?
+>
+> Release 1.0.
 
-Groundwork writes files like `groundwork/insights/INS-0001-setup-takes-too-long.md`. Commit them like any other file.
+Groundwork writes files like `groundwork/requirements/REQ-0004-book-an-appointment.md`. Commit them like any other file. [examples/acme](examples/acme) is a small sample project.
 
-## Requirements in two layers
+## How it works
 
-Write requirements before you build, and keep them in two linked layers:
+Groundwork follows the way you already build with an agent:
 
-- **Stakeholder requirements** say who needs what and why, as user stories: *"As a medical secretary I want a view of all practitioners' calendars with their unbooked slots highlighted so that I can find them and book appointments easily."*
-- **Solution requirements** say what the solution must do to meet those needs, as "shall" statements: *"The appointment view shall show the calendars of the selected practitioners with the free slots highlighted. It shall be possible to click a free slot to start the booking flow."*
+1. **Plan.** Before any code, the agent decides what kind of task it is and says so in one line: *"New need: adds 2 stakeholder and 4 solution requirements, 1 risk"*, or *"Bug fix under REQ-0007; no requirement changes"*. For a new need or a change, the plan records the requirements and the risks they bring. Approving the requirements stays a person's decision.
+2. **Build.** While it works, the agent records where each requirement lives in the code (`codeRefs`), the tests that verify it, and the tickets that deliver it. Before changing files, it asks `trace_code` which requirements and risks they touch.
+3. **Pull request.** The PR ends with a trailer such as `Groundwork: REQ-0042, RSK-0007`. In CI, the [GitHub Action](#pull-requests-and-ci) comments with what the PR names or touches and the traceability gaps.
+4. **CI results.** On your default branch, CI records the test results of linked tests in the repository, as evidence.
+5. **Release.** Groundwork checks the version, and an owner signs it off. The sign-off record and its report never change afterwards.
 
-Every solution requirement fulfils at least one stakeholder requirement, and Groundwork refuses one that doesn't. `groundwork validate` warns about stakeholder requirements that no solution requirement fulfils yet, and about stories that don't fit their layer. Linking findings is optional, so you can write requirements before there's any experiment behind them.
+Agents never approve requirements, accept a risk or sign a release off on their own. People do, and Groundwork records who and when.
 
-### Planning with Groundwork
+## Requirements
 
-When your agent plans a task, it first decides what kind of task it is. "Let's add a feature to book appointments" is a new need. "This path is broken, fix it" is a fix. It states the call in one line of the plan, such as *"New need: adds 2 stakeholder and 4 solution requirements"* or *"Bug fix under REQ-0007; no requirement changes"*. For a new need or a change, the plan records the requirements before any code. Tickets the workflow creates carry the REQ ids they implement. When a PM approves a requirement verbally, tell the agent and it records the approval on their behalf, noting who entered it.
+Requirements come in two linked layers:
 
-**Tickets, linked both ways.** When the workflow creates tickets or user stories in Linear, Jira, GitHub Issues or any other board, each ticket names the REQ ids it implements. The agent records the ticket on those requirements with `link_tickets`. Groundwork never calls your tracker; the agent uses the tracker tool your workflow already has. A bug fix under an existing requirement is linked to it too, so the fix traces back to what it restores. Ask *"which requirement is CLN-142?"* and the agent finds it.
+- **Stakeholder requirements** say who needs what and why, as user stories: *"As a medical secretary, I want to see when each practitioner is available, so that I can book patients quickly."*
+- **Solution requirements** say what the system shall do, one capability each: *"The system shall show free and booked slots of each practitioner's calendar in distinct colours."*
+
+Every solution requirement fulfils at least one stakeholder requirement, and Groundwork refuses one that doesn't. Each rests on something: a finding, a hypothesis the team is confident in, or an origin decided elsewhere (a tender, regulation, contract or customer need, with a note saying exactly where). Before saving, the agent checks for duplicates and conflicts and asks you what to do about each. New requirements are drafts until someone approves them.
+
+**Versions.** Each product is a file in `groundwork/products/` with its areas and versions. An approved solution requirement is planned for a version. To change one, the agent adds a new requirement that `replaces` it. The old one stays valid until the new one ships, so Groundwork never calls something obsolete while the released product still behaves that way.
+
+### Bring in the requirements you already have
+
+Most teams don't start from nothing: there's a tender, a contract, a spec in Word, a spreadsheet or a Jira backlog. Give it to your agent. It lists what the source contains first, so you can drop clauses that aren't about the product. Then it rewrites the rest about 20 at a time: needs become stories, behaviour becomes "shall" statements, and each keeps the exact place it came from ("Region North tender 2026, §4.2"). It shows you each batch and records it only once you agree. The `groundwork-write-requirement` skill describes the workflow.
+
+### Start from a product that already exists
+
+Modernizing an existing product? Tell your agent *"Reverse-engineer the requirements of this codebase into a 4.x baseline"*. It reads the code and tests one product area at a time, drafts the needs and "shall" statements with links to the code, asks you about suspected bugs and dead code, and records each area with `record_baseline`, including the risks the product already carries and the requirements that control them. You start with a requirement repository instead of a blank page. New behaviour then gets new requirements that replace baseline ones.
+
+## Risks
+
+Risks (`RSK-0001`) record a hazard, the harm it can cause, and its probability and severity on a 5×5 matrix (or 3×3, set in `config.yml`). Requirements that mitigate a risk are linked to it, and a residual score says what's left once they're in. The level (low, medium, high) is always derived from the scores, never typed in.
+
+The `groundwork-risk` skill has the agent spot risks while it plans, so a feature that handles patient data comes with its risks and mitigations in the same plan. A high risk blocks a release until its mitigations are approved and its residual level is no longer high.
+
+```sh
+npx -p groundwork-mcp groundwork list risk
+#   RSK-0001 Imports attributed to the wrong person (medium, residual low)
+```
+
+## Tests and results
+
+A solution requirement records the tests that verify it, both kinds:
+
+- **Automated tests,** as a file and the test's full name: `link_code_tests`.
+- **Cases in your test-management tool,** such as Qase, TestRail or Xray: `link_test_cases`.
+
+**Results from CI.** On each run on your default branch, CI records the JUnit results of the linked tests and commits them to a `groundwork-results` branch, so your main branch's history stays clean:
+
+```yaml
+# in your test job, after the tests
+- if: ${{ !cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+  run: npx -p groundwork-mcp groundwork results add "reports/*.xml" --push
+```
+
+The job needs `permissions: contents: write`, and a ruleset that covers every branch must allow `groundwork-results`. The [GitHub Action](#pull-requests-and-ci) does this step for you. Runs from a laptop are recorded but don't count as evidence.
+
+**Results from a test-management tool.** Your agent records a run for a product version with `record_test_results`. `get_item` on a requirement shows whether its tests passed.
+
+## Pull requests and CI
+
+The [Groundwork Action](action/README.md#without-a-groundwork-account-local-mode) needs no account in `mode: local`:
+
+- **On a pull request** it comments with the requirements and risks the PR names in its `Groundwork:` trailer or touches through their `codeRefs`, and the gaps: requirements without tests, approved requirements changed without being named, high risks without mitigation, failed or missing test runs. `fail-on-gaps` fails the check.
+- **On the default branch** it records the JUnit results, as above.
+
+```yaml
+- uses: IdeatorlabsAB/groundwork/action@v0.9.0
+  if: ${{ !cancelled() }}
+  with:
+    mode: local
+    junit: junit.xml
+```
+
+[`action/README.md`](action/README.md) has the full workflow. Also run `validate` on pull requests, to catch broken links and ids that clash with the branch they merge into:
+
+```yaml
+- uses: actions/checkout@v5
+  with:
+    fetch-depth: 0 # so the base branch is there to compare with
+- run: npx -y -p groundwork-mcp groundwork validate --against origin/${{ github.base_ref }}
+```
 
 ## Releasing
 
-When a version goes out, record it: tell your agent *"Release Clinicare 1.1"*, or use the CLI. Groundwork lists what was planned for 1.1. If your workflow has a tracker, the agent refreshes the tickets' status (`update_tickets`) and proposes the requirements whose tickets are all done. It asks you about the rest; requirements without tickets are never shipped on ticket status alone. Without a tracker, it asks you what shipped. Planned requirements that didn't make it move to the next version you name, so nothing is dropped. A replaced requirement becomes obsolete once all its replacements have shipped. Groundwork records who released the version and when.
+Ask *"What's blocking 1.1?"*, or run `groundwork check release 1.1`. It lists, with the web app's rules:
 
-Before it goes out, Groundwork checks it the way the web app does: every high risk has approved mitigations and a residual score that's no longer high, every requirement is approved, and its tests passed in CI and in your test-management tool. Releasing signs the version off in a frozen record (`groundwork/releases/`), so its report never changes afterwards. With blockers, only an owner can release it, with a written justification.
+- high risks without approved mitigations, or still high after them, and risks that aren't scored;
+- requirements that aren't approved;
+- tests that are missing, failed, or haven't run on the default branch.
+
+Then tell your agent *"Release 1.1"*. It lists what was planned. With a tracker it refreshes the tickets and proposes the requirements whose tickets are done; without one, it asks you what shipped. What didn't ship moves to the next version, so nothing is dropped. Releasing signs the version off in a frozen record in `groundwork/releases/`. If anything blocks it, only an owner can release it, with a written justification that goes in the record.
 
 ```sh
-npx -p groundwork-mcp groundwork check release 1.1      # what blocks it; exits 1 if anything does
+npx -p groundwork-mcp groundwork check release 1.1      # exits 1 if anything blocks it
 npx -p groundwork-mcp groundwork release 1.1 --shipped REQ-0012,REQ-0014 --move-rest 1.2
 npx -p groundwork-mcp groundwork report release 1.1     # the traceability report, as Markdown
 npx -p groundwork-mcp groundwork report release 1.1 --format csv > traceability.csv
-npx -p groundwork-mcp groundwork report release 1.1 --format csv --table risks > risks.csv
+npx -p groundwork-mcp groundwork report release 1.1 --format csv --table risks > risk-register.csv
 ```
 
-The release report lists what the version introduced, what it made obsolete and how far each stakeholder need is met, e.g. from [examples/acme](examples/acme):
+The report shows what the version introduced and made obsolete, how far each stakeholder need is met, each requirement's tickets, tests and results, the risks and their mitigations, and the readiness at sign-off. It's read from the sign-off record, so it says the same thing next year.
 
-```markdown
-# Acme app 1.0: release report
+**A signed-off version is locked.** To correct it, an owner withdraws the sign-off with a reason (`groundwork release 1.1 --withdraw --reason "…"`), corrects the release (`--correct`, with its own reason), and signs it off again. Both stay on the record. Versions released before Groundwork had sign-off records can be signed off with `--sign-off`.
 
-Released 2026-11-22 by sam. Product PRD-0001.
+## Discovery evidence
 
-## Introduced
+Groundwork can also hold the evidence behind a requirement, from customer interviews to experiments:
 
-- **REQ-0002** Guided CSV import: The CSV import shall guide the user step by step through uploading a file, …
-  - Meets: REQ-0001 Get set up without help
-  - Tickets: linear ACME-12
-
-## Made obsolete
-
-Nothing.
-
-## Stakeholder requirements
-
-- **REQ-0001** Get set up without help: fully met (1 of 1 solution requirements released)
+```
+insight ──▶ hypothesis ──▶ experiment ──▶ finding ──▶ requirement
 ```
 
-Put it in your release documentation, e.g. the technical documentation for an EU MDR medical device. A released version changes only through a correction, which needs a reason and shows in the report: *"Correct 1.1: REQ-0014 didn't ship, move it to 1.2. Reason: feature flag was off in the build"*, or `groundwork release 1.1 --correct --remove REQ-0014 --move-rest 1.2 --reason "…"`. For teams that ship continuously, `release_requirements` records requirements that shipped later in an already released version.
+> Here are my notes from three customer interviews. Log the pains as insights.
+>
+> The pilot finished: activation went from 38% to 61%. Record it and write up the finding.
+>
+> Why are we building the guided import?
 
-## Bring in the requirements you already have
-
-Most teams don't start from nothing: there's a tender, a contract, a spec in Word, a spreadsheet or a Jira backlog. Give it to your agent: *"Here's our tender spec (docs/tender.pdf). Turn its requirements into Groundwork requirements."* It lists what the source contains first, so you can drop clauses that aren't about the product. Then it rewrites the rest about 20 at a time: needs become stakeholder stories, behaviour becomes "shall" statements, and each keeps a reference to exactly where it came from ("Region North tender 2026, §4.2"). It checks for duplicates, shows you each batch and records it only once you agree. They're drafts unless you tell it who already approved them. The `groundwork-write-requirement` skill describes the workflow.
-
-## Starting from an existing product
-
-If you are modernizing a product that already exists, tell your agent *"Reverse-engineer the requirements of this codebase into a Legacy 4.x baseline"*. It reads the code and tests one product area at a time, drafts the needs and "shall" statements with links to the code (`codeRefs`), and shows you each list. It asks you about suspected bugs and dead code, and who approves. Then it records the area with `record_baseline`: the requirements are approved and already released in that version, so you start with a requirement repository instead of a blank page. New or changed behaviour then gets new requirements with `replaces: [baseline id]`. When they ship, the baseline items become obsolete. Never edit the baseline. `groundwork report release <version>` prints it as a baseline report with a count per area.
-
-## Test results from CI
-
-Groundwork keeps test evidence in your repository. On each push to your default branch, CI records the JUnit results of the tests your requirements link to and commits them to a `groundwork-results` branch, so your main branch's history stays clean:
-
-```yaml
-# .github/workflows/test.yml
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write      # to push to groundwork-results
-    steps:
-      - uses: actions/checkout@v5          # keep the default credentials
-      - run: npm ci && npm test -- --reporter=junit --outputFile=reports/junit.xml
-      # !cancelled(): record the results when tests fail too, or a regression would leave the last pass standing.
-      - if: ${{ !cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-        run: npx -p groundwork-mcp groundwork results add "reports/*.xml" --push
-```
-
-If a ruleset protects every branch, allow `groundwork-results`. The [Groundwork Action](action/README.md#without-a-groundwork-account-local-mode) does this step for you with `mode: local`, and also comments on pull requests with the requirements and risks they name or touch and the traceability gaps. Results from a laptop are written but don't count as evidence. Your agent records runs from a test-management tool (Qase, TestRail, …) with `record_test_results`, and `get_item` shows whether a requirement's tests passed.
-
-## Working on branches
-
-Everyone works on their own clone of the repo: developers writing requirements while they plan, and product managers logging insights and results. Groundwork numbers new items on each clone as one more than the highest id it can see. So two branches can both create `REQ-0012`, each meaning something different.
-
-Groundwork catches this before you merge:
-
-```sh
-npx -p groundwork-mcp groundwork validate --against origin/main   # error: REQ-0012 is also used by … on origin/main
-npx -p groundwork-mcp groundwork renumber --against origin/main   # REQ-0012 → REQ-0015, links updated
-```
-
-`renumber` gives the branch's clashing items the next free ids and renames their files. It also updates links to them in the files your branch added or changed. Ids already on `main` never change, so links and documents that cite them stay valid. Your notes (the Markdown under an item's frontmatter) are never rewritten: if they mention an old id, `renumber` tells you, so you can fix it by hand. Agents run it for you when `validate` reports a clash.
-
-## The CLI
-
-```sh
-npx -p groundwork-mcp groundwork init        # create groundwork/config.yml
-npx -p groundwork-mcp groundwork validate    # check every item and link; exits 1 on errors
-npx -p groundwork-mcp groundwork validate --against origin/main   # also catch ids that clash with main
-npx -p groundwork-mcp groundwork renumber --against origin/main   # fix those clashes on this branch
-npx -p groundwork-mcp groundwork migrate --dry-run   # move products and areas from config.yml into product files
-npx -p groundwork-mcp groundwork release 1.1 --shipped REQ-0012 --move-rest 1.2   # release a version
-npx -p groundwork-mcp groundwork report release 1.1   # its release report
-npx -p groundwork-mcp groundwork trace REQ-0002
-npx -p groundwork-mcp groundwork list hypothesis
-npx -p groundwork-mcp groundwork import --to <web app>   # see "Groundwork for teams"
-```
-
-`trace` shows the chain behind an item (from [examples/acme](examples/acme)):
+Groundwork computes experiment verdicts from the results, and `groundwork trace` shows the chain behind any item:
 
 ```
 REQ-0002 Guided CSV import (solution, approved)
@@ -202,97 +202,83 @@ REQ-0002 Guided CSV import (solution, approved)
    └─ finding FND-0001 Guided import lifts activation (shown above)
 ```
 
-Run `validate` in CI to block pull requests with broken links or ids that clash with the branch they merge into:
+It's optional: requirements can rest on an origin instead, such as a tender or a regulation.
 
-```yaml
-# .github/workflows/groundwork.yml
-on: pull_request
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # so the base branch is there to compare with
-      - run: npx -y -p groundwork-mcp groundwork validate --against origin/${{ github.base_ref }}
+## Working on branches
+
+Everyone works on their own clone, so two branches can both create `REQ-0012`, each meaning something different. Groundwork catches this before you merge:
+
+```sh
+npx -p groundwork-mcp groundwork validate --against origin/main   # error: REQ-0012 is also used by … on origin/main
+npx -p groundwork-mcp groundwork renumber --against origin/main   # REQ-0012 → REQ-0015, links updated
 ```
+
+`renumber` gives the branch's clashing items the next free ids and updates links to them in the files the branch changed. Ids already on `main` never change, so documents that cite them stay valid. Agents run it for you when `validate` reports a clash.
 
 ## Setup
 
-`groundwork/config.yml` holds the project's name and its people (for approvals). The first write creates it if it's missing. People are always added by hand:
+`groundwork/config.yml` holds the project's name, its people and their roles. The first write creates it. People are added by hand, because roles decide who can approve and sign off:
 
 ```yaml
 schemaVersion: 2
 name: Clinicare
 people:
-  - { id: maria, name: Maria, role: owner, email: maria@clinicare.example }
+  - { id: maria, name: Maria, role: owner }
+  - { id: sam, name: Sam, role: editor }
 ```
 
-### Products, areas and versions
+Products, areas and versions are files in `groundwork/products/`, which your agent creates (`add_products`, `add_product_areas`, `add_product_versions`). Groundwork finds the project by looking for `groundwork/config.yml` in the current folder and the folders above it. Set `GROUNDWORK_DIR` to point elsewhere, and `GROUNDWORK_USER` to choose who you act as.
 
-Each product is a file in `groundwork/products/`, with its areas and versions, kept in the repo next to your code:
+Projects from before 0.6 keep products in `config.yml`. Run `groundwork migrate --dry-run` to see the change, then `groundwork migrate`.
 
-```yaml
-# groundwork/products/PRD-0001-clinicare-web-application.md
----
-id: PRD-0001
-title: Clinicare Web Application
-areas:
-  - { id: settings-and-configuration, label: Settings and configuration }
-  - { id: scheduling, label: Scheduling }
-  - { id: prescriptions, label: Prescriptions }
-  - { id: medical-records, label: Medical Records }
-  - { id: patient-data-protection, label: Patient Data Protection }
-versions:
-  - { version: "1.0", status: planned }
----
+[SPEC.md](SPEC.md) has the full file format, every field and the rules.
+
+## Reference
+
+### Command line
+
+```sh
+npx -p groundwork-mcp groundwork <command>
 ```
 
-Ask your agent: *"Set up Groundwork for Clinicare Web Application, with areas Settings and configuration, Scheduling, Prescriptions, Medical Records and Patient Data Protection, and a first version 1.0."* It uses `add_products`, `add_product_areas` and `add_product_versions`. Insights, hypotheses, findings and requirements are tagged with an area, and solution requirements name their product (`product: PRD-0001`). Area ids are unique across products, so an area always points to one product.
+| Command | What it does |
+|---|---|
+| `init`, `migrate` | Create `groundwork/config.yml`; move older projects to product files |
+| `validate [--against <base>]` | Check every item and link, and ids that clash with a branch. Exits 1 on errors |
+| `renumber --against <base>` | Fix those clashes on this branch |
+| `list [kind]`, `trace <id>` | List items; show the chain behind one |
+| `check release <version>` | What blocks a version. Exits 1 if anything does |
+| `release <version> --shipped …` | Release and sign off a version |
+| `release <version> --sign-off` / `--withdraw` / `--correct` | Sign off an older release; withdraw a sign-off; correct a release |
+| `report release <version>` | The traceability report, as Markdown or CSV, or the risk register |
+| `results add <junit>… [--push]` | Record a CI run's results for linked tests |
+| `ci pr --input <pr.json>` | The pull request report, for the GitHub Action |
+| `import --to <url>` | Move the project into the web app |
 
-**Projects from before 0.6** keep their areas and products as lists in `config.yml`, and keep working as they are. To give products versions, run `npx -p groundwork-mcp groundwork migrate --dry-run` to see what would change, then `groundwork migrate`. It creates the product files, points requirements at product ids and updates `config.yml`. After migrating, everyone needs Groundwork 0.6 or later: older versions refuse the folder and say to update.
+`groundwork --help` lists every option.
 
-**Planning requirements for a version.** When a solution requirement is approved, it's planned for one of its product's planned versions, e.g. *"Approve REQ-0012 for 1.1"*. If work slips, `plan_requirements` moves it to 1.2. To change an approved requirement, the agent adds a new one that `replaces` it. The old one stays valid until the version the new one ships in, so Groundwork never says "obsolete" while the released product still behaves the old way.
+### MCP tools
 
-Groundwork finds the project by looking for `groundwork/config.yml` in the current folder and the folders above it. Set `GROUNDWORK_DIR` to point somewhere else, and `GROUNDWORK_USER` to choose who you're acting as.
-
-The full format, every field and the rules are in [SPEC.md](SPEC.md). See [examples/acme](examples/acme) for a sample project.
-
-## Tools
-
-| Read | Write | Lifecycle |
-|---|---|---|
-| `get_workspace` | `add_insights` | `start_experiment` |
-| `search_items` | `add_hypotheses` | `record_experiment_results` |
-| `get_item`, `trace_code` | `add_experiment` | `submit_requirement_for_approval` |
-| | `add_findings` | `approve_requirement` |
-| | `add_requirements` | `send_back_requirement` |
-| | `update_item`, `link_items` | `obsolete_requirement` |
-| | `delete_item` | |
-| | `link_tickets`, `unlink_tickets`, `update_tickets` | |
-| | `add_risks` | |
-| | `link_code_tests`, `unlink_code_tests`, `link_test_cases`, `unlink_test_cases` | `record_test_results` |
-| | `record_baseline` | |
-| `get_release`, `check_release` | `add_products`, `add_product_areas`, `add_product_versions` | `plan_requirements`, `release_version`, `release_requirements`, `correct_release`, `sign_off_release`, `withdraw_release` |
+| Area | Tools |
+|---|---|
+| Read | `get_workspace`, `search_items`, `get_item`, `trace_code`, `get_release`, `check_release` |
+| Products | `add_products`, `add_product_areas`, `add_product_versions` |
+| Evidence | `add_insights`, `add_hypotheses`, `add_experiment`, `start_experiment`, `record_experiment_results`, `add_findings` |
+| Requirements | `add_requirements`, `record_baseline`, `submit_requirement_for_approval`, `approve_requirement`, `send_back_requirement`, `plan_requirements`, `obsolete_requirement` |
+| Risks | `add_risks` (mitigations with `link_items`) |
+| Delivery | `link_tickets`, `unlink_tickets`, `update_tickets`, `link_code_tests`, `unlink_code_tests`, `link_test_cases`, `unlink_test_cases`, `record_test_results` |
+| Releases | `release_version`, `release_requirements`, `correct_release`, `sign_off_release`, `withdraw_release` |
+| Any item | `update_item`, `link_items`, `delete_item` |
 
 ## Privacy
 
-Insights hold what customers said, and these files usually end up in git. Groundwork tells agents to record a role ("Finance manager") and an optional reference ("P07"), never names or contact details. Check quotes before you commit them, and keep the repo private if they're sensitive.
+Insights hold what customers said, and these files end up in git. Groundwork tells agents to record a role ("Finance manager") and an optional reference ("P07"), never names or contact details. Check quotes before you commit them, and keep the repository private if they're sensitive.
 
-## Groundwork for teams
+## Moving to the web app
 
-The [Groundwork web app](https://groundwork.ideatorlabs.com) is for teams, especially in regulated industries (medical devices, healthcare, finance), where every release has to show what shipped, why, and how it was checked. It's a separate hosted product; this project is and stays open source.
+The [Groundwork web app](https://groundwork.ideatorlabs.com) is the hosted version for teams: a **Review** inbox where people approve what agents recorded, grouped by pull request; an **Activity** log filtered by agent; roles; and traceability reports and risk registers as PDF. It's a separate product. This project is and stays open source.
 
-The agent keeps the records there too, and people make the decisions:
-
-1. **Plan.** Before writing code, the agent adds a Groundwork section to its plan: the stakeholder and solution requirements, the risks with their scores and mitigations, the release, and the tests. Approving the plan approves that section.
-2. **Build.** While it works, the agent records those items, where each lives in the code, the tests that verify it, and the tickets and pull request that deliver it. The pull request ends with a trailer such as `Groundwork: REQ-0042, RSK-0007`.
-3. **CI.** The [GitHub Action](#ci-the-github-action) comments on each pull request with the requirements it touches and any gaps, tags merged work to the product's release, and uploads test results from the default branch.
-4. **People decide.** In the app, the team approves what agents recorded in a **Review** inbox grouped by pull request, and sees every change, filtered by agent, under **Activity**. A release is ready when its high risks are mitigated, its requirements approved and every linked test passed on the default branch. An owner then signs it off, which freezes a printable release report. Each product also has a **traceability report** and a **risk register**, as PDF or CSV.
-
-Agents never approve requirements, accept a residual risk or sign a release off.
-
-To move a project from these files into the web app, create an agent token in the web app (**Settings → Connect an agent**), then:
+When you're ready, an owner creates an agent token in the web app (**Settings → Connect an agent**) and runs:
 
 ```sh
 export GROUNDWORK_TOKEN=gw_…
@@ -300,15 +286,13 @@ npx -p groundwork-mcp groundwork import --to https://your-groundwork-app --dry-r
 npx -p groundwork-mcp groundwork import --to https://your-groundwork-app
 ```
 
-Everything moves, with its links:
-- the evidence chain;
-- requirements, the baseline included, with their tickets, code tests and test-management cases;
-- risks with their mitigations and scores;
-- product versions, as releases;
-- the CI and test-tool results;
-- sign-off records, kept word for word.
+Everything moves, with its links: the evidence; requirements, the baseline included, with their tickets, tests and cases; risks with their mitigations and scores; versions, as releases; CI and test-tool results; and sign-off records, word for word. The web app's own release check then gives every version the same verdict as `groundwork check release`.
 
-Each item's original id (`REQ-0042`, `RSK-0007`) stays its key, so the `Groundwork:` trailers in your git history still point at the right items. If another item in the workspace already has one of those keys, the import refuses and lists them rather than renumber anything; import into a new workspace. A version released before sign-off records arrives released and locked, marked as never verified. An owner must run the import when the folder has released versions, because only owners sign releases off in the web app. Running the import again skips what's already there (`--overwrite` replaces items, never signed-off releases), and finishes an import that stopped half-way. Afterwards `groundwork/config.yml` says `migrated:`, so local tools only read the files and the web app is where changes go. The command prints how to point your agent at the web app's MCP server. For Codex, run `codex mcp remove groundwork` and add this to `~/.codex/config.toml`:
+- **Ids stay the same.** `REQ-0042` stays `REQ-0042`, so the `Groundwork:` trailers in your git history still point at the right items. If the workspace already has one of those keys, the import refuses and lists them; import into a new workspace.
+- **Owners only, when there are releases,** because only owners sign releases off in the web app.
+- **Safe to repeat.** Running it again skips what's already there and finishes an import that stopped half-way. `--overwrite` replaces items, never signed-off releases.
+
+Afterwards `config.yml` says `migrated:`, so the local tools only read, and the command prints how to point your agent at the web app. With Claude Code, install the `groundwork-cloud` plugin instead of `groundwork` (`/plugin install groundwork-cloud@groundwork`) and put the token in `.claude/settings.local.json` as `{ "env": { "GROUNDWORK_TOKEN": "gw_…" } }`. With Codex, run `codex mcp remove groundwork` and add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.groundwork]
@@ -316,36 +300,7 @@ url = "https://your-groundwork-app/api/mcp"
 bearer_token_env_var = "GROUNDWORK_TOKEN"
 ```
 
-### The groundwork-cloud plugin
-
-To work against the web app from Claude Code, install the `groundwork-cloud` plugin instead of `groundwork`:
-
-```
-/plugin marketplace add IdeatorlabsAB/groundwork
-/plugin install groundwork-cloud@groundwork
-```
-
-Then put your agent token in each repository's `.claude/settings.local.json` (git ignores it): `{ "env": { "GROUNDWORK_TOKEN": "gw_…" } }`. Add `"GROUNDWORK_URL"` for anything but `https://groundwork.ideatorlabs.com`.
-
-The plugin connects the web app's MCP server, and its skills teach Claude to record requirements, risks, code references, tests, tickets and release tags while it plans, builds and opens pull requests: every plan gets a Groundwork section, and approving the plan approves it. Two hooks remind Claude of this when a session starts and after `gh pr create`. They do nothing in a repository without `GROUNDWORK_TOKEN`.
-
-The plugin's skills are generated in the web app's repository; don't edit them here.
-
-### CI: the GitHub Action
-
-[`action/`](action/) is a GitHub Action for teams on the web app. It records what agents forget:
-
-- On each pull request, it comments with the requirements and risks the PR names or touches, and any gaps.
-- On merge, it tags the work the PR names to the product's collecting release, and records the PR as merged, with its merge commit and time, on the requirements it delivers.
-- After your tests run, it uploads the JUnit results. Results from the default branch count towards release readiness; pull-request results show in the comment.
-
-```yaml
-- uses: IdeatorlabsAB/groundwork/action@main
-  with:
-    token: ${{ secrets.GROUNDWORK_CI_TOKEN }}
-```
-
-A workspace owner creates the CI token in the web app (**Settings → Connect CI**). [`action/README.md`](action/README.md) has the full workflow and a GitLab CI version. Like the plugin's skills, the Action is generated in the web app's repository; don't edit it here.
+In CI, the Action's default mode works with the web app: it also tags merged work to the release and uploads test results. A workspace owner creates its token under **Settings → Connect CI**; see [`action/README.md`](action/README.md).
 
 ## Contributing
 

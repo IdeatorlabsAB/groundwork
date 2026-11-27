@@ -142,7 +142,7 @@ These rules live in the core library, so every Groundwork tool applies them the 
     - the matrix, the blockers, the test outcomes (with the results commit read), the release report, who signed it off, and everyone's names.
 
     It's never rewritten, except to add a withdrawal (`withdrawnAt`, `withdrawnBy`, `withdrawReason`). The version gets `signOff: <record file>`.
-  - **A signed-off version is frozen.** `release_requirements` and `correct_release` refuse it until an owner withdraws the sign-off (`withdraw_release`). `sign_off_release` then signs it off again as record `n + 1`.
+  - **A signed-off version is frozen.** `release_requirements` and `correct_release` refuse it until an owner withdraws the sign-off (`withdraw_release`, or `groundwork release <version> --withdraw --reason "…"`), with a reason. `sign_off_release` then signs it off again as record `n + 1`.
   - **Versions with no sign-off.** `sign_off_release` also signs off a version released before sign-off records, and a baseline once its last area is recorded. A baseline's tests aren't checked, and its blockers are recorded but don't stop it.
   - **`validate` reports:**
     - a record that can't be read;
